@@ -1,0 +1,21 @@
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_2d92d93564222b::t_da58d680a84cb7 212,214
+legged_lab/assets/unitree/g1.py
+  s_2d92d93564222b::t_244f48f2d39a52 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6019559728b8e036f5492081c99204c6a8b577a2",
+  "prompts": {},
+  "sessions": {
+    "s_2d92d93564222b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b839b76-d802-4056-9521-f7cef4596b2c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
