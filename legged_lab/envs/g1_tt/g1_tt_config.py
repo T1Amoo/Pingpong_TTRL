@@ -267,7 +267,7 @@ class G1TableTennisAgentCfg(TTAgentCfg):
     experiment_name: str = "g1_table_tennis"
     logger = "tensorboard"
     save_interval = 250
-    max_iterations = 10000
+    max_iterations = 20000
 
     # Auxiliary predictor configuration used by OnPolicyPredictorRegressionRunner
     # Ignored by the standard OnPolicyRunner.
