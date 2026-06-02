@@ -6,6 +6,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--task", type=str, default="g1_tt")
 parser.add_argument("--steps", type=int, default=100)
 parser.add_argument("--out", type=str, default="/tmp/g1_probe_result.txt")
+parser.add_argument("--bounce", action="store_true")
 AppLauncher.add_app_launcher_args(parser)
 args, _ = parser.parse_known_args()
 args.headless = True
@@ -57,6 +58,27 @@ face = paddle_pos + mu.quat_apply(paddle_quat, off)
 base = robot.data.root_link_pos_w
 rel = (face - base)[0]
 report("[probe] paddle_face - base (x,y,z): " + str([round(float(v),3) for v in rel]))
+
+if args.bounce:
+    # shoot the ball at the blade FACE along its world normal (blade local +Z), check rebound
+    normal = mu.quat_apply(paddle_quat, torch.tensor([[0.0, 0.0, 1.0]], device=env.device))  # (1,3)
+    n = normal[0] / normal[0].norm()
+    P = face[0]
+    approach = 2.0  # m/s toward face
+    bstate = env.ball.data.default_root_state.clone()
+    bstate[:, :3] = (P + 0.05 * n).unsqueeze(0)
+    bstate[:, 7:10] = (-approach * n).unsqueeze(0)
+    bstate[:, 10:13] = 0.0
+    env.ball.write_root_pose_to_sim(bstate[:, :7])
+    env.ball.write_root_velocity_to_sim(bstate[:, 7:])
+    vn0 = float(torch.dot(env.ball.data.root_lin_vel_w[0], n))
+    vnmax = vn0
+    for _ in range(40):
+        env.step(act)
+        vn = float(torch.dot(env.ball.data.root_lin_vel_w[0], n))
+        vnmax = max(vnmax, vn)
+    report("[probe] bounce: vn before=" + str(round(vn0, 3)) + " (toward face<0), vn max after=" + str(round(vnmax, 3)) + " (rebound if >0)")
+    report("[probe] bounce REBOUND " + ("OK" if vnmax > 0.3 else "FAIL"))
 
 with open(args.out, "w") as f:
     f.write("\n".join(_lines) + "\n")
