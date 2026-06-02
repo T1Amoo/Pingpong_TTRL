@@ -1,0 +1,21 @@
+legged_lab/assets/unitree/g1_description/g1_23dof_rev_1_0.urdf
+  ai_agent 1-807
+legged_lab/assets/unitree/g1_description/g1_23dof_tt.urdf
+  s_2d92d93564222b::t_89910a5360dfe4 789-822
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "8f8335f899614d022b8b2dbc6908f1ba868541d8",
+  "prompts": {},
+  "sessions": {
+    "s_2d92d93564222b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b839b76-d802-4056-9521-f7cef4596b2c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
