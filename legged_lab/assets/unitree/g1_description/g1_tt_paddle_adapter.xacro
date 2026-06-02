@@ -49,23 +49,28 @@
       extension_radius:=0.018
       extension_mass:=0.08
       slot_length:=0.075
-      slot_width:=0.030
-      slot_height:=0.016
+      slot_width:=0.032
+      slot_height:=0.022
       wall_thickness:=0.004
       clearance:=0.001
       holder_mass:=0.05
       screw_diameter:=0.004
       screw_x1:=0.025
       screw_x2:=0.055
-      handle_length:=0.095
-      handle_width:=0.028
-      handle_thickness:=0.013
-      handle_mass:=0.04
       insertion_depth:=0.075
+      paddle_mesh:=meshes/tt_paddle.stl
+      paddle_scale:=0.001
+      paddle_rpy:='0 0 -1.5707963'
+      paddle_y:=-0.00351
+      paddle_z:=-0.00149
+      handle_col_len:=0.075
+      handle_col_w:=0.032
+      handle_col_h:=0.022
+      handle_mass:=0.04
       blade_radius:=0.075
-      blade_thickness:=0.006
+      blade_thickness:=0.005
       blade_mass:=0.13
-      blade_center_x:=0.130">
+      blade_center_x:=0.165">
 
     <!-- ============== derived geometry ============== -->
     <!-- holder outer envelope: cavity + side walls (U opens toward +Z) -->
@@ -76,6 +81,9 @@
     <xacro:property name="screw_len"      value="${holder_outer_y + 0.002}"/>
     <!-- handle deep-end offset inside the slot: insertion_depth==slot_length -> seated to bottom -->
     <xacro:property name="handle_in_x"    value="${slot_length - insertion_depth}"/>
+    <!-- lumped paddle COM along +X (handle box + blade disc) -->
+    <xacro:property name="paddle_mass"    value="${handle_mass + blade_mass}"/>
+    <xacro:property name="paddle_com_x"   value="${(handle_mass*handle_col_len/2 + blade_mass*blade_center_x)/paddle_mass}"/>
 
     <!-- =========================================================
          1) adapter mount  (cylinder disc against the flange, axis +X)
@@ -212,74 +220,65 @@
     </link>
 
     <!-- =========================================================
-         4) paddle handle  (rounded box, inserted into the slot)
+         4+5) real paddle MESH (handle + blade as one rigid body)
+              Visual = imported STL (millimetres -> paddle_scale), rotated by
+              paddle_rpy so its handle->blade axis runs +X and the face-normal
+              is +Z, recentered on the slot axis by paddle_y/paddle_z.
+              Collision = simplified handle box + blade disc (cheap & stable).
+              MEASURE-ME: paddle_rpy / paddle_y / paddle_z / blade_center_x and
+              the slot_* sizes if you swap in a different paddle STL.
          ========================================================= -->
-    <joint name="${prefix}tt_paddle_handle_joint" type="fixed">
+    <joint name="${prefix}tt_paddle_joint" type="fixed">
       <parent link="${prefix}tt_paddle_holder_link"/>
-      <child  link="${prefix}tt_paddle_handle_link"/>
-      <!-- MEASURE-ME: insertion_depth sets how deep the handle seats. -->
+      <child  link="${prefix}tt_paddle_link"/>
+      <!-- handle_in_x: insertion_depth==slot_length -> handle tip at slot bottom -->
       <origin xyz="${handle_in_x} 0 0" rpy="0 0 0"/>
     </joint>
-    <link name="${prefix}tt_paddle_handle_link">
+    <link name="${prefix}tt_paddle_link">
       <inertial>
-        <origin xyz="${handle_length/2} 0 0" rpy="0 0 0"/>
-        <mass value="${handle_mass}"/>
-        <inertia ixx="${handle_mass*(handle_width**2 + handle_thickness**2)/12}"
-                 iyy="${handle_mass*(handle_length**2 + handle_thickness**2)/12}"
-                 izz="${handle_mass*(handle_length**2 + handle_width**2)/12}"
-                 ixy="0" ixz="0" iyz="0"/>
+        <!-- lumped: handle box @ x=handle_col_len/2 + blade disc @ x=blade_center_x -->
+        <origin xyz="${paddle_com_x} 0 0" rpy="0 0 0"/>
+        <mass value="${paddle_mass}"/>
+        <inertia
+          ixx="${handle_mass*(handle_col_w**2 + handle_col_h**2)/12
+               + blade_mass*(3*blade_radius**2 + blade_thickness**2)/12}"
+          iyy="${handle_mass*(handle_col_len**2 + handle_col_h**2)/12
+               + handle_mass*(handle_col_len/2 - paddle_com_x)**2
+               + blade_mass*(3*blade_radius**2 + blade_thickness**2)/12
+               + blade_mass*(blade_center_x - paddle_com_x)**2}"
+          izz="${handle_mass*(handle_col_len**2 + handle_col_w**2)/12
+               + handle_mass*(handle_col_len/2 - paddle_com_x)**2
+               + 0.5*blade_mass*blade_radius**2
+               + blade_mass*(blade_center_x - paddle_com_x)**2}"
+          ixy="0" ixz="0" iyz="0"/>
       </inertial>
+      <!-- imported paddle mesh (visual only) -->
       <visual>
-        <origin xyz="${handle_length/2} 0 0" rpy="0 0 0"/>
-        <geometry><box size="${handle_length} ${handle_width} ${handle_thickness}"/></geometry>
-        <material name="tt_dark"/>
-      </visual>
-      <collision>
-        <origin xyz="${handle_length/2} 0 0" rpy="0 0 0"/>
-        <geometry><box size="${handle_length} ${handle_width} ${handle_thickness}"/></geometry>
-      </collision>
-    </link>
-
-    <!-- =========================================================
-         5) paddle blade  (thin disc, face normal == +Z)
-         ========================================================= -->
-    <joint name="${prefix}tt_paddle_blade_joint" type="fixed">
-      <parent link="${prefix}tt_paddle_handle_link"/>
-      <child  link="${prefix}tt_paddle_blade_link"/>
-      <!-- MEASURE-ME: blade_center_x = handle-frame -> blade center along +X. -->
-      <origin xyz="${blade_center_x} 0 0" rpy="0 0 0"/>
-    </joint>
-    <link name="${prefix}tt_paddle_blade_link">
-      <inertial>
-        <origin xyz="0 0 0" rpy="0 0 0"/>
-        <mass value="${blade_mass}"/>
-        <!-- solid cylinder, symmetry axis == Z -->
-        <inertia ixx="${blade_mass*(3*blade_radius**2 + blade_thickness**2)/12}"
-                 iyy="${blade_mass*(3*blade_radius**2 + blade_thickness**2)/12}"
-                 izz="${0.5*blade_mass*blade_radius**2}"
-                 ixy="0" ixz="0" iyz="0"/>
-      </inertial>
-      <visual>
-        <origin xyz="0 0 0" rpy="0 0 0"/>
-        <geometry><cylinder radius="${blade_radius}" length="${blade_thickness}"/></geometry>
+        <origin xyz="0 ${paddle_y} ${paddle_z}" rpy="${paddle_rpy}"/>
+        <geometry><mesh filename="${paddle_mesh}" scale="${paddle_scale} ${paddle_scale} ${paddle_scale}"/></geometry>
         <material name="tt_red"/>
       </visual>
-      <!-- CONTACT TUNING: set restitution & friction on THIS link in the sim
-           backend (not expressible in plain URDF):
+      <!-- simplified collision: handle box ... -->
+      <collision>
+        <origin xyz="${handle_col_len/2} 0 0" rpy="0 0 0"/>
+        <geometry><box size="${handle_col_len} ${handle_col_w} ${handle_col_h}"/></geometry>
+      </collision>
+      <!-- ... + blade disc (face normal == +Z). CONTACT TUNING: set restitution
+           & friction on THIS link in the sim backend (not in plain URDF):
              Isaac Sim : RigidBodyMaterial restitution~0.85, dynamic_friction~0.6
              MuJoCo    : <geom solref/solimp/friction>, condim=4
              Gazebo    : <surface><bounce restitution_coefficient> + <friction> -->
       <collision>
-        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <origin xyz="${blade_center_x} 0 0" rpy="0 0 0"/>
         <geometry><cylinder radius="${blade_radius}" length="${blade_thickness}"/></geometry>
       </collision>
     </link>
 
     <!-- paddle contact frame: blade face center, +Z = outward hitting normal -->
     <joint name="${prefix}paddle_contact_frame_joint" type="fixed">
-      <parent link="${prefix}tt_paddle_blade_link"/>
+      <parent link="${prefix}tt_paddle_link"/>
       <child  link="${prefix}paddle_contact_frame"/>
-      <origin xyz="0 0 ${blade_thickness/2}" rpy="0 0 0"/>
+      <origin xyz="${blade_center_x} 0 ${blade_thickness/2}" rpy="0 0 0"/>
     </joint>
     <link name="${prefix}paddle_contact_frame">
       <inertial><mass value="1e-6"/><inertia ixx="1e-9" iyy="1e-9" izz="1e-9" ixy="0" ixz="0" iyz="0"/></inertial>
