@@ -1,0 +1,21 @@
+legged_lab/envs/base/tt_config.py
+  s_2d92d93564222b::t_9b044dc6055436 46,49
+legged_lab/scripts/fk_probe.py
+  s_2d92d93564222b::t_ae566aef82fef1 1-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "880a0ec4607e4b3de1415694a55f58d7d1877233",
+  "prompts": {},
+  "sessions": {
+    "s_2d92d93564222b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b839b76-d802-4056-9521-f7cef4596b2c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
