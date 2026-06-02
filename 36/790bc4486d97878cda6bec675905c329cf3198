@@ -1,0 +1,21 @@
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_2d92d93564222b::t_12832b9c9b9145 270
+legged_lab/scripts/watchdog_train_g1.sh
+  s_2d92d93564222b::t_a782f42c8b18d3 1-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "36790bc4486d97878cda6bec675905c329cf3198",
+  "prompts": {},
+  "sessions": {
+    "s_2d92d93564222b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b839b76-d802-4056-9521-f7cef4596b2c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
