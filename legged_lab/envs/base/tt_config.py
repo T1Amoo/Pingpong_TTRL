@@ -65,6 +65,12 @@ class RobotCfg:
     num_actions: int = 21
     num_joints: int = 21
     effort_limit_scale: float = 1.0
+    # --- Table-tennis paddle / hitting geometry (defaults match Booster T1) ---
+    paddle_body_name: str = "right_hand_link"   # body the paddle is rigidly attached to
+    paddle_offset: tuple = (0.0, -0.345, 0.0)   # paddle face center offset in that body's local frame
+    hit_body_height: float = 0.69               # target body height for robot_future_pos
+    paddle_y_offset: float = -0.60              # lateral base->paddle offset in ready stance
+    robot_vel_max: float = 7.0                  # clamp for robot_future_vel target
 
 @configclass
 class BallCfg:

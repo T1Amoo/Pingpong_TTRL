@@ -283,6 +283,10 @@ class TTEnv(VecEnv):
             self.cfg.observations.joint_names, preserve_order=self.cfg.observations.preserve_order
         )
 
+        _paddle_ids, _ = self.robot.find_bodies(self.cfg.robot.paddle_body_name)
+        assert len(_paddle_ids) == 1, f"paddle_body_name resolved to {len(_paddle_ids)} bodies"
+        self._paddle_body_id = _paddle_ids[0]
+
         self.robot_cfg = SceneEntityCfg(name="robot")
         self.robot_cfg.resolve(self.scene)
 
@@ -843,7 +847,7 @@ class TTEnv(VecEnv):
         self.ball_global_pos = self.ball.data.root_pos_w 
 
         # --- Compute Paddle Position and Contact ---
-        paddle_index = 15  # paddle belongs to 'right_hand_link'
+        paddle_index = self._paddle_body_id  # resolved once in __init__ from cfg
         paddle_pos = self.robot.data.body_pos_w[:, paddle_index, :]
         # print("paddle_pos: ", paddle_pos[0, :])
         # print("ball_pos: ", self.ball_global_pos[0,:])
@@ -854,7 +858,7 @@ class TTEnv(VecEnv):
         # 2) Build the local offset (0, -0.345, 0) and expand to (N,3):
         local_offset = (
             torch.tensor(
-                [0.0, -0.345, 0.0], # Good to double check.
+                self.cfg.robot.paddle_offset,
                 device=paddle_pos.device,
                 dtype=paddle_pos.dtype,
             )
@@ -971,9 +975,9 @@ class TTEnv(VecEnv):
         vy = self.ball_linvel[:, 1]
 
         g=9.81
-        body_height=0.69
-        vel_max=7.0
-        paddle_y_offset = -0.60
+        body_height = self.cfg.robot.hit_body_height
+        vel_max = self.cfg.robot.robot_vel_max
+        paddle_y_offset = self.cfg.robot.paddle_y_offset
 
         self.mask_before = (has_bounced == 0).squeeze(-1)
         self.mask_after = (has_bounced == 1).squeeze(-1)
