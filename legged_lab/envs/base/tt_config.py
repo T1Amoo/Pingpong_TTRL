@@ -43,9 +43,10 @@ class HeightScannerCfg:
 
 @configclass
 class BaseSceneCfg:
-    max_episode_length_s: float = 10.0 
+    max_episode_length_s: float = 10.0
     num_envs: int = 4096
     env_spacing: float = 2.5
+    seed: int = 42
     robot: ArticulationCfg = MISSING
     table: RigidObjectCfg = MISSING
     ball: RigidObjectCfg = MISSING
