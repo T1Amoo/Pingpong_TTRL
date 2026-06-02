@@ -1,0 +1,20 @@
+docs/superpowers/specs/2026-06-02-g1-tt-migration-design.md
+  s_2d92d93564222b::t_1e27051f467d47 41,45-52
+  s_2d92d93564222b::t_77472112d60cc0 68,72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "29d1732bf775d2ad9bab3d1bbbb376a196cfa091",
+  "prompts": {},
+  "sessions": {
+    "s_2d92d93564222b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b839b76-d802-4056-9521-f7cef4596b2c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
