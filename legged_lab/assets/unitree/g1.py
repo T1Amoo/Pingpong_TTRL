@@ -20,7 +20,7 @@ G1_TT_CFG = ArticulationCfg(
     spawn=sim_utils.UrdfFileCfg(
         fix_base=False,
         replace_cylinders_with_capsules=False,
-        asset_path=f"{ISAAC_ASSET_DIR}/unitree/g1_description/g1_23dof_tt.urdf",
+        asset_path=f"{ISAAC_ASSET_DIR}/unitree/g1_description/g1_23dof_tt_paddle.urdf",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False, retain_accelerations=False,

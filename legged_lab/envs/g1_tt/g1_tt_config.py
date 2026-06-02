@@ -209,9 +209,9 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         self.robot.num_actions = 23
         self.robot.num_joints = 23
         self.domain_rand.events.add_base_mass.params["asset_cfg"].body_names = ["torso_link"]
-        # paddle / hitting geometry (initial; FK-calibrated in a later task)
+        # paddle / hitting geometry (PACE adapter: contact frame ~0.302m along wrist +X; FK-calibrated later)
         self.robot.paddle_body_name = "right_wrist_roll_rubber_hand"
-        self.robot.paddle_offset = (0.20, 0.0, 0.0)
+        self.robot.paddle_offset = (0.302, 0.0, 0.0)
         self.robot.hit_body_height = 0.72
         self.robot.paddle_y_offset = -0.30
         G1_JOINT_NAMES = [

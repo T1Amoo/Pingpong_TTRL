@@ -1,0 +1,289 @@
+<?xml version="1.0"?>
+<!--
+  g1_tt_paddle_adapter.xacro
+
+  Fixed table-tennis paddle end-effector for the Unitree G1 23DoF RIGHT arm.
+  Replaces the rubber-hand geometry with a 3D-printed adapter that holds a
+  standard ping-pong paddle (PACE-style fixture). NO new active joints are
+  added: every joint here is `fixed`, so the robot's DoF count is unchanged.
+
+  Local frame convention (matches the wrist_roll link, whose +X already points
+  out along the palm direction):
+    +X : flange -> paddle, i.e. the extension-tube / fixture length axis
+    +Y : lateral width of the handle slot
+    +Z : paddle blade face normal (the hitting-surface normal)
+
+  Named frames produced for RL / contact / IK use:
+    ${prefix}adapter_mount_frame  - at the flange mount face
+    ${prefix}paddle_handle_frame  - on the handle-slot centerline
+    ${prefix}paddle_contact_frame - at the blade face center, +Z = outward
+                                    hitting normal
+
+  USAGE:
+    <xacro:include filename="g1_tt_paddle_adapter.xacro"/>
+    <xacro:g1_tt_paddle_adapter parent_link="right_wrist_roll_rubber_hand"/>
+
+  >>> MEASURE-ME params (override after measuring the real printed part /
+  >>> real paddle): mount_xyz, mount_rpy, insertion_depth, blade_center_x,
+  >>> blade_radius, blade_thickness, all *_mass values, screw_x1/screw_x2.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Blade rubber material (override color to taste). -->
+  <material name="tt_red">
+    <color rgba="0.80 0.10 0.10 1.0"/>
+  </material>
+  <material name="tt_dark">
+    <color rgba="0.20 0.20 0.20 1.0"/>
+  </material>
+
+  <xacro:macro name="g1_tt_paddle_adapter" params="
+      parent_link
+      prefix:=right_
+      mount_xyz:='0 0 0'
+      mount_rpy:='0 0 0'
+      mount_radius:=0.025
+      mount_length:=0.012
+      mount_mass:=0.03
+      extension_length:=0.16
+      extension_radius:=0.018
+      extension_mass:=0.08
+      slot_length:=0.075
+      slot_width:=0.030
+      slot_height:=0.016
+      wall_thickness:=0.004
+      clearance:=0.001
+      holder_mass:=0.05
+      screw_diameter:=0.004
+      screw_x1:=0.025
+      screw_x2:=0.055
+      handle_length:=0.095
+      handle_width:=0.028
+      handle_thickness:=0.013
+      handle_mass:=0.04
+      insertion_depth:=0.075
+      blade_radius:=0.075
+      blade_thickness:=0.006
+      blade_mass:=0.13
+      blade_center_x:=0.130">
+
+    <!-- ============== derived geometry ============== -->
+    <!-- holder outer envelope: cavity + side walls (U opens toward +Z) -->
+    <xacro:property name="holder_outer_y" value="${slot_width + 2*wall_thickness}"/>
+    <xacro:property name="holder_outer_z" value="${slot_height + wall_thickness}"/>
+    <xacro:property name="side_wall_y"    value="${slot_width/2 + wall_thickness/2}"/>
+    <xacro:property name="bottom_z"       value="${-(slot_height/2 + wall_thickness/2)}"/>
+    <xacro:property name="screw_len"      value="${holder_outer_y + 0.002}"/>
+    <!-- handle deep-end offset inside the slot: insertion_depth==slot_length -> seated to bottom -->
+    <xacro:property name="handle_in_x"    value="${slot_length - insertion_depth}"/>
+
+    <!-- =========================================================
+         1) adapter mount  (cylinder disc against the flange, axis +X)
+         ========================================================= -->
+    <joint name="${prefix}tt_adapter_mount_joint" type="fixed">
+      <parent link="${parent_link}"/>
+      <child  link="${prefix}tt_adapter_mount_link"/>
+      <!-- MEASURE-ME: nudge mount_xyz/mount_rpy if flange frame differs. -->
+      <origin xyz="${mount_xyz}" rpy="${mount_rpy}"/>
+    </joint>
+    <link name="${prefix}tt_adapter_mount_link">
+      <inertial>
+        <origin xyz="${mount_length/2} 0 0" rpy="0 0 0"/>
+        <mass value="${mount_mass}"/>
+        <inertia ixx="${0.5*mount_mass*mount_radius**2}"
+                 iyy="${mount_mass*(3*mount_radius**2 + mount_length**2)/12}"
+                 izz="${mount_mass*(3*mount_radius**2 + mount_length**2)/12}"
+                 ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual>
+        <origin xyz="${mount_length/2} 0 0" rpy="0 ${pi/2} 0"/>
+        <geometry><cylinder radius="${mount_radius}" length="${mount_length}"/></geometry>
+        <material name="tt_dark"/>
+      </visual>
+      <collision>
+        <origin xyz="${mount_length/2} 0 0" rpy="0 ${pi/2} 0"/>
+        <geometry><cylinder radius="${mount_radius}" length="${mount_length}"/></geometry>
+      </collision>
+    </link>
+
+    <!-- frame at the flange mount face -->
+    <joint name="${prefix}adapter_mount_frame_joint" type="fixed">
+      <parent link="${prefix}tt_adapter_mount_link"/>
+      <child  link="${prefix}adapter_mount_frame"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="${prefix}adapter_mount_frame">
+      <inertial><mass value="1e-6"/><inertia ixx="1e-9" iyy="1e-9" izz="1e-9" ixy="0" ixz="0" iyz="0"/></inertial>
+    </link>
+
+    <!-- =========================================================
+         2) extension tube  (cylinder along +X)
+         ========================================================= -->
+    <joint name="${prefix}tt_extension_joint" type="fixed">
+      <parent link="${prefix}tt_adapter_mount_link"/>
+      <child  link="${prefix}tt_extension_link"/>
+      <origin xyz="${mount_length} 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="${prefix}tt_extension_link">
+      <inertial>
+        <origin xyz="${extension_length/2} 0 0" rpy="0 0 0"/>
+        <mass value="${extension_mass}"/>
+        <inertia ixx="${0.5*extension_mass*extension_radius**2}"
+                 iyy="${extension_mass*(3*extension_radius**2 + extension_length**2)/12}"
+                 izz="${extension_mass*(3*extension_radius**2 + extension_length**2)/12}"
+                 ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual>
+        <origin xyz="${extension_length/2} 0 0" rpy="0 ${pi/2} 0"/>
+        <geometry><cylinder radius="${extension_radius}" length="${extension_length}"/></geometry>
+        <material name="tt_dark"/>
+      </visual>
+      <collision>
+        <origin xyz="${extension_length/2} 0 0" rpy="0 ${pi/2} 0"/>
+        <geometry><cylinder radius="${extension_radius}" length="${extension_length}"/></geometry>
+      </collision>
+    </link>
+
+    <!-- =========================================================
+         3) paddle holder  (U-channel: bottom + 2 side walls, opens +Z;
+            handle inserts axially from the +X end). 2 screw-hole visuals
+            run through along +-Y. For a TRUE hollow slot + drilled holes
+            use paddle_holder_mesh.py and swap the geometry to the mesh.
+         ========================================================= -->
+    <joint name="${prefix}tt_paddle_holder_joint" type="fixed">
+      <parent link="${prefix}tt_extension_link"/>
+      <child  link="${prefix}tt_paddle_holder_link"/>
+      <origin xyz="${extension_length} 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="${prefix}tt_paddle_holder_link">
+      <inertial>
+        <!-- outer-envelope box approximation (valid PSD; refine with mesh if needed) -->
+        <origin xyz="${slot_length/2} 0 ${-wall_thickness/2}" rpy="0 0 0"/>
+        <mass value="${holder_mass}"/>
+        <inertia ixx="${holder_mass*(holder_outer_y**2 + holder_outer_z**2)/12}"
+                 iyy="${holder_mass*(slot_length**2 + holder_outer_z**2)/12}"
+                 izz="${holder_mass*(slot_length**2 + holder_outer_y**2)/12}"
+                 ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <!-- bottom wall -->
+      <visual>
+        <origin xyz="${slot_length/2} 0 ${bottom_z}" rpy="0 0 0"/>
+        <geometry><box size="${slot_length} ${holder_outer_y} ${wall_thickness}"/></geometry>
+        <material name="tt_dark"/>
+      </visual>
+      <!-- left wall (+Y) -->
+      <visual>
+        <origin xyz="${slot_length/2} ${side_wall_y} 0" rpy="0 0 0"/>
+        <geometry><box size="${slot_length} ${wall_thickness} ${slot_height}"/></geometry>
+        <material name="tt_dark"/>
+      </visual>
+      <!-- right wall (-Y) -->
+      <visual>
+        <origin xyz="${slot_length/2} ${-side_wall_y} 0" rpy="0 0 0"/>
+        <geometry><box size="${slot_length} ${wall_thickness} ${slot_height}"/></geometry>
+        <material name="tt_dark"/>
+      </visual>
+      <!-- screw-hole visuals (cosmetic; cylinders along +-Y). MEASURE-ME: screw_x1/screw_x2 -->
+      <visual>
+        <origin xyz="${screw_x1} 0 0" rpy="${pi/2} 0 0"/>
+        <geometry><cylinder radius="${screw_diameter/2}" length="${screw_len}"/></geometry>
+        <material name="tt_red"/>
+      </visual>
+      <visual>
+        <origin xyz="${screw_x2} 0 0" rpy="${pi/2} 0 0"/>
+        <geometry><cylinder radius="${screw_diameter/2}" length="${screw_len}"/></geometry>
+        <material name="tt_red"/>
+      </visual>
+      <!-- collision: solid outer box (simplified; stable in sim) -->
+      <collision>
+        <origin xyz="${slot_length/2} 0 ${-wall_thickness/2}" rpy="0 0 0"/>
+        <geometry><box size="${slot_length} ${holder_outer_y} ${holder_outer_z}"/></geometry>
+      </collision>
+    </link>
+
+    <!-- frame on the handle-slot centerline -->
+    <joint name="${prefix}paddle_handle_frame_joint" type="fixed">
+      <parent link="${prefix}tt_paddle_holder_link"/>
+      <child  link="${prefix}paddle_handle_frame"/>
+      <origin xyz="${slot_length/2} 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="${prefix}paddle_handle_frame">
+      <inertial><mass value="1e-6"/><inertia ixx="1e-9" iyy="1e-9" izz="1e-9" ixy="0" ixz="0" iyz="0"/></inertial>
+    </link>
+
+    <!-- =========================================================
+         4) paddle handle  (rounded box, inserted into the slot)
+         ========================================================= -->
+    <joint name="${prefix}tt_paddle_handle_joint" type="fixed">
+      <parent link="${prefix}tt_paddle_holder_link"/>
+      <child  link="${prefix}tt_paddle_handle_link"/>
+      <!-- MEASURE-ME: insertion_depth sets how deep the handle seats. -->
+      <origin xyz="${handle_in_x} 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="${prefix}tt_paddle_handle_link">
+      <inertial>
+        <origin xyz="${handle_length/2} 0 0" rpy="0 0 0"/>
+        <mass value="${handle_mass}"/>
+        <inertia ixx="${handle_mass*(handle_width**2 + handle_thickness**2)/12}"
+                 iyy="${handle_mass*(handle_length**2 + handle_thickness**2)/12}"
+                 izz="${handle_mass*(handle_length**2 + handle_width**2)/12}"
+                 ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual>
+        <origin xyz="${handle_length/2} 0 0" rpy="0 0 0"/>
+        <geometry><box size="${handle_length} ${handle_width} ${handle_thickness}"/></geometry>
+        <material name="tt_dark"/>
+      </visual>
+      <collision>
+        <origin xyz="${handle_length/2} 0 0" rpy="0 0 0"/>
+        <geometry><box size="${handle_length} ${handle_width} ${handle_thickness}"/></geometry>
+      </collision>
+    </link>
+
+    <!-- =========================================================
+         5) paddle blade  (thin disc, face normal == +Z)
+         ========================================================= -->
+    <joint name="${prefix}tt_paddle_blade_joint" type="fixed">
+      <parent link="${prefix}tt_paddle_handle_link"/>
+      <child  link="${prefix}tt_paddle_blade_link"/>
+      <!-- MEASURE-ME: blade_center_x = handle-frame -> blade center along +X. -->
+      <origin xyz="${blade_center_x} 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="${prefix}tt_paddle_blade_link">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="${blade_mass}"/>
+        <!-- solid cylinder, symmetry axis == Z -->
+        <inertia ixx="${blade_mass*(3*blade_radius**2 + blade_thickness**2)/12}"
+                 iyy="${blade_mass*(3*blade_radius**2 + blade_thickness**2)/12}"
+                 izz="${0.5*blade_mass*blade_radius**2}"
+                 ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry><cylinder radius="${blade_radius}" length="${blade_thickness}"/></geometry>
+        <material name="tt_red"/>
+      </visual>
+      <!-- CONTACT TUNING: set restitution & friction on THIS link in the sim
+           backend (not expressible in plain URDF):
+             Isaac Sim : RigidBodyMaterial restitution~0.85, dynamic_friction~0.6
+             MuJoCo    : <geom solref/solimp/friction>, condim=4
+             Gazebo    : <surface><bounce restitution_coefficient> + <friction> -->
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry><cylinder radius="${blade_radius}" length="${blade_thickness}"/></geometry>
+      </collision>
+    </link>
+
+    <!-- paddle contact frame: blade face center, +Z = outward hitting normal -->
+    <joint name="${prefix}paddle_contact_frame_joint" type="fixed">
+      <parent link="${prefix}tt_paddle_blade_link"/>
+      <child  link="${prefix}paddle_contact_frame"/>
+      <origin xyz="0 0 ${blade_thickness/2}" rpy="0 0 0"/>
+    </joint>
+    <link name="${prefix}paddle_contact_frame">
+      <inertial><mass value="1e-6"/><inertia ixx="1e-9" iyy="1e-9" izz="1e-9" ixy="0" ixz="0" iyz="0"/></inertial>
+    </link>
+
+  </xacro:macro>
+</robot>
