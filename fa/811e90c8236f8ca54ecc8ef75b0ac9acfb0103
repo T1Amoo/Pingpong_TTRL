@@ -1,0 +1,52 @@
+legged_lab/assets/unitree/g1_description/g1_23dof_tt.urdf
+  s_09adb4ef2b8b1d::t_875a1ff56f721c 2,109,289,420,428-430,433,435,440,442,449,496,505,520,528,555,690
+legged_lab/scripts/fk_probe.py
+  s_2d92d93564222b::t_a6aca89ea4a161 37-38,43-48
+  s_2d92d93564222b::t_340e8bbb410779 8,18-22,29-30,32,49,59-63
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_2d92d93564222b::t_15d692a6e8e5e8 220,222
+  s_2d92d93564222b::t_170ad3fde7f7cb 99
+  s_2d92d93564222b::t_3f53d2f06adc00 212-219
+  s_2d92d93564222b::t_846c896c2a4f59 223-224
+legged_lab/assets/unitree/g1_description/paddle_review/make_review_stl.py
+  s_09adb4ef2b8b1d::t_73c2ac3f3a22c8 133
+  s_09adb4ef2b8b1d::t_2ec09b4b038677 3-6,9-11
+  s_09adb4ef2b8b1d::t_36ff8a2bf27774 31-36
+  s_09adb4ef2b8b1d::t_4558d18e14ec21 1-2,7-8,12-23,25-30,37-110,124-132,134-137
+  s_09adb4ef2b8b1d::t_f81b6cf1639c33 24
+  s_09adb4ef2b8b1d::t_3c1492c4cc75ba 111-123
+legged_lab/assets/unitree/g1_description/tt_paddle/build_tt_urdf.py
+  s_09adb4ef2b8b1d::t_8bfe5e0256a848 27
+  s_09adb4ef2b8b1d::t_a7e1901dc67f40 39-40,43-56
+  s_09adb4ef2b8b1d::t_4b1071f38a2b67 177-191,193-194,197-204,206-208,211,214-215
+legged_lab/assets/unitree/g1.py
+  s_2d92d93564222b::t_40e8aebdcce576 42-44
+legged_lab/assets/unitree/g1_description/meshes/tt_paddle.stl
+  s_09adb4ef2b8b1d::t_1fc44bc749b534 1-44984
+legged_lab/assets/unitree/g1_description/g1_23dof_tt_paddle.urdf
+  s_09adb4ef2b8b1d::t_875a1ff56f721c 2,109,289,420,428-430,433,435,440,442,449,496,505,520,528,555,690,786
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "fa811e90c8236f8ca54ecc8ef75b0ac9acfb0103",
+  "prompts": {},
+  "sessions": {
+    "s_09adb4ef2b8b1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e7c346d3-bd5d-4dcd-9184-a87a170b05c5",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    },
+    "s_2d92d93564222b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b839b76-d802-4056-9521-f7cef4596b2c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
