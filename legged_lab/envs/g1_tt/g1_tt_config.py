@@ -96,7 +96,7 @@ class G1TableTennisRewardCfg(RewardCfg):
     paddel_head_too_near = RewTerm(
         func=mdp.paddel_too_near_humanoid,
         weight=-100,
-        params={"asset_cfg": SceneEntityCfg("robot", body_names=["head_link"]), "threshold": 0.3},
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=["torso_link"]), "threshold": 0.3},  # head_link merges into torso under fixed-joint import
 
     )
     feet_too_near = RewTerm(
@@ -209,11 +209,19 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         self.robot.num_actions = 23
         self.robot.num_joints = 23
         self.domain_rand.events.add_base_mass.params["asset_cfg"].body_names = ["torso_link"]
-        # paddle / hitting geometry (PACE adapter: contact frame ~0.302m along wrist +X; FK-calibrated later)
+        # reset-joint groups (base tt_env_config uses Booster names) -> G1: locomotion = legs+waist+left arm, manipulation = right (hitting) arm
+        self.domain_rand.events.reset_locomotion_joints.params["asset_cfg"].joint_names = [
+            "waist_yaw_joint", ".*_hip_.*_joint", ".*_knee_joint", ".*_ankle_.*_joint",
+            "left_shoulder_.*", "left_elbow_joint", "left_wrist_roll_joint",
+        ]
+        self.domain_rand.events.reset_manipulation_joints.params["asset_cfg"].joint_names = [
+            "right_shoulder_.*", "right_elbow_joint", "right_wrist_roll_joint",
+        ]
+        # paddle / hitting geometry (real-mesh PACE adapter: contact/blade center at wrist +X 0.337m)
         self.robot.paddle_body_name = "right_wrist_roll_rubber_hand"
-        self.robot.paddle_offset = (0.302, 0.0, 0.0)
-        self.robot.hit_body_height = 0.72
-        self.robot.paddle_y_offset = -0.30
+        self.robot.paddle_offset = (0.337, 0.0, 0.0)
+        self.robot.hit_body_height = 0.685   # FK: steady pelvis height in ready stance
+        self.robot.paddle_y_offset = -0.227  # FK: lateral base->paddle offset in ready stance
         G1_JOINT_NAMES = [
             "left_hip_pitch_joint","left_hip_roll_joint","left_hip_yaw_joint","left_knee_joint",
             "left_ankle_pitch_joint","left_ankle_roll_joint",

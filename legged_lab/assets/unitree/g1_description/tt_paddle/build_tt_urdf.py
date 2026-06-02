@@ -24,7 +24,7 @@ import xml.etree.ElementTree as ET
 # g1_description/ so the base "meshes/..." relative paths resolve unchanged.
 HERE = os.path.dirname(os.path.abspath(__file__))
 ASSET_DIR = os.path.dirname(HERE)
-BASE = os.path.join(ASSET_DIR, "g1_23dof.urdf")
+BASE = os.path.join(ASSET_DIR, "g1_23dof_rev_1_0.urdf")
 OUT_TT = os.path.join(ASSET_DIR, "g1_23dof_tt.urdf")
 OUT_PADDLE = os.path.join(ASSET_DIR, "g1_23dof_tt_paddle.urdf")
 
@@ -36,13 +36,24 @@ P = dict(
     mount_xyz="0 0 0", mount_rpy="0 0 0",
     mount_radius=0.025, mount_length=0.012, mount_mass=0.03,
     extension_length=0.16, extension_radius=0.018, extension_mass=0.08,
-    slot_length=0.075, slot_width=0.030, slot_height=0.016,
+    # slot enlarged to fit the real paddle handle (~30.8 x 20 mm) + clearance
+    slot_length=0.075, slot_width=0.032, slot_height=0.022,
     wall_thickness=0.004, holder_mass=0.05,
     screw_diameter=0.004, screw_x1=0.025, screw_x2=0.055,
-    handle_length=0.095, handle_width=0.028, handle_thickness=0.013,
-    handle_mass=0.04, insertion_depth=0.075,
-    blade_radius=0.075, blade_thickness=0.006, blade_mass=0.13,
-    blade_center_x=0.130,
+    # ---- real paddle MESH (replaces the old handle+blade primitives) ----
+    # source STL is in millimetres; rotate so its long (handle->blade) axis
+    # maps to connector +X and its face-normal maps to +Z; recenter the handle
+    # cross-section on the slot axis (Y,Z=0). MEASURE-ME if you swap the STL.
+    paddle_mesh="meshes/tt_paddle.stl",
+    paddle_scale=0.001,
+    paddle_rpy="0 0 -1.5707963",   # mesh +Y -> connector +X, +Z stays normal
+    paddle_y=-0.00351,             # recenter handle laterally on slot axis
+    paddle_z=-0.00149,             # recenter handle thickness on slot axis
+    insertion_depth=0.075,         # handle tip seats to slot bottom
+    # simplified collision + inertia stand-ins (the mesh itself is visual only)
+    handle_col_len=0.075, handle_col_w=0.032, handle_col_h=0.022, handle_mass=0.04,
+    blade_radius=0.075, blade_thickness=0.005, blade_mass=0.13,
+    blade_center_x=0.165,          # blade face center along +X from slot bottom
 )
 
 PI_2 = 1.5707963267948966
@@ -163,39 +174,45 @@ def build_paddle_xml():
         f'<origin xyz="{sl/2} 0 0" rpy="0 0 0"/></joint>')
     parts.append(frame_link(f"{pf}paddle_handle_frame"))
 
-    # 4) paddle handle (box, inserted into slot)
+    # 4+5) real paddle MESH (handle + blade as one rigid body), seated in slot.
+    #      Visual = the imported STL; collision = simplified handle box + blade
+    #      disc (cheap & stable). Mesh is mm -> scale; rotated so handle->blade
+    #      runs along +X and the face-normal is +Z.
+    hl, hw, hh = p["handle_col_len"], p["handle_col_w"], p["handle_col_h"]
+    br, bt, bcx = p["blade_radius"], p["blade_thickness"], p["blade_center_x"]
+    # lumped inertia: handle box @ x=hl/2 + blade disc @ x=bcx, parallel-axis to COM
+    mh, mb = p["handle_mass"], p["blade_mass"]
+    com_x = (mh * hl / 2 + mb * bcx) / (mh + mb)
+    hI = box(mh, hl, hw, hh)
+    bI = cyl_z(mb, br, bt)
+    dh, db = (hl / 2 - com_x), (bcx - com_x)   # x-offsets to COM (along X)
+    Ixx = hI[0] + bI[0]
+    Iyy = hI[1] + mh * dh**2 + bI[1] + mb * db**2
+    Izz = hI[2] + mh * dh**2 + bI[2] + mb * db**2
     parts.append(
-        f'<joint name="{pf}tt_paddle_handle_joint" type="fixed">'
-        f'<parent link="{pf}tt_paddle_holder_link"/><child link="{pf}tt_paddle_handle_link"/>'
+        f'<joint name="{pf}tt_paddle_joint" type="fixed">'
+        f'<parent link="{pf}tt_paddle_holder_link"/><child link="{pf}tt_paddle_link"/>'
         f'<origin xyz="{handle_in_x} 0 0" rpy="0 0 0"/></joint>')
-    hl, hw, ht = p["handle_length"], p["handle_width"], p["handle_thickness"]
     parts.append(
-        f'<link name="{pf}tt_paddle_handle_link">'
-        + inertial(f'{hl/2} 0 0', p["handle_mass"], box(p["handle_mass"], hl, hw, ht))
-        + f'<visual><origin xyz="{hl/2} 0 0" rpy="0 0 0"/>'
-          f'<geometry><box size="{hl} {hw} {ht}"/></geometry><material name="tt_dark"/></visual>'
+        f'<link name="{pf}tt_paddle_link">'
+        + inertial(f'{com_x} 0 0', mh + mb, (Ixx, Iyy, Izz))
+        # visual: imported paddle STL (mm), rotated/recentered into the slot frame
+        + f'<visual><origin xyz="0 {p["paddle_y"]} {p["paddle_z"]}" rpy="{p["paddle_rpy"]}"/>'
+          f'<geometry><mesh filename="{p["paddle_mesh"]}" '
+          f'scale="{p["paddle_scale"]} {p["paddle_scale"]} {p["paddle_scale"]}"/></geometry>'
+          '<material name="tt_red"/></visual>'
+        # collision: simplified handle box ...
         + f'<collision><origin xyz="{hl/2} 0 0" rpy="0 0 0"/>'
-          f'<geometry><box size="{hl} {hw} {ht}"/></geometry></collision>'
-        + '</link>')
-
-    # 5) paddle blade (thin disc, face normal == +Z)
-    parts.append(
-        f'<joint name="{pf}tt_paddle_blade_joint" type="fixed">'
-        f'<parent link="{pf}tt_paddle_handle_link"/><child link="{pf}tt_paddle_blade_link"/>'
-        f'<origin xyz="{p["blade_center_x"]} 0 0" rpy="0 0 0"/></joint>')
-    br, bt = p["blade_radius"], p["blade_thickness"]
-    parts.append(
-        f'<link name="{pf}tt_paddle_blade_link">'
-        + inertial('0 0 0', p["blade_mass"], cyl_z(p["blade_mass"], br, bt))
-        + f'<visual><origin xyz="0 0 0" rpy="0 0 0"/>'
-          f'<geometry><cylinder radius="{br}" length="{bt}"/></geometry><material name="tt_red"/></visual>'
-        + f'<collision><origin xyz="0 0 0" rpy="0 0 0"/>'
+          f'<geometry><box size="{hl} {hw} {hh}"/></geometry></collision>'
+        # ... + blade disc (face normal == +Z); set restitution/friction in sim
+        + f'<collision><origin xyz="{bcx} 0 0" rpy="0 0 0"/>'
           f'<geometry><cylinder radius="{br}" length="{bt}"/></geometry></collision>'
         + '</link>')
+    # contact frame at the blade face center, +Z = outward hitting normal
     parts.append(
         f'<joint name="{pf}paddle_contact_frame_joint" type="fixed">'
-        f'<parent link="{pf}tt_paddle_blade_link"/><child link="{pf}paddle_contact_frame"/>'
-        f'<origin xyz="0 0 {bt/2}" rpy="0 0 0"/></joint>')
+        f'<parent link="{pf}tt_paddle_link"/><child link="{pf}paddle_contact_frame"/>'
+        f'<origin xyz="{bcx} 0 {bt/2}" rpy="0 0 0"/></joint>')
     parts.append(frame_link(f"{pf}paddle_contact_frame"))
 
     return parts

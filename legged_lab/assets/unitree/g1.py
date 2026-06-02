@@ -39,9 +39,9 @@ G1_TT_CFG = ArticulationCfg(
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(-1.6, 0.0, 0.76),
         joint_pos={
-            ".*_hip_pitch_joint": -0.20,
-            ".*_knee_joint": 0.42,
-            ".*_ankle_pitch_joint": -0.23,
+            ".*_hip_pitch_joint": -0.312,
+            ".*_knee_joint": 0.669,
+            ".*_ankle_pitch_joint": -0.363,
             "waist_yaw_joint": 0.0,
             "left_shoulder_pitch_joint": 0.2, "left_shoulder_roll_joint": 0.2,
             "left_shoulder_yaw_joint": 0.0, "left_elbow_joint": 0.6, "left_wrist_roll_joint": 0.0,
