@@ -221,7 +221,7 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         self.robot.paddle_body_name = "right_wrist_roll_rubber_hand"
         self.robot.paddle_offset = (0.337, 0.0, 0.0)
         self.robot.hit_body_height = 0.685   # FK: steady pelvis height in ready stance
-        self.robot.paddle_y_offset = -0.227  # FK: lateral base->paddle offset in ready stance
+        self.robot.paddle_y_offset = -0.55   # hitting-extension lateral offset (was -0.227 ready-stance; caused ~0.37m paddle-ball gap -> hit~0). ~T1's -0.60.
         G1_JOINT_NAMES = [
             "left_hip_pitch_joint","left_hip_roll_joint","left_hip_yaw_joint","left_knee_joint",
             "left_ankle_pitch_joint","left_ankle_roll_joint",
