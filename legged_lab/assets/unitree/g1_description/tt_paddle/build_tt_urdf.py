@@ -139,11 +139,13 @@ def build_paddle_xml():
           f'<geometry><cylinder radius="{p["extension_radius"]}" length="{p["extension_length"]}"/></geometry></collision>'
         + '</link>')
 
-    # 3) paddle holder (U-channel: bottom + 2 side walls; opens +Z)
+    # 3) paddle holder (U-channel) — rolled +90deg about +X (tube axis) so the
+    #    seated paddle's face-normal goes from +Z (up) to +Y (lateral/forward in
+    #    the forehand pose), matching T1's mounting. Children (paddle + frames) follow.
     parts.append(
         f'<joint name="{pf}tt_paddle_holder_joint" type="fixed">'
         f'<parent link="{pf}tt_extension_link"/><child link="{pf}tt_paddle_holder_link"/>'
-        f'<origin xyz="{p["extension_length"]} 0 0" rpy="0 0 0"/></joint>')
+        f'<origin xyz="{p["extension_length"]} 0 0" rpy="{PI_2} 0 0"/></joint>')
     sl, sh = p["slot_length"], p["slot_height"]
     wt = p["wall_thickness"]
     parts.append(
