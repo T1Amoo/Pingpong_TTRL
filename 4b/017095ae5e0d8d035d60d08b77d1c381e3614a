@@ -1,0 +1,29 @@
+legged_lab/scripts/contact_probe.py
+  s_2d92d93564222b::t_a9dff575f69474 95-100
+  s_2d92d93564222b::t_7f118d29ac28da 60-61,68-70
+  s_2d92d93564222b::t_828082529dc3f6 1-23,25-41,43-45,47-59,62-67,71-94,101-105
+  s_2d92d93564222b::t_afb04d1b53b9a0 24
+  s_2d92d93564222b::t_10370b5ee8fb9e 42,46
+legged_lab/assets/unitree/g1_description/tt_paddle/build_tt_urdf.py
+  s_2d92d93564222b::t_b60e623b3cad18 142-144,148
+legged_lab/assets/unitree/g1_description/g1_23dof_tt_paddle.urdf
+  s_2d92d93564222b::t_8ca2fc30d64e88 786
+legged_lab/scripts/view_robot.py
+  s_2d92d93564222b::t_151776b945c253 1-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "4b017095ae5e0d8d035d60d08b77d1c381e3614a",
+  "prompts": {},
+  "sessions": {
+    "s_2d92d93564222b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b839b76-d802-4056-9521-f7cef4596b2c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
