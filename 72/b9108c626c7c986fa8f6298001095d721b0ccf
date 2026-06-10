@@ -1,0 +1,43 @@
+legged_lab/scripts/watchdog_train_idle3.sh
+  s_2d92d93564222b::t_5231a9e1c41c8c 1-72
+legged_lab/scripts/eval.py
+  s_2d92d93564222b::t_32c0c72012c73e 144-153
+  s_2d92d93564222b::t_dfa5e4b1abb4b4 234-241
+legged_lab/scripts/watchdog_train_idle2.sh
+  s_2d92d93564222b::t_aa2ede22e27f96 1-72
+legged_lab/scripts/watchdog_train_g1.sh
+  s_2d92d93564222b::t_b86859da61eb82 22
+  s_2d92d93564222b::t_08c7df99957935 20
+README.md
+  h_5be2f231776523 145-148
+legged_lab/scripts/watchdog_train_rally.sh
+  s_2d92d93564222b::t_c33c565058c873 22
+  s_2d92d93564222b::t_4e40f16fe11a84 1-21,23-72
+legged_lab/scripts/train.py
+  s_2d92d93564222b::t_28efddf0b14604 97-100
+legged_lab/scripts/watchdog_train_idle.sh
+  s_2d92d93564222b::t_6ca7ef5412f377 1-72
+.gitignore
+  s_2d92d93564222b::t_b684792a6366b0 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "72b9108c626c7c986fa8f6298001095d721b0ccf",
+  "prompts": {},
+  "humans": {
+    "h_5be2f231776523": {
+      "author": "T1Amoo <menxlee@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_2d92d93564222b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b839b76-d802-4056-9521-f7cef4596b2c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
