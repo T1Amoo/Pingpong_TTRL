@@ -10,18 +10,18 @@
 #   nohup bash legged_lab/scripts/watchdog_train_g1.sh > /dev/null 2>&1 &
 #   echo $!            # <- this PID is the watchdog; `kill <PID>` to stop everything
 # Watch progress:
-#   tail -f train_g1_watchdog.log
+#   tail -f train_idle2_watchdog.log
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"          # legged_lab/scripts/ -> repo root
 PY=/home/woan/.conda/envs/pingpong/bin/python
 TASK=g1_tt
-EXP=g1_tt_weekend
+EXP=g1_tt_idle2
 NUM_ENVS=4096
-TARGET=100000
+TARGET=44000
 LOGROOT="$REPO/logs/$EXP"
-WLOG="$REPO/train_g1_watchdog.log"
+WLOG="$REPO/train_idle2_watchdog.log"
 cd "$REPO"
 
 CHILD=""
@@ -43,7 +43,7 @@ latest() {
 echo "[watchdog] $(date +%F_%H-%M-%S) start; target=$TARGET envs=$NUM_ENVS task=$TASK" | tee -a "$WLOG"
 while true; do
   IFS='|' read -r N DIR FILE <<< "$(latest)"
-  if [ "$N" -ge "$TARGET" ]; then
+  if [ "$N" -ge "$((TARGET-1))" ]; then
     echo "[watchdog] $(date +%F_%H-%M-%S) reached iter $N >= $TARGET. DONE." | tee -a "$WLOG"; break
   fi
 
@@ -64,7 +64,7 @@ while true; do
 
   IFS='|' read -r N2 _ _ <<< "$(latest)"
   echo "[watchdog] $(date +%F_%H-%M-%S) trainer exited code=$CODE; latest iter=$N2" | tee -a "$WLOG"
-  if [ "$CODE" -eq 0 ] && [ "$N2" -ge "$TARGET" ]; then
+  if [ "$CODE" -eq 0 ] && [ "$N2" -ge "$((TARGET-1))" ]; then
     echo "[watchdog] $(date +%F_%H-%M-%S) completed cleanly at $N2." | tee -a "$WLOG"; break
   fi
   echo "[watchdog] interrupted/crashed (code=$CODE, iter=$N2). Resuming in 20s. (kill watchdog PID $$ to stop)" | tee -a "$WLOG"

@@ -10,18 +10,18 @@
 #   nohup bash legged_lab/scripts/watchdog_train_g1.sh > /dev/null 2>&1 &
 #   echo $!            # <- this PID is the watchdog; `kill <PID>` to stop everything
 # Watch progress:
-#   tail -f train_g1_watchdog.log
+#   tail -f train_rally_watchdog.log
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"          # legged_lab/scripts/ -> repo root
 PY=/home/woan/.conda/envs/pingpong/bin/python
 TASK=g1_tt
-EXP=g1_tt_weekend
+EXP=g1_tt_rally
 NUM_ENVS=4096
-TARGET=100000
+TARGET=37500
 LOGROOT="$REPO/logs/$EXP"
-WLOG="$REPO/train_g1_watchdog.log"
+WLOG="$REPO/train_rally_watchdog.log"
 cd "$REPO"
 
 CHILD=""

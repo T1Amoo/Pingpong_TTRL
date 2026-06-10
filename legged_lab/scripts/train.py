@@ -94,8 +94,10 @@ def train():
         # get path to previous checkpoint
         resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
-        # load previously trained model
-        runner.load(resume_path,load_optimizer=True)
+        # load previously trained model. LOAD_OPTIMIZER=0 -> fresh optimizer (for
+        # warm-start fine-tunes into a shifted distribution, avoids resume instability).
+        _load_opt = os.environ.get("LOAD_OPTIMIZER", "1") == "1"
+        runner.load(resume_path,load_optimizer=_load_opt)
 
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)

@@ -6,3 +6,4 @@ outputs
 logs
 run_bash.sh
 wandb
+*_watchdog.log

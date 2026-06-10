@@ -142,4 +142,7 @@ This repository is built upon prior work,s including:
 }
 ```
 
-
+  # 终端 A(仿真)
+  bash /media/woan/84a38787-1d4e-4ba7-892e-d1d90a009a8c/lgy/unitree_rl_lab/deploy/robots/g1_23dof/sim2sim/run_sim.sh
+  # 终端 B(部署,现在加载 v2=22500)
+  bash /media/woan/84a38787-1d4e-4ba7-892e-d1d90a009a8c/lgy/unitree_rl_lab/deploy/robots/g1_23dof/sim2sim/run_deploy.sh

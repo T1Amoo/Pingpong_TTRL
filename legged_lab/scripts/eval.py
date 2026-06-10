@@ -141,6 +141,16 @@ def play():
         keyboard = Keyboard(env)  # noqa:F841
 
     obs, _ = env.get_observations()
+    # DIAG: log per-step raw action + actual joint angle (env 0, obs/policy joint order)
+    # for trajectory comparison with the mujoco deploy (/tmp/arm_mujoco.csv).
+    import csv as _csv
+    _armf = open('/tmp/arm_isaac.csv', 'w', newline=''); _armw = _csv.writer(_armf)
+    _armw.writerow(['t'] + ['a%d' % i for i in range(23)] + ['q%d' % i for i in range(23)])
+    _armt = 0
+    try:
+        _oj = list(env.obs_joint_ids)
+    except Exception:
+        _oj = list(range(23))
     # Prepare paths for periodic eval result saving
     result_dir = os.path.join(os.path.dirname(resume_path), "eval_result")
     os.makedirs(result_dir, exist_ok=True)
@@ -221,6 +231,14 @@ def play():
                     except Exception:
                         pass
                 obs, _, _, _ = env.step(actions)
+                # DIAG: log raw action + actual joint angle (env 0) for trajectory compare
+                try:
+                    _a0 = actions[0].detach().cpu().numpy()
+                    _q0 = env.robot.data.joint_pos[0, _oj].detach().cpu().numpy()
+                    _armw.writerow([_armt] + [float(x) for x in _a0] + [float(x) for x in _q0]); _armt += 1
+                    if _armt % 50 == 0: _armf.flush()
+                except Exception:
+                    pass
                 # If predictor runner is used, update learned prediction each step for visualization/observations
                 if args_cli.predictor:
                     try:
