@@ -236,6 +236,42 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         self.observations.joint_names = G1_JOINT_NAMES
         self.actions.joint_names = G1_JOINT_NAMES
 
+        # ---- FROM-SCRATCH idle+rally training (g1_tt_idle3) ----
+        # No warm-start: learn hitting AND no-ball idle together behind the unified HARD
+        # validity gate (tt_env.compute_current_observations_perception). Both idle1/idle2
+        # warm-start fine-tunes DIVERGED (action_rate -1e5..-1e6 EVERY iter): clip_actions
+        # was the wrong lever (it clips only the APPLIED action, not the obs / action_rate
+        # penalty, which both use the raw network output), and swapping the home sentinel
+        # under a warm policy was OOD. From scratch avoids that mismatch.
+        # 1) Bounce serves (in-court, no volley) with a difficulty curriculum easy->hard.
+        self.ball.serve_bounce_enable = True
+        self.ball.serve_bounce_x_range = (-0.95, -0.75)        # easy: shallow, centered, reachable
+        self.ball.serve_bounce_vz_range = (1.7, 1.9)           # easy: gentle moderate arc
+        self.ball.serve_y_start = 0.08                         # easy: nearly centered
+        self.ball.serve_bounce_x_range_hard = (-1.35, -0.60)   # hard: full depth
+        self.ball.serve_bounce_vz_range_hard = (1.3, 2.1)      # hard: flat-fast + high-slow
+        self.ball.serve_y_wide = 0.72                          # hard: corners (table half 0.7625)
+        self.ball.serve_curriculum_steps = 300000              # ~12.5k iter to full difficulty (gentle from scratch)
+        # 2) No-ball idle injection — in real play NO-BALL is the MAJORITY of time, so the
+        #    final ratio is idle-heavy (7 s no-ball / 3 s ball per 10 s = 70% idle), with
+        #    LONG contiguous 7 s windows so the policy learns to hold home indefinitely.
+        #    BUT a random init left mostly idle learns "just stand, never risk hitting"
+        #    (idle is safe, hitting risks a fall) -> local optimum. So ramp the no-ball gap
+        #    from 0 (c=0: all-ball, bootstrap hitting) up to 7 s over no_ball_curriculum_steps
+        #    (~12.5k iter, parallel to the serve-difficulty curriculum). Late training is the
+        #    realistic idle-heavy distribution; early training learns to hit first.
+        self.ball.no_ball_period_s = 10.0
+        self.ball.ball_active_s = 3.0                          # final: 3 s ball, 7 s no-ball
+        self.ball.no_ball_curriculum_steps = 300000            # ramp 0 -> 7 s gap over ~12.5k iter
+        # clip_actions stays at the base 100 (NOT 20 — clipping the applied action decouples
+        # the network output from the dynamics and does nothing for the obs/action_rate path).
+        # 3) Randomization (kept): wide perception/action delay for real/deploy latency.
+        self.domain_rand.perception_delay.params["max_delay"] = 15   # 2..15 steps = 4-30 ms
+        self.domain_rand.action_delay.enable = True
+        self.domain_rand.action_delay.params["min_delay"] = 1
+        self.domain_rand.action_delay.params["max_delay"] = 3        # 2-6 ms command delay
+
+
 
 @configclass
 class G1TT_EvalEnvCfg(G1TableTennisEnvCfg):
@@ -257,17 +293,22 @@ class G1TT_EvalEnvCfg(G1TableTennisEnvCfg):
             "pitch": (-0.02, 0.02),
             "yaw": (-0.02, 0.02),
             }
-        # serving range
-        self.ball.ball_speed_x_range = (-6.5,-5.2)
-        self.ball.ball_speed_y_range = (-0.6, 0.2)
-        self.ball.ball_speed_z_range = (1.5, 1.9)
+        # serving range — eval uses a FIXED medium bounce distribution (bounce path is
+        # active via inherited serve_bounce_enable; the ball_speed_* below are dead code).
+        self.ball.serve_bounce_x_range = (-1.15, -0.80)   # fixed medium depth
+        self.ball.serve_bounce_vz_range = (1.5, 1.9)
+        self.ball.serve_y_start = 0.45                    # fixed medium lateral spread
+        self.ball.serve_y_wide = 0.45
+        self.ball.serve_curriculum_steps = 0   # eval: fixed serve distribution (no curriculum widening)
+        self.ball.no_ball_period_s = 0.0       # eval: NO no-ball injection -> clean hitting success rate
+        #   (test no-ball idle separately via the TT_SERVE_PERIOD / TT_NO_SERVE env hooks)
 
 @configclass
 class G1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "g1_table_tennis"
+    experiment_name: str = "g1_tt_idle3"
     logger = "tensorboard"
-    save_interval = 250
-    max_iterations = 20000
+    save_interval = 100
+    max_iterations = 100000
 
     # Auxiliary predictor configuration used by OnPolicyPredictorRegressionRunner
     # Ignored by the standard OnPolicyRunner.

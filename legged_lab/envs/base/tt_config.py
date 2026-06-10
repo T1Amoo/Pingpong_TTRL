@@ -84,6 +84,34 @@ class BallCfg:
     ball_reset_repeat: int = 5
     num_new_serves = 2
     max_serve_per_episode: int = 5
+    # --- serve curriculum (0 = disabled -> use the ranges above directly). When >0,
+    # reset_ball interpolates each range from the base (above) to the _wide target
+    # over this many control steps, plus varies serve height by ball_pos_z_delta_wide. ---
+    serve_curriculum_steps: int = 0
+    ball_speed_x_range_wide: tuple = (-5.5, -4.5)
+    ball_speed_y_range_wide: tuple = (-0.8, 0.8)
+    ball_speed_z_range_wide: tuple = (1.6, 1.7)
+    ball_pos_y_range_wide: tuple = (-0.2, 0.2)
+    ball_pos_z_delta_wide: tuple = (0.0, 0.0)
+    # --- RALLY serve (bounce-point parametrization, used when serve_bounce_enable=True).
+    # Sample a TARGET BOUNCE POINT in the robot's own half and back-compute the launch
+    # velocity so the ball always bounces in-court (no volleys). Lateral half-width
+    # grows from serve_y_start -> serve_y_wide over serve_curriculum_steps. ---
+    serve_bounce_enable: bool = False
+    serve_bounce_x_range: tuple = (-1.25, -0.65)   # depth: mid + deep court (x in robot half [-1.37,0])
+    serve_bounce_vz_range: tuple = (1.5, 1.9)      # launch vz -> arc height / bounce timing
+    serve_y_start: float = 0.05                    # initial lateral half-width (centered)
+    serve_y_wide: float = 0.65                     # final lateral half-width (table half-width 0.7625)
+    # --- no-ball idle training (0 = off). Every no_ball_period_s the ball is active for
+    # ball_active_s, then teleported away (no-ball + mask_invalid) for the rest, so the
+    # policy learns a stable idle at the home sentinel when there is no incoming ball. ---
+    no_ball_period_s: float = 0.0
+    ball_active_s: float = 0.0
+    no_ball_curriculum_steps: int = 0   # ramp the no-ball gap from 0 -> (period-active) over this many control steps
+    # difficulty curriculum HARD targets (lerp from the easy ranges above over
+    # serve_curriculum_steps). Default = same as easy -> no expansion.
+    serve_bounce_x_range_hard: tuple = (-1.25, -0.65)
+    serve_bounce_vz_range_hard: tuple = (1.5, 1.9)
 
 
 @configclass

@@ -502,10 +502,29 @@ class TTEnv(VecEnv):
         # ball_pos = self.ball.data.root_pos_w - self.scene.env_origins  
         ball_linvel = self.ball.data.root_lin_vel_w
         robot_pos = robot.data.root_link_pos_w - table.data.root_link_pos_w
-        # Relative target offset (x,y) for actor obs with perception
+        # ===== Unified hard validity gate (no-ball idle; from-scratch design) =====
+        # On invalid/no-ball, HARD-replace the actor's ball signals with the fixed HOME
+        # sentinel — the SAME value the critic's ball_future_pose takes on invalid (see
+        # modified_ball_pos in compute_intermediate_values). This makes actor & critic
+        # agree on no-ball states and keeps the actor from ever seeing OOD garbage from
+        # the predictor MLP (a long no-ball input -> garbage prediction -> divergence).
+        mexp = self.mask_invalid.unsqueeze(-1)  # [N,1]; set this step in compute_intermediate_values
+        # (a) prediction is in ball_future_pose's frame (robot-table): sentinel == modified_ball_pos
+        pred_sentinel = torch.tensor(
+            [-1.6, 0.0 + self.cfg.robot.paddle_y_offset, self.cfg.robot.hit_body_height + 0.2],
+            device=self.device, dtype=self.ball_prediction.dtype,
+        ).unsqueeze(0)  # [1,3]
+        ball_pred_g = torch.where(mexp, pred_sentinel.expand_as(self.ball_prediction), self.ball_prediction)
+        # (b) perception ball slot [0:3] is in (ball - env_origins) frame: convert the same
+        #     home point -> world (table + sentinel_rel) -> perception (- env_origins).
+        percep_ball_sentinel = (self.table.data.root_link_pos_w + pred_sentinel) - self.scene.env_origins
+        perception_g = self.delayed_perception.clone()
+        perception_g[:, 0:3] = torch.where(mexp, percep_ball_sentinel, perception_g[:, 0:3])  # robot slot [3:6] untouched
+
+        # Relative target offset (x,y) for actor obs with perception (from GATED prediction)
         ball_target_xy = torch.stack([
-            self.ball_prediction[:, 0] - 0.1,
-            self.ball_prediction[:, 1] + 0.6,
+            ball_pred_g[:, 0] - 0.1,
+            ball_pred_g[:, 1] + 0.6,
         ], dim=1)
         rel_target_xy = (ball_target_xy - robot_pos[:, :2]) * self.obs_scales.robot_pos
 
@@ -516,9 +535,9 @@ class TTEnv(VecEnv):
                 joint_pos * self.obs_scales.joint_pos,
                 joint_vel * self.obs_scales.joint_vel,
                 action * self.obs_scales.actions,
-                self.delayed_perception * self.obs_scales.perception,
+                perception_g * self.obs_scales.perception,
                 # self.paddle_touch_point* self.obs_scales.ball_pos,
-                self.ball_prediction * self.obs_scales.ball_pos, # use learned prediction in actor obs
+                ball_pred_g * self.obs_scales.ball_pos, # GATED learned prediction in actor obs
                 rel_target_xy,  # 2D relative target base pos
                 heading.unsqueeze(-1) * self.obs_scales.projected_gravity,
             ],
@@ -658,6 +677,39 @@ class TTEnv(VecEnv):
         self.scene.write_data_to_sim()
         self.sim.forward()
 
+    def _tt_no_ball_now(self):
+        """Whether to suppress the ball THIS control step (ball teleported far + mask_invalid).
+        Sources: cfg.ball.no_ball_period_s (TRAINING: periodic no-ball so the policy learns the
+        no-ball idle), or env vars TT_NO_SERVE / TT_SERVE_PERIOD (DEBUG). sim_step_counter is in
+        50 Hz control steps; the ball is active for `ball_active_s` at the start of each period,
+        then a no-ball gap for the rest."""
+        import os
+        if os.environ.get("TT_NO_SERVE"):
+            return True
+        per = os.environ.get("TT_SERVE_PERIOD")
+        # sim_step_counter increments per PHYSICS substep (decimation per control step);
+        # convert to 50 Hz control steps so the *50 second->step conversions are correct.
+        cs = int(self.sim_step_counter // self.cfg.sim.decimation)
+        if per:
+            period = max(1, int(float(per) * 50.0))
+            active = int(float(os.environ.get("TT_SERVE_ACTIVE", "2.5")) * 50.0)
+            return (cs % period) >= active
+        nb = float(getattr(self.cfg.ball, "no_ball_period_s", 0.0) or 0.0)
+        if nb > 0.0:
+            period = max(1, int(nb * 50.0))
+            active_target = int(float(getattr(self.cfg.ball, "ball_active_s", nb)) * 50.0)
+            cstep = int(getattr(self.cfg.ball, "no_ball_curriculum_steps", 0) or 0)
+            if cstep > 0:
+                # ramp the no-ball GAP from 0 -> (period-active_target): start with no gap
+                # (active=period) so a warm-started policy is not slammed with OOD no-ball,
+                # then grow the gap so it adapts gradually.
+                c = min(1.0, float(cs) / float(cstep))
+                active = int(period - c * (period - active_target))
+            else:
+                active = active_target
+            return (cs % period) >= active
+        return False
+
     def reset_ball(self, env_ids):
         """Reset only the ball state for specified environments."""
         if len(env_ids) == 0:
@@ -686,22 +738,46 @@ class TTEnv(VecEnv):
             # Reset ball position and velocity (copied from reset method)
             ball_state = self.ball.data.default_root_state.clone()[new_state_env_ids]
             ball_state[:, :3] += self.scene.env_origins[new_state_env_ids]
-            # Random y-noise and velocity
-            pos_noise = torch.empty(len(new_state_env_ids), 1, device=self.device).uniform_(
-                *self.cfg.ball.ball_pos_y_range
-            )
-            ball_state[:, 1:2] += pos_noise
-            v_x = torch.empty(len(new_state_env_ids), 1, device=self.device).uniform_(
-                *self.cfg.ball.ball_speed_x_range
-            )
-            v_y = torch.empty(len(new_state_env_ids), 1, device=self.device).uniform_(
-                *self.cfg.ball.ball_speed_y_range
-            )
-            v_z = torch.empty(len(new_state_env_ids), 1, device=self.device).uniform_(
-                *self.cfg.ball.ball_speed_z_range
-            )
+            # --- SERVE SAMPLING ---
+            n = len(new_state_env_ids)
+            _cstep = getattr(self.cfg.ball, "serve_curriculum_steps", 0)
+            c = 0.0 if not _cstep else min(1.0, float(self.sim_step_counter) / float(_cstep))
+            if getattr(self.cfg.ball, "serve_bounce_enable", False):
+                # RALLY serve: sample a TARGET BOUNCE POINT in the robot's own half and
+                # back-compute the launch velocity so the ball ALWAYS bounces in-court
+                # (proper table tennis; no volleys). Depth x_b spans mid+deep court;
+                # lateral half-width grows with the curriculum (start centered -> spread
+                # left/right). Launch from ball default (1.35, 0, 1.03); bounce when ball
+                # center z = 0.78 (table top 0.76 + radius 0.02). g = 9.81.
+                def _bclerp(b, w, cc):
+                    return (b[0] + cc * (w[0] - b[0]), b[1] + cc * (w[1] - b[1]))
+                xb_lo, xb_hi = _bclerp(self.cfg.ball.serve_bounce_x_range, getattr(self.cfg.ball, "serve_bounce_x_range_hard", self.cfg.ball.serve_bounce_x_range), c)
+                vz_lo, vz_hi = _bclerp(self.cfg.ball.serve_bounce_vz_range, getattr(self.cfg.ball, "serve_bounce_vz_range_hard", self.cfg.ball.serve_bounce_vz_range), c)
+                y_half = self.cfg.ball.serve_y_start + c * (self.cfg.ball.serve_y_wide - self.cfg.ball.serve_y_start)
+                g, Z_LAUNCH, Z_BOUNCE, X_LAUNCH = 9.81, 1.03, 0.78, 1.35
+                x_b = torch.empty(n, 1, device=self.device).uniform_(xb_lo, xb_hi)
+                y_b = torch.empty(n, 1, device=self.device).uniform_(-y_half, y_half)
+                v_z = torch.empty(n, 1, device=self.device).uniform_(vz_lo, vz_hi)
+                t_b = (v_z + torch.sqrt(v_z * v_z + 2.0 * g * (Z_LAUNCH - Z_BOUNCE))) / g
+                v_x = (x_b - X_LAUNCH) / t_b   # launch x = 1.35 (env-local)
+                v_y = y_b / t_b                # launch y = 0 (env-local); ball_state pos stays centered
+            else:
+                # legacy speed-curriculum serve (tasks that don't enable bounce mode)
+                def _lerp(b, w):
+                    return (b[0] + c * (w[0] - b[0]), b[1] + c * (w[1] - b[1]))
+                xr = _lerp(self.cfg.ball.ball_speed_x_range, getattr(self.cfg.ball, "ball_speed_x_range_wide", self.cfg.ball.ball_speed_x_range))
+                yr = _lerp(self.cfg.ball.ball_speed_y_range, getattr(self.cfg.ball, "ball_speed_y_range_wide", self.cfg.ball.ball_speed_y_range))
+                zr = _lerp(self.cfg.ball.ball_speed_z_range, getattr(self.cfg.ball, "ball_speed_z_range_wide", self.cfg.ball.ball_speed_z_range))
+                pyr = _lerp(self.cfg.ball.ball_pos_y_range, getattr(self.cfg.ball, "ball_pos_y_range_wide", self.cfg.ball.ball_pos_y_range))
+                pzr = _lerp((0.0, 0.0), getattr(self.cfg.ball, "ball_pos_z_delta_wide", (0.0, 0.0)))
+                ball_state[:, 1:2] += torch.empty(n, 1, device=self.device).uniform_(*pyr)
+                ball_state[:, 2:3] += torch.empty(n, 1, device=self.device).uniform_(*pzr)  # serve-height variation
+                v_x = torch.empty(n, 1, device=self.device).uniform_(*xr)
+                v_y = torch.empty(n, 1, device=self.device).uniform_(*yr)
+                v_z = torch.empty(n, 1, device=self.device).uniform_(*zr)
+
             # With small probability (≈1%), create zero-velocity, random-position serves
-            #disabled for testing 
+            #disabled for testing
             # try:
             #     special_mask = torch.rand(len(new_state_env_ids), device=self.device) < 0.01
             #     if special_mask.any():
@@ -719,6 +795,14 @@ class TTEnv(VecEnv):
             # except Exception:
             #     pass
             lin_vel = torch.cat((v_x, v_y, v_z), dim=1)
+            # DEBUG: in a no-ball window (TT_NO_SERVE / TT_SERVE_PERIOD gap) teleport the
+            # ball far underground (z=-50) with zero velocity -> completely out of sight,
+            # never bounces on any table, cannot affect the scene. mask_invalid is also
+            # forced so the policy ignores it -> a true no-ball idle to watch.
+            if self._tt_no_ball_now():
+                lin_vel = torch.zeros_like(lin_vel)
+                ball_state[:, :3] = self.scene.env_origins[new_state_env_ids] + torch.tensor(
+                    [0.0, 0.0, -50.0], device=self.device, dtype=ball_state.dtype)
             ang_vel = torch.zeros(len(new_state_env_ids), 3, device=self.device)
             ball_state[:, 7:] = torch.cat((lin_vel, ang_vel), dim=1)
             # Store new states in buffer
@@ -1048,6 +1132,11 @@ class TTEnv(VecEnv):
             | ((self.ball_pos[:, 0] < -1.35) & (vz < 0))
             | self.has_touch_paddle
         )
+        # DEBUG: TT_NO_SERVE=1 forces perpetual no-ball; TT_SERVE_PERIOD=<sec> serves
+        # intermittently (ball active TT_SERVE_ACTIVE sec, default 2.5, then a no-ball
+        # gap) — mirrors mujoco so we can watch play -> gap -> play idle behavior.
+        if self._tt_no_ball_now():
+            self.mask_invalid = torch.ones_like(self.mask_invalid)
         self.mask_terminal = (self.ball_pos[:, 0] > -1.5) | (self.ball_pos[:, 0] < -1.9) | self.has_touch_paddle_rew | (vz < 0.0) | (self.ball_pos[:, 2] < 0.6) 
             #mask_terminal: true-> future,mask_terminal: false->distance
         self.has_touch_paddle_rew = self.has_touch_paddle.clone() # finally set mask True for reward computation
@@ -1055,8 +1144,13 @@ class TTEnv(VecEnv):
         mask_invalid_expanded = self.mask_invalid.unsqueeze(-1).expand_as(self.ball_future_pose)
         # Zero out those poses
         modified_ball_pos = torch.clone(self.robot_pos)
-        modified_ball_pos[:, 1] += paddle_y_offset  # Offset to paddle position
-        modified_ball_pos[:, 2] = body_height+ 0.2  # Set z-coordinate to body_height
+        # FIXED HOME sentinel (env-local), NOT self-referential robot_pos. A robot-relative
+        # ready target has rel_target_x == -0.1 constant (no restoring force) -> over a long
+        # no-ball gap the robot drifts backward chasing it and falls. Anchoring x,y to the
+        # trained home (-1.6, 0) gives a restoring force -> stable idle at home.
+        modified_ball_pos[:, 0] = -1.6                  # HOME_X (env-local; robot trained base)
+        modified_ball_pos[:, 1] = 0.0 + paddle_y_offset  # HOME_Y + paddle offset (-0.55)
+        modified_ball_pos[:, 2] = body_height + 0.2     # ready height (0.885)
         self.ball_future_pose = torch.where(
             mask_invalid_expanded,
             modified_ball_pos,
