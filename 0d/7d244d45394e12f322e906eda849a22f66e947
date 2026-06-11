@@ -1,0 +1,32 @@
+legged_lab/envs/base/tt_env.py
+  s_2d92d93564222b::t_b02a51d46e97e8 1114-1115,1129,1151,1172
+  s_2d92d93564222b::t_89f64964a9cf73 514
+legged_lab/mdp/rewards.py
+  s_2d92d93564222b::t_89f64964a9cf73 616
+  s_2d92d93564222b::t_9d3a2c2cefa3bc 231-235,237-238
+setup_cloud.sh
+  s_2d92d93564222b::t_5846df26f2b08d 1-77
+legged_lab/scripts/watchdog_train_idle6.sh
+  s_2d92d93564222b::t_bd3dd45fc9e834 1-72
+.claude/skills/g1-tt-cloud-train/SKILL.md
+  s_2d92d93564222b::t_6aac589cd74e05 1-71
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_2d92d93564222b::t_89f64964a9cf73 53,259,262,319
+  s_2d92d93564222b::t_9c7c242efc0daf 44,141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "0d7d244d45394e12f322e906eda849a22f66e947",
+  "prompts": {},
+  "sessions": {
+    "s_2d92d93564222b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b839b76-d802-4056-9521-f7cef4596b2c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
