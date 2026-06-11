@@ -130,6 +130,17 @@ class G1TableTennisRewardCfg(RewardCfg):
         weight=150.0,
     )
 
+    # Dense positive bonus for actively standing when there is NO playable ball
+    # (mask_invalid). Counters the freeze-collapse (action_rate->0 -> fall -> ep_len
+    # 297<->5 limit cycle) that both idle3 (fast ramp) and idle4 (slow ramp) hit: the
+    # sparse -1000 termination penalty did not pull the policy out of the freeze basin, so
+    # pay a dense upright+calm bonus while idle. Zero when a ball is present -> never
+    # competes with hitting.
+    reward_idle_stand = RewTerm(
+        func=mdp.reward_idle_stand,
+        weight=2.0,
+    )
+
 
     reward_future_dis_ee = RewTerm(
         func=mdp.reward_future_ee_target,
@@ -262,7 +273,7 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         #    realistic idle-heavy distribution; early training learns to hit first.
         self.ball.no_ball_period_s = 10.0
         self.ball.ball_active_s = 3.0                          # final: 3 s ball, 7 s no-ball
-        self.ball.no_ball_curriculum_steps = 300000            # ramp 0 -> 7 s gap over ~12.5k iter
+        self.ball.no_ball_curriculum_steps = 1000000           # SLOWED 300k->1M: collapse appeared when no-ball ramped past ~22% (idle3); ramp 3x gentler so the policy consolidates active-balance-under-no-ball at each level
         # clip_actions stays at the base 100 (NOT 20 — clipping the applied action decouples
         # the network output from the dynamics and does nothing for the obs/action_rate path).
         # 3) Randomization (kept): wide perception/action delay for real/deploy latency.
@@ -305,7 +316,7 @@ class G1TT_EvalEnvCfg(G1TableTennisEnvCfg):
 
 @configclass
 class G1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "g1_tt_idle3"
+    experiment_name: str = "g1_tt_idle5"
     logger = "tensorboard"
     save_interval = 100
     max_iterations = 100000

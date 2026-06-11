@@ -1126,9 +1126,9 @@ class TTEnv(VecEnv):
         # self.mask_invalid = (self.ball_pos[:, 0] < -1.6) | (vx > 0) | (z < 0.7)
         # Invalid mask: use explicit parentheses to avoid bitwise ops on floats
         self.mask_invalid = (
-            (self.ball_pos[:, 0] < -1.9)
+            (self.ball_pos[:, 0] < -1.65)          # ball >5cm behind the robot line (-1.6) -> give up (was -1.9)
             | (vx > 0)
-            | (z < 0.7)
+            | (z < 0.9)                            # ball below 0.9m -> don't hit (avoid paddle-table collision; was 0.7)
             | ((self.ball_pos[:, 0] < -1.35) & (vz < 0))
             | self.has_touch_paddle
         )

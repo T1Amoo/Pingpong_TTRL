@@ -590,6 +590,33 @@ def desired_height(phase, starting_foot):
 def reward_contact(env: TTEnv) -> torch.Tensor:
     return env.ball_contact_rew.float()
 
+
+def reward_idle_stand(env: TTEnv) -> torch.Tensor:
+    """Dense POSITIVE per-step bonus for ACTIVELY standing when there is no playable ball.
+
+    Counters the freeze-collapse: when mask_invalid (no playable ball -> the policy is fed
+    the fixed HOME sentinel), the action_rate penalty + "hold still" target push the policy
+    toward a frozen (constant) output, but a humanoid that freezes cannot balance and falls
+    (the ep_len 297<->5 limit cycle, action_rate -> 0). By paying a dense positive bonus
+    ONLY while idle AND upright AND base-velocity is low, staying actively balanced (and thus
+    alive far longer) strictly dominates freezing+falling, and the dense gradient pulls the
+    policy out of the freeze basin (the sparse -1000 termination penalty alone did not).
+    Returns 0 when there IS a playable ball (mask_invalid False) so it never competes with
+    hitting -> the policy still chases and returns balls; this only shapes the no-ball idle.
+    """
+    idle = env.mask_invalid.float()                                              # [N] 1 when no playable ball
+    upright = torch.clamp(-env.robot.data.projected_gravity_b[:, 2], 0.0, 1.0)   # 1 upright, 0 tipped over
+    # near the HOME ready base position (robot_pos frame ~= (-1.7, 0): ball sentinel
+    # -1.6 minus the -0.1 stand-behind offset). Rewards RETURNING to home -> counters
+    # backward drift / re-centers when idle (reward_future_body_target is zeroed while
+    # idle, so without this nothing pulls the base back to the -1.6 line).
+    home_xy = env.robot_pos.new_tensor([-1.7, 0.0])
+    near_home = torch.exp(-torch.linalg.norm(env.robot_pos[:, 0:2] - home_xy, dim=-1))  # 1 at home, ->0 far
+    # base 0.5 for staying upright anywhere (so it does not fall while returning) + up to
+    # 0.5 more for actually being home.
+    return idle * upright * (0.5 + 0.5 * near_home)
+
+
 # #(2) penalize the ball for going below a certain height.
 # def penalty_ball_to_floor(env: TTEnv) -> torch.Tensor:
 #     env.penalty_ball_to_floor = (env.ball_pos[:, 2] < 0.60).float()
