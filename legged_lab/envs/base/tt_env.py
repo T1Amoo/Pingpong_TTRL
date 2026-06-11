@@ -511,7 +511,7 @@ class TTEnv(VecEnv):
         mexp = self.mask_invalid.unsqueeze(-1)  # [N,1]; set this step in compute_intermediate_values
         # (a) prediction is in ball_future_pose's frame (robot-table): sentinel == modified_ball_pos
         pred_sentinel = torch.tensor(
-            [-1.6, 0.0 + self.cfg.robot.paddle_y_offset, self.cfg.robot.hit_body_height + 0.2],
+            [-1.77, 0.0 + self.cfg.robot.paddle_y_offset, self.cfg.robot.hit_body_height + 0.2],
             device=self.device, dtype=self.ball_prediction.dtype,
         ).unsqueeze(0)  # [1,3]
         ball_pred_g = torch.where(mexp, pred_sentinel.expand_as(self.ball_prediction), self.ball_prediction)
@@ -1111,8 +1111,8 @@ class TTEnv(VecEnv):
         xpa = x + dx_after
         ypa = y + dy_after
 
-        xpb=torch.clamp(xpb, max=-1.6)
-        xpa=torch.clamp(xpa, max=-1.6)
+        xpb=torch.clamp(xpb, max=-1.77)  # hit plane: base(-1.87)+0.1 = 50cm from table edge(-1.37)
+        xpa=torch.clamp(xpa, max=-1.77)
 
         self.pos_pred_before = torch.stack([xpb, ypb, zpb], dim=-1)
         self.pos_pred_after = torch.stack([xpa, ypa, zpa], dim=-1)
@@ -1126,7 +1126,7 @@ class TTEnv(VecEnv):
         # self.mask_invalid = (self.ball_pos[:, 0] < -1.6) | (vx > 0) | (z < 0.7)
         # Invalid mask: use explicit parentheses to avoid bitwise ops on floats
         self.mask_invalid = (
-            (self.ball_pos[:, 0] < -1.65)          # ball >5cm behind the robot line (-1.6) -> give up (was -1.9)
+            (self.ball_pos[:, 0] < -1.92)          # ball >5cm behind the robot line (-1.6) -> give up (was -1.9)
             | (vx > 0)
             | (z < 0.9)                            # ball below 0.9m -> don't hit (avoid paddle-table collision; was 0.7)
             | ((self.ball_pos[:, 0] < -1.35) & (vz < 0))
@@ -1148,7 +1148,7 @@ class TTEnv(VecEnv):
         # ready target has rel_target_x == -0.1 constant (no restoring force) -> over a long
         # no-ball gap the robot drifts backward chasing it and falls. Anchoring x,y to the
         # trained home (-1.6, 0) gives a restoring force -> stable idle at home.
-        modified_ball_pos[:, 0] = -1.6                  # HOME_X (env-local; robot trained base)
+        modified_ball_pos[:, 0] = -1.77                 # HOME_X (env-local; robot trained base)
         modified_ball_pos[:, 1] = 0.0 + paddle_y_offset  # HOME_Y + paddle offset (-0.55)
         modified_ball_pos[:, 2] = body_height + 0.2     # ready height (0.885)
         self.ball_future_pose = torch.where(
@@ -1169,7 +1169,7 @@ class TTEnv(VecEnv):
         )
         self.robot_future_pos = torch.where(
             mask_invalid_expanded,      # [N,3] bool
-            self.robot_future_pos.new_tensor([-1.80, 0.3, body_height]).expand_as(self.robot_future_pos),               
+            self.robot_future_pos.new_tensor([-1.87, 0.0, body_height]).expand_as(self.robot_future_pos),               
             # [-0.9, 0.2, body_height] for all envs
             self.robot_future_pos
         )

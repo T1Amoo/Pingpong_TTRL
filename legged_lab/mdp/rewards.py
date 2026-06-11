@@ -228,11 +228,14 @@ def penalty_robot_table_proximity_x(
     std: float = 0.1,
 ) -> torch.Tensor:
 
-    table_half_length = -1.37 - min_distance # half of table length in x-direction
+    # One-sided barrier: keep the robot BASE at least `min_distance` behind its own table
+    # edge (x=-1.37). Zero while the base stays behind the limit; grows toward 1 as the base
+    # advances past it toward the table. The arm still reaches forward to hit; only the base
+    # is held back -> real-robot safety margin (min_distance=0.50 -> base limit x=-1.87, 50cm).
+    limit_x = -1.37 - min_distance                       # forward-most allowed base x
     robot_pos_x = env.robot.data.root_pos_w[:, 0] - env.scene.env_origins[:, 0]
-    denom=std * std + 1e-12
-    penalty = torch.exp(-torch.clamp(torch.abs(robot_pos_x - table_half_length ), min=1e-6) / denom)
-
+    over = torch.clamp(robot_pos_x - limit_x, min=0.0)   # how far the base advanced past the line toward the table
+    penalty = 1.0 - torch.exp(-over / (std + 1e-12))     # 0 behind line, ->1 as it advances
     return penalty
 
 def body_force(
@@ -610,7 +613,7 @@ def reward_idle_stand(env: TTEnv) -> torch.Tensor:
     # -1.6 minus the -0.1 stand-behind offset). Rewards RETURNING to home -> counters
     # backward drift / re-centers when idle (reward_future_body_target is zeroed while
     # idle, so without this nothing pulls the base back to the -1.6 line).
-    home_xy = env.robot_pos.new_tensor([-1.7, 0.0])
+    home_xy = env.robot_pos.new_tensor([-1.87, 0.0])
     near_home = torch.exp(-torch.linalg.norm(env.robot_pos[:, 0:2] - home_xy, dim=-1))  # 1 at home, ->0 far
     # base 0.5 for staying upright anywhere (so it does not fall while returning) + up to
     # 0.5 more for actually being home.
