@@ -30,6 +30,29 @@
 - **系统盘**：≥ **80–100 GiB**（Isaac Sim pip 包 + 缓存约 25GB，IsaacLab + 项目另算）。
 - **网络**：需访问公网（拉 `pypi.nvidia.com` 和 GitHub）。
 
+### ⚠️⚠️ 最容易踩的坑：容器必须开 GPU「图形/Vulkan」能力
+
+**headless ≠ 不用图形**。Isaac Sim 启动时一定要用 **Vulkan 创建 GPU 设备**（离屏渲染 + GPU
+Foundation），即使纯物理 RL 也一样。普通 PyTorch/ML 镜像默认 `NVIDIA_DRIVER_CAPABILITIES=compute,utility`，
+**只挂 CUDA 计算栈、不挂 NVIDIA 图形/Vulkan 驱动** → Isaac Sim 报
+`Failed to create any GPU devices` / `Vulkan ERROR_INCOMPATIBLE_DRIVER` / `Driver Version: 0`，跑不起来。
+
+**起实例后先验证图形能力：**
+```bash
+echo "caps=$NVIDIA_DRIVER_CAPABILITIES"               # 含 graphics/all 才行；compute,utility 就是没开
+cat /usr/share/vulkan/icd.d/nvidia_icd.json 2>/dev/null || echo "缺 nvidia_icd.json（没开图形）"
+vulkaninfo --summary 2>&1 | grep -iE "deviceName|driverID"   # 要能看到 NVIDIA GPU；只有 llvmpipe=软件渲染=没开
+```
+
+**开图形能力（二选一）：**
+- **方案 A**：创建实例时在「环境变量」里加 `NVIDIA_DRIVER_CAPABILITIES = all`，让 nvidia-container
+  把图形/Vulkan 驱动也挂进来。（部分平台会忽略此变量 → 用方案 B）
+- **方案 B（更稳）**：直接选平台的 **`isaaclab` 镜像当底座**（它为跑 Isaac Sim 配好了图形/Vulkan）。
+  其自带的 IsaacLab 版本不对没关系，按下文在里面建 py3.10 env 装 isaacsim 4.5 + IsaacLab 2.1.1。
+
+> 这是云端最大的坑：**不是装漏了库（apt 装 libGLU 救不了），是容器没把 NVIDIA 图形驱动挂进来**——
+> 驱动库只能由容器运行时从宿主挂载，必须靠 capability 开关，容器内部装不了。
+
 ---
 
 ## 2. 建独立 Python 3.10 环境（别污染镜像自带 torch）
