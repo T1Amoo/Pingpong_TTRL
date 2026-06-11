@@ -51,21 +51,23 @@ pip install --upgrade pip
 
 ---
 
-## 3. 安装 Isaac Sim 4.5.0（pip，会自动带 torch 2.5.1+cu118）
+## 3. 安装 Isaac Sim 4.5.0（pip）
 
 ```bash
 pip install 'isaacsim[all,extscache]==4.5.0' --extra-index-url https://pypi.nvidia.com
 ```
 
-验证 torch 版本正确（必须是 `2.5.1+cu118`）：
+⚠️ **强制把 torch 钉到 2.5.1+cu118**（关键!）：isaaclab 的依赖写的是 `torch>=2.5.1`（宽松），
+如果基础镜像自带了更高版本（如 cu128 镜像的 torch 2.7），pip **不会**自动给你降，结果跑的是
+未验证的 torch → Isaac Sim 4.5 可能诡异崩溃。无论镜像带什么，都显式装一次：
 
 ```bash
+pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu118
 python -c "import torch; print(torch.__version__, torch.version.cuda)"
-# 期望: 2.5.1+cu118 11.8
+# 必须是: 2.5.1+cu118 11.8
 ```
 
-> ⚠️ 之后任何 pip 安装都**不要**把 torch 升级成 cu12 版。若被带升级，回退：
-> `pip install torch==2.5.1+cu118 torchvision==0.20.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118`
+> 之后任何 pip 安装都**不要**把 torch 升级成 cu12 版；被带升级了就再跑上面这条降回。
 
 接受 EULA（headless 运行 Isaac Sim 必需）：
 
@@ -83,14 +85,32 @@ cd ~
 git clone https://github.com/isaac-sim/IsaacLab.git
 cd IsaacLab
 git checkout v2.1.1          # commit 90b79bb；不要用 main / 2.1.0 / 2.2+
-# Isaac Sim 已 pip 装好，isaaclab.sh 会自动识别当前 python 里的 isaacsim
-./isaaclab.sh -i             # 安装 isaaclab / isaaclab_assets / isaaclab_rl / isaaclab_tasks
 ```
 
-验证 IsaacLab：
+⚠️ **先单独装 flatdict**：isaaclab 核心依赖 `flatdict==4.0.1`，它在 pip 隔离构建里会报
+`No module named 'pkg_resources'` 而失败，连带核心 isaaclab 整个装不上。用 `--no-build-isolation`
+借用环境里带 pkg_resources 的 setuptools 先把它装好：
 
 ```bash
-python -c "import isaaclab; print('isaaclab', isaaclab.__version__)"   # 期望 0.41.3
+pip install flatdict==4.0.1 --no-build-isolation
+```
+
+然后**直接 pip 装 4 个核心包**（不要用 `./isaaclab.sh -i`——它在 venv 下 python 探测可能装偏，
+且会顺带装 isaaclab_mimic→robomimic→egl_probe 这些本项目用不到、还要 cmake 的东西）：
+
+```bash
+pip install -e source/isaaclab          # 核心（import isaaclab 靠它）
+pip install -e source/isaaclab_assets
+pip install -e source/isaaclab_rl
+pip install -e source/isaaclab_tasks
+# isaaclab_mimic 不装（模仿学习用，本项目不需要）
+```
+
+验证（两个都要对）：
+
+```bash
+python -c "import isaaclab; print('isaaclab', isaaclab.__version__)"     # 期望 0.41.3
+python -c "import torch; print(torch.__version__, torch.version.cuda)"   # 期望 2.5.1+cu118 11.8
 ```
 
 ---
