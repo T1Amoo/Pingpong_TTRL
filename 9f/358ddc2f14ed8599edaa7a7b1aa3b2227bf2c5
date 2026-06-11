@@ -1,0 +1,30 @@
+legged_lab/mdp/rewards.py
+  s_2d92d93564222b::t_8ac6223057a6a4 593-608,618-619
+  s_2d92d93564222b::t_184e98667225e7 609-617
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_2d92d93564222b::t_71d2a2d21dc4be 133-143
+  s_2d92d93564222b::t_537faf07d85be9 276
+  s_2d92d93564222b::t_03089d584b9948 319
+legged_lab/scripts/watchdog_train_idle5.sh
+  s_2d92d93564222b::t_a3aede4e65a373 1-72
+legged_lab/envs/base/tt_env.py
+  s_2d92d93564222b::t_0a299c8124c3c9 1129,1131
+legged_lab/scripts/watchdog_train_idle4.sh
+  s_2d92d93564222b::t_a5ffa592833894 1-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "9f358ddc2f14ed8599edaa7a7b1aa3b2227bf2c5",
+  "prompts": {},
+  "sessions": {
+    "s_2d92d93564222b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b839b76-d802-4056-9521-f7cef4596b2c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
