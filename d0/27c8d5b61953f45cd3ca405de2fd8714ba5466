@@ -1,0 +1,20 @@
+docs/INSTALL_CLOUD.md
+  s_2d92d93564222b::t_407b9f3318c715 54,60-62,65,67,70
+  s_2d92d93564222b::t_35dfaa9961f428 90-92,95-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "d027c8d5b61953f45cd3ca405de2fd8714ba5466",
+  "prompts": {},
+  "sessions": {
+    "s_2d92d93564222b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b839b76-d802-4056-9521-f7cef4596b2c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
