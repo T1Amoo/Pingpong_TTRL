@@ -35,6 +35,10 @@
 ## 2. 建独立 Python 3.10 环境（别污染镜像自带 torch）
 
 ```bash
+# 系统编译依赖（IsaacLab 装 egl_probe 等需要 cmake + gcc/g++/make，缺了会报
+# "RuntimeError: CMake must be installed" 导致整个 isaaclab.sh -i 回滚失败）
+apt-get update && apt-get install -y cmake build-essential
+
 # 若镜像带 conda：
 conda create -n pingpong python=3.10 -y
 conda activate pingpong
