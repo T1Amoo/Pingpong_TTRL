@@ -271,7 +271,7 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         self.ball.serve_bounce_x_range_hard = (-1.35, -0.60)
         self.ball.serve_bounce_vz_range_hard = (1.3, 2.1)      # hard: flat-fast + high-slow
         self.ball.serve_y_wide = 0.72                          # hard: corners (table half 0.7625)
-        self.ball.serve_curriculum_steps = 300000              # ~12.5k iter to full difficulty (gentle from scratch)
+        self.ball.serve_curriculum_steps = 300000              # serve difficulty easy->hard. NOTE: uses RAW sim_step_counter (decimation=10), so full-hard at raw 300000 = iter ~1250 (NOT ~12.5k). This saturates well before the idle/no-ball curricula start at phase1 (iter ~5000) -> the two difficulty ramps do NOT overlap (avoids simultaneous-shock).
         # 2) No-ball idle injection — in real play NO-BALL is the MAJORITY of time, so the
         #    final ratio is idle-heavy (7 s no-ball / 3 s ball per 10 s = 70% idle), with
         #    LONG contiguous 7 s windows so the policy learns to hold home indefinitely.
