@@ -108,6 +108,16 @@ class BallCfg:
     no_ball_period_s: float = 0.0
     ball_active_s: float = 0.0
     no_ball_curriculum_steps: int = 0   # ramp the no-ball gap from 0 -> (period-active) over this many control steps
+    # --- idle10 (A): hit-first curriculum. Both the no-ball ramp AND the idle reward START at
+    # curriculum_phase1_steps; before that the ball is always present and the idle reward is 0
+    # (pure-hitting bootstrap = the proven from-scratch hitting recipe, no idle to neglect).
+    # After phase1 the idle reward ramps 0->1 over idle_reward_ramp_steps while the no-ball gap
+    # ramps over no_ball_curriculum_steps. Keep idle_reward_ramp_steps < no_ball_curriculum_steps
+    # so the stabilizing idle_pose reference always LEADS the no-ball difficulty (the idle3
+    # freeze-collapse happened when no-ball outpaced an inadequate reference). 0 = legacy (ramp
+    # from control step 0, no phase-1 hold).
+    curriculum_phase1_steps: int = 0
+    idle_reward_ramp_steps: int = 0     # control steps to ramp the idle reward 0->1 after phase1
     # difficulty curriculum HARD targets (lerp from the easy ranges above over
     # serve_curriculum_steps). Default = same as easy -> no expansion.
     serve_bounce_x_range_hard: tuple = (-1.25, -0.65)

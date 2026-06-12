@@ -138,7 +138,7 @@ class G1TableTennisRewardCfg(RewardCfg):
     # competes with hitting.
     reward_idle_stand = RewTerm(
         func=mdp.reward_idle_stand,
-        weight=1.0,
+        weight=0.5,
     )
 
     # HITTER-style reference-stand-pose tracking when no playable ball: reward joints
@@ -146,7 +146,7 @@ class G1TableTennisRewardCfg(RewardCfg):
     # the real freeze fix the earlier idle rewards lacked (they never said WHICH pose).
     reward_idle_pose = RewTerm(
         func=mdp.reward_idle_pose,
-        weight=3.0,
+        weight=1.0,
         params={"k": 1.0},
     )
 
@@ -282,7 +282,17 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         #    realistic idle-heavy distribution; early training learns to hit first.
         self.ball.no_ball_period_s = 10.0
         self.ball.ball_active_s = 3.0                          # final: 3 s ball, 7 s no-ball
-        self.ball.no_ball_curriculum_steps = 1000000           # SLOWED 300k->1M: collapse appeared when no-ball ramped past ~22% (idle3); ramp 3x gentler so the policy consolidates active-balance-under-no-ball at each level
+        # idle10 (A): HIT-FIRST curriculum (1 iter ~= num_steps_per_env = 24 control steps).
+        #   Phase 1 (cs < 120000 ~= iter 5000): ball ALWAYS present, idle reward = 0 -> pure
+        #     hitting bootstrap (== the proven from-scratch hitting recipe; idle9 died here by
+        #     turning idle on from iter 0 -> couch-potato, never learned to hit).
+        #   Phase 2 (after iter 5000): idle reward ramps 0->1 over ~6000 iter (full ~iter 11000)
+        #     while the no-ball gap ramps over ~12000 iter (full ~iter 17000). idle ramp is 2x
+        #     FASTER than no-ball so the stabilizing idle_pose reference always LEADS the no-ball
+        #     difficulty -> avoids the idle3 freeze-collapse (no-ball outpacing the reference).
+        self.ball.curriculum_phase1_steps = 120000             # ~5000 iter pure hitting first
+        self.ball.idle_reward_ramp_steps = 144000              # idle reward 0->1 over ~6000 iter after phase1
+        self.ball.no_ball_curriculum_steps = 288000            # no-ball gap 0->full over ~12000 iter after phase1
         # clip_actions stays at the base 100 (NOT 20 — clipping the applied action decouples
         # the network output from the dynamics and does nothing for the obs/action_rate path).
         # 3) Randomization (kept): wide perception/action delay for real/deploy latency.
@@ -325,7 +335,7 @@ class G1TT_EvalEnvCfg(G1TableTennisEnvCfg):
 
 @configclass
 class G1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "g1_tt_idle9"
+    experiment_name: str = "g1_tt_idle10"
     logger = "tensorboard"
     save_interval = 100
     max_iterations = 100000

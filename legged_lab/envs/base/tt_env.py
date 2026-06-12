@@ -700,15 +700,33 @@ class TTEnv(VecEnv):
             active_target = int(float(getattr(self.cfg.ball, "ball_active_s", nb)) * 50.0)
             cstep = int(getattr(self.cfg.ball, "no_ball_curriculum_steps", 0) or 0)
             if cstep > 0:
-                # ramp the no-ball GAP from 0 -> (period-active_target): start with no gap
-                # (active=period) so a warm-started policy is not slammed with OOD no-ball,
-                # then grow the gap so it adapts gradually.
-                c = min(1.0, float(cs) / float(cstep))
+                # ramp the no-ball GAP from 0 -> (period-active_target). idle10: the ramp does
+                # not start until curriculum_phase1_steps (pure-hitting bootstrap first), so a
+                # from-scratch policy learns to HIT before any no-ball appears. Before phase1
+                # c=0 -> active=period -> no gap (all ball). Then grow the gap gradually.
+                phase1 = int(getattr(self.cfg.ball, "curriculum_phase1_steps", 0) or 0)
+                c = min(1.0, max(0.0, float(cs - phase1) / float(cstep)))
                 active = int(period - c * (period - active_target))
             else:
                 active = active_target
             return (cs % period) >= active
         return False
+
+    def idle_reward_scale(self) -> float:
+        """Curriculum factor [0,1] for the idle rewards (reward_idle_pose / reward_idle_stand).
+        idle10 (A): 0 during the pure-hitting bootstrap (cs < curriculum_phase1_steps) so the
+        policy learns to HIT first — idle9 failed because the idle reward was on from iter 0 and,
+        being easy+safe vs hard+risky hitting, the from-scratch policy went couch-potato (never
+        hit). After phase1 the factor ramps 0->1 over idle_reward_ramp_steps so idle is layered
+        onto a competent hitter, and (ramp_steps < no_ball_curriculum_steps) the idle reference
+        rises FASTER than the no-ball difficulty -> it always leads, never lags (anti freeze).
+        0 ramp_steps = legacy constant full weight."""
+        cs = int(self.sim_step_counter // self.cfg.sim.decimation)
+        phase1 = int(getattr(self.cfg.ball, "curriculum_phase1_steps", 0) or 0)
+        ramp = int(getattr(self.cfg.ball, "idle_reward_ramp_steps", 0) or 0)
+        if ramp <= 0:
+            return 1.0 if cs >= phase1 else 0.0
+        return min(1.0, max(0.0, float(cs - phase1) / float(ramp)))
 
     def reset_ball(self, env_ids):
         """Reset only the ball state for specified environments."""

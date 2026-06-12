@@ -617,7 +617,7 @@ def reward_idle_stand(env: TTEnv) -> torch.Tensor:
     near_home = torch.exp(-torch.linalg.norm(env.robot_pos[:, 0:2] - home_xy, dim=-1))  # 1 at home, ->0 far
     # base 0.5 for staying upright anywhere (so it does not fall while returning) + up to
     # 0.5 more for actually being home.
-    return idle * upright * (0.5 + 0.5 * near_home)
+    return env.idle_reward_scale() * idle * upright * (0.5 + 0.5 * near_home)
 
 
 def reward_idle_pose(env: TTEnv, k: float = 1.0) -> torch.Tensor:
@@ -641,7 +641,7 @@ def reward_idle_pose(env: TTEnv, k: float = 1.0) -> torch.Tensor:
          -1.179, -0.536, -0.259, 0.421, -0.339]              # right(hitting) arm: raised/ready
     )
     err = torch.sum(torch.square(q_upper - ready), dim=-1)
-    return env.mask_invalid.float() * torch.exp(-k * err)
+    return env.idle_reward_scale() * env.mask_invalid.float() * torch.exp(-k * err)
 
 
 
