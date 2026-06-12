@@ -1,0 +1,31 @@
+legged_lab/scripts/watchdog_train_idle10.sh
+  s_2d92d93564222b::t_4a68f2d02f1c84 57,62-66
+  s_2d92d93564222b::t_01c85a818c2d07 9-12
+  s_2d92d93564222b::t_2f0dc935253f4c 27
+.claude/skills/g1-tt-cloud-train/SKILL.md
+  s_2d92d93564222b::t_8d9129deb01295 3,6,8-9,11-18,20,23,25,27,37,42,46,52,54-55,58,63,65,67,69-70,73,76-78,80,83,85-90,92-93,97,100,103-105
+legged_lab/envs/base/tt_env.py
+  s_2d92d93564222b::t_6bb44000afd567 767-771
+  s_2d92d93564222b::t_0b856a6852c68f 316-320
+  s_2d92d93564222b::t_0cdb44f1788c47 16
+legged_lab/envs/base/tt_config.py
+  s_2d92d93564222b::t_32a32bce4d74ef 125-128
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_2d92d93564222b::t_d5b967438c9300 274-286,289-295
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "0eb7b4de3b3d664a8257bca5bcea4f21936ef1f0",
+  "prompts": {},
+  "sessions": {
+    "s_2d92d93564222b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b839b76-d802-4056-9521-f7cef4596b2c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
