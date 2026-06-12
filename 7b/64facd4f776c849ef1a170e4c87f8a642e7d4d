@@ -1,0 +1,30 @@
+legged_lab/mdp/rewards.py
+  s_2d92d93564222b::t_65a483f8378cd9 623-624,627,636,644,646-648
+  s_2d92d93564222b::t_898dfa15cee80b 625-626,628-635,637-643,645
+  s_2d92d93564222b::t_d30158ab0338e1 616
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_2d92d93564222b::t_854e8790e1bc8f 268
+  s_2d92d93564222b::t_6c1b74811fbed6 44,141-148,150
+  s_2d92d93564222b::t_fe95913d87aedd 328
+  s_2d92d93564222b::t_d30158ab0338e1 53,271
+legged_lab/scripts/watchdog_train_idle9.sh
+  s_2d92d93564222b::t_fe95913d87aedd 1-72
+legged_lab/envs/base/tt_env.py
+  s_2d92d93564222b::t_d30158ab0338e1 514,1114-1115,1129,1151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "7b64facd4f776c849ef1a170e4c87f8a642e7d4d",
+  "prompts": {},
+  "sessions": {
+    "s_2d92d93564222b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b839b76-d802-4056-9521-f7cef4596b2c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
