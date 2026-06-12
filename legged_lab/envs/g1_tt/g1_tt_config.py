@@ -41,7 +41,7 @@ class G1TableTennisRewardCfg(RewardCfg):
     energy = RewTerm(func=mdp.energy, weight=-1.5e-3)
     energy_ankle = RewTerm(func=mdp.energy, weight=-2e-3,params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"])})
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1.25e-7)
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)   # idle6: lowered from -0.025 -> weaken the "freeze to save action-rate penalty" incentive (the freeze-collapse root)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.025)
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
         weight=-80.0,
@@ -50,7 +50,7 @@ class G1TableTennisRewardCfg(RewardCfg):
     penalty_robot_table_proximity_x = RewTerm(
         func=mdp.penalty_robot_table_proximity_x,
         weight=-20.0,
-        params={ "min_distance": 0.50, "std":0.07},
+        params={ "min_distance": 0.15, "std":0.07},
     )
     fly = RewTerm(
         func=mdp.fly,
@@ -138,7 +138,16 @@ class G1TableTennisRewardCfg(RewardCfg):
     # competes with hitting.
     reward_idle_stand = RewTerm(
         func=mdp.reward_idle_stand,
+        weight=1.0,
+    )
+
+    # HITTER-style reference-stand-pose tracking when no playable ball: reward joints
+    # matching the default stand pose (an explicit STABLE configuration to hold). This is
+    # the real freeze fix the earlier idle rewards lacked (they never said WHICH pose).
+    reward_idle_pose = RewTerm(
+        func=mdp.reward_idle_pose,
         weight=3.0,
+        params={"k": 1.0},
     )
 
 
@@ -256,10 +265,10 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         # under a warm policy was OOD. From scratch avoids that mismatch.
         # 1) Bounce serves (in-court, no volley) with a difficulty curriculum easy->hard.
         self.ball.serve_bounce_enable = True
-        self.ball.serve_bounce_x_range = (-1.30, -1.10)        # 50cm: deep serves so ball is still >=0.9 at the moved-back (-1.77) hit plane
+        self.ball.serve_bounce_x_range = (-0.95, -0.75)
         self.ball.serve_bounce_vz_range = (1.7, 1.9)           # easy: gentle moderate arc
         self.ball.serve_y_start = 0.08                         # easy: nearly centered
-        self.ball.serve_bounce_x_range_hard = (-1.35, -0.95)   # 50cm: deep (was -0.60)
+        self.ball.serve_bounce_x_range_hard = (-1.35, -0.60)
         self.ball.serve_bounce_vz_range_hard = (1.3, 2.1)      # hard: flat-fast + high-slow
         self.ball.serve_y_wide = 0.72                          # hard: corners (table half 0.7625)
         self.ball.serve_curriculum_steps = 300000              # ~12.5k iter to full difficulty (gentle from scratch)
@@ -316,7 +325,7 @@ class G1TT_EvalEnvCfg(G1TableTennisEnvCfg):
 
 @configclass
 class G1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "g1_tt_idle6"
+    experiment_name: str = "g1_tt_idle9"
     logger = "tensorboard"
     save_interval = 100
     max_iterations = 100000

@@ -613,11 +613,37 @@ def reward_idle_stand(env: TTEnv) -> torch.Tensor:
     # -1.6 minus the -0.1 stand-behind offset). Rewards RETURNING to home -> counters
     # backward drift / re-centers when idle (reward_future_body_target is zeroed while
     # idle, so without this nothing pulls the base back to the -1.6 line).
-    home_xy = env.robot_pos.new_tensor([-1.87, 0.0])
+    home_xy = env.robot_pos.new_tensor([-1.7, 0.0])
     near_home = torch.exp(-torch.linalg.norm(env.robot_pos[:, 0:2] - home_xy, dim=-1))  # 1 at home, ->0 far
     # base 0.5 for staying upright anywhere (so it does not fall while returning) + up to
     # 0.5 more for actually being home.
     return idle * upright * (0.5 + 0.5 * near_home)
+
+
+def reward_idle_pose(env: TTEnv, k: float = 1.0) -> torch.Tensor:
+    """HITTER-style reference-stand-pose tracking, active ONLY when there is no playable
+    ball (mask_invalid). Tracks ONLY the UPPER body (waist_yaw + both arms) toward a READY
+    hitting stance; the legs are left FREE so the policy actively balances them.
+
+    The READY target is NOT the arms-down default pose (that would drop the arms when idle
+    and jump on the next ball). It is the median upper-body pose of the proven hitting policy
+    (model_36000) measured during play: the hitting (right) arm stays RAISED/ready
+    (R_shoulder_pitch ~ -1.18, elbow ~ 0.42), the left arm in its counter-balance rest.
+    So idle = hold the ready stance the policy already hits from -> smooth idle<->hit, no jump.
+
+    Indices 12..22 of the action-joint order (== G1_JOINT_NAMES): 12 waist_yaw, 13-17 left
+    arm, 18-22 right arm. exp(-k * ||q_upper - ready||^2). Zero when a ball is present.
+    """
+    ids = env.action_joint_ids                               # action order == G1_JOINT_NAMES
+    q_upper = env.robot.data.joint_pos[:, ids][:, 12:23]     # waist_yaw + L/R arm; legs (0-11) left free
+    ready = q_upper.new_tensor(
+        [0.005,  0.234, 0.164, -0.005, 0.581, -0.029,        # waist_yaw, left arm (sh p/r/y, elbow, wrist)
+         -1.179, -0.536, -0.259, 0.421, -0.339]              # right(hitting) arm: raised/ready
+    )
+    err = torch.sum(torch.square(q_upper - ready), dim=-1)
+    return env.mask_invalid.float() * torch.exp(-k * err)
+
+
 
 
 # #(2) penalize the ball for going below a certain height.
