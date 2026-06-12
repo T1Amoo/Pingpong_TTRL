@@ -13,6 +13,7 @@ import isaaclab.sim as sim_utils
 import isaacsim.core.utils.torch as torch_utils  # type: ignore
 import isaaclab.utils.math as math_utils
 import numpy as np
+import os
 import torch
 from isaaclab.assets.articulation import Articulation
 from isaaclab.assets.rigid_object import RigidObject
@@ -312,7 +313,11 @@ class TTEnv(VecEnv):
         # will store env ids that had their ball reset in the most recent step
         self.ball_reset_ids = torch.empty(0, dtype=torch.long, device=self.device)
         self.reset_ball_state_buf = torch.zeros(self.num_envs, 13, device=self.device, dtype=torch.float)
-        self.sim_step_counter = 0
+        # Curriculum clock (physics-substep units; cs = //decimation = 50 Hz control steps).
+        # Seed from TT_SIM_STEP_OFFSET so a watchdog RESUME continues the curriculum at the
+        # resumed iteration instead of restarting at stage 1 (the watchdog sets it to
+        # resumed_iter * decimation * num_steps_per_env). 0 (default) = fresh start.
+        self.sim_step_counter = int(os.environ.get("TT_SIM_STEP_OFFSET", "0") or 0)
         self.time_out_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
 
         # ball-related buffers
@@ -759,7 +764,11 @@ class TTEnv(VecEnv):
             # --- SERVE SAMPLING ---
             n = len(new_state_env_ids)
             _cstep = getattr(self.cfg.ball, "serve_curriculum_steps", 0)
-            c = 0.0 if not _cstep else min(1.0, float(self.sim_step_counter) / float(_cstep))
+            # idle10 (A): the difficulty curriculum does not start until serve_curriculum_phase_start
+            # (RAW sim_step_counter units) -> serves stay at the EASY range during the stage-1
+            # fixed-easy hitting bootstrap, then ramp easy->hard over serve_curriculum_steps.
+            _cstart = getattr(self.cfg.ball, "serve_curriculum_phase_start", 0) or 0
+            c = 0.0 if not _cstep else min(1.0, max(0.0, float(self.sim_step_counter - _cstart) / float(_cstep)))
             if getattr(self.cfg.ball, "serve_bounce_enable", False):
                 # RALLY serve: sample a TARGET BOUNCE POINT in the robot's own half and
                 # back-compute the launch velocity so the ball ALWAYS bounces in-court

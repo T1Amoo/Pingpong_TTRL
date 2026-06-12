@@ -271,28 +271,28 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         self.ball.serve_bounce_x_range_hard = (-1.35, -0.60)
         self.ball.serve_bounce_vz_range_hard = (1.3, 2.1)      # hard: flat-fast + high-slow
         self.ball.serve_y_wide = 0.72                          # hard: corners (table half 0.7625)
-        self.ball.serve_curriculum_steps = 600000              # serve difficulty easy->hard. Uses RAW sim_step_counter (decimation=10) -> full-hard at raw 600000 = iter ~2500. SLOWED from 300000 (iter~1250): that was tuned for volley-from-scratch; from-scratch BOUNCE is untested and iter~1250 is too fast a ramp for a random init. iter~2500 gives a gentler easy window, still fully ramped before idle/no-ball start at phase1 (iter~5000) so the two difficulty ramps do NOT overlap.
-        # 2) No-ball idle injection — in real play NO-BALL is the MAJORITY of time, so the
-        #    final ratio is idle-heavy (7 s no-ball / 3 s ball per 10 s = 70% idle), with
-        #    LONG contiguous 7 s windows so the policy learns to hold home indefinitely.
-        #    BUT a random init left mostly idle learns "just stand, never risk hitting"
-        #    (idle is safe, hitting risks a fall) -> local optimum. So ramp the no-ball gap
-        #    from 0 (c=0: all-ball, bootstrap hitting) up to 7 s over no_ball_curriculum_steps
-        #    (~12.5k iter, parallel to the serve-difficulty curriculum). Late training is the
-        #    realistic idle-heavy distribution; early training learns to hit first.
+        # idle10 (A) THREE-STAGE from-scratch curriculum. Units: serve uses RAW sim_step_counter
+        # (240/iter @ decimation 10, num_steps_per_env 24); idle/no-ball use control steps cs
+        # (24/iter). From-scratch hitting needs ~15-20k iter to become competent (eval 0.37@13k,
+        # 0.60@19k on the proven runs) — the earlier "phase1=5000" was WRONG (it was based on the
+        # warm-started rally / a shaped-reward misread). So:
+        #   Stage 1  (iter 0  -> 15000): FIXED EASY serve, no difficulty, no idle, no no-ball.
+        #                                Pure easy-ball hitting bootstrap (the proven 2026-06-03 recipe).
+        #   Stage 2  (iter 15000 -> 27000): serve difficulty ramps easy->hard.
+        #   Stage 3  (iter 27000 -> ...): idle reward + no-ball ramp in (hitting already competent).
+        # serve difficulty: start at raw 3.6M (iter 15000), ramp over raw 2.88M (12000 iter) -> full iter 27000.
+        self.ball.serve_curriculum_phase_start = 3600000       # iter ~15000: difficulty stays EASY before this
+        self.ball.serve_curriculum_steps = 2880000             # ramp easy->hard over ~12000 iter (full ~iter 27000)
+        # No-ball idle injection: final ratio 7 s no-ball / 3 s ball per 10 s = 70% idle, long windows.
         self.ball.no_ball_period_s = 10.0
         self.ball.ball_active_s = 3.0                          # final: 3 s ball, 7 s no-ball
-        # idle10 (A): HIT-FIRST curriculum (1 iter ~= num_steps_per_env = 24 control steps).
-        #   Phase 1 (cs < 120000 ~= iter 5000): ball ALWAYS present, idle reward = 0 -> pure
-        #     hitting bootstrap (== the proven from-scratch hitting recipe; idle9 died here by
-        #     turning idle on from iter 0 -> couch-potato, never learned to hit).
-        #   Phase 2 (after iter 5000): idle reward ramps 0->1 over ~6000 iter (full ~iter 11000)
-        #     while the no-ball gap ramps over ~12000 iter (full ~iter 17000). idle ramp is 2x
-        #     FASTER than no-ball so the stabilizing idle_pose reference always LEADS the no-ball
-        #     difficulty -> avoids the idle3 freeze-collapse (no-ball outpacing the reference).
-        self.ball.curriculum_phase1_steps = 120000             # ~5000 iter pure hitting first
-        self.ball.idle_reward_ramp_steps = 144000              # idle reward 0->1 over ~6000 iter after phase1
-        self.ball.no_ball_curriculum_steps = 288000            # no-ball gap 0->full over ~12000 iter after phase1
+        # Stage 3: idle reward + no-ball both START at curriculum_phase1_steps (cs, iter 27000), AFTER
+        # hitting is competent. idle ramps 0->1 over ~6000 iter (full ~iter 33000); no-ball gap ramps
+        # over ~12000 iter (full ~iter 39000). idle ramps 2x FASTER so the stabilizing idle_pose
+        # reference always LEADS the no-ball difficulty -> avoids the idle3 freeze-collapse.
+        self.ball.curriculum_phase1_steps = 648000             # iter ~27000: idle/no-ball start (after stages 1-2)
+        self.ball.idle_reward_ramp_steps = 144000              # idle reward 0->1 over ~6000 iter
+        self.ball.no_ball_curriculum_steps = 288000            # no-ball gap 0->full over ~12000 iter
         # clip_actions stays at the base 100 (NOT 20 — clipping the applied action decouples
         # the network output from the dynamics and does nothing for the obs/action_rate path).
         # 3) Randomization (kept): wide perception/action delay for real/deploy latency.

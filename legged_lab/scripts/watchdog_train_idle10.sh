@@ -6,13 +6,10 @@
 # - To STOP for good: kill THIS watchdog's PID (it forwards the kill to the
 #   child trainer). Killing only the python trainer will trigger a resume.
 #
-# ⚠️ CURRICULUM-ON-RESUME caveat: the idle10 curriculum (phase1 hold + idle/no-ball
-#   ramp) is keyed to env.sim_step_counter, which RESETS to 0 on every (re)start
-#   (it is not stored in the checkpoint). So after a crash+resume the POLICY continues
-#   from the latest ckpt (a competent hitter/idler) but the CURRICULUM restarts at
-#   phase1 (idle off, ball always on) for ~5000 iter, then ramps again. This is
-#   mostly harmless (the policy keeps hitting; idle is not destroyed, just not
-#   reinforced during that window). A clean uninterrupted run is preferred.
+# CURRICULUM-ON-RESUME: the idle10 3-stage curriculum (easy -> difficulty -> idle/no-ball)
+#   is keyed to env.sim_step_counter. On RESUME this watchdog exports TT_SIM_STEP_OFFSET =
+#   N*240 (N = resumed iter) so the env seeds its counter there and the curriculum CONTINUES
+#   at the right stage instead of replaying stage 1. (240 = decimation 10 * num_steps_per_env 24.)
 #
 # Usage (survives terminal close):
 #   TRAIN_PY=/root/miniconda3/envs/pingpong/bin/python nohup bash legged_lab/scripts/watchdog_train_idle10.sh > /dev/null 2>&1 &
@@ -27,7 +24,7 @@ PY=${TRAIN_PY:-/home/woan/.conda/envs/pingpong/bin/python}
 TASK=g1_tt
 EXP=g1_tt_idle10
 NUM_ENVS=4096
-TARGET=30000
+TARGET=42000
 LOGROOT="$REPO/logs/$EXP"
 WLOG="$REPO/train_idle10_watchdog.log"
 cd "$REPO"
@@ -57,11 +54,16 @@ while true; do
 
   if [ "$N" -lt 0 ]; then
     echo "[watchdog] $(date +%F_%H-%M-%S) fresh start -> $TARGET iters" | tee -a "$WLOG"
+    export TT_SIM_STEP_OFFSET=0
     "$PY" -m legged_lab.scripts.train --task=$TASK --num_envs=$NUM_ENVS --headless \
       --logger=tensorboard --predictor --max_iterations=$TARGET >> "$WLOG" 2>&1 &
   else
     REM=$((TARGET - N))
-    echo "[watchdog] $(date +%F_%H-%M-%S) resume from $DIR/$FILE (iter $N); run $REM more -> $TARGET" | tee -a "$WLOG"
+    # Resume the curriculum clock at iter N: sim_step_counter = N * decimation(10) * num_steps_per_env(24) = N*240.
+    # Without this, sim_step_counter restarts at 0 and the 3-stage curriculum (easy->difficulty->idle)
+    # would replay from stage 1 even though the loaded policy is far along.
+    export TT_SIM_STEP_OFFSET=$((N * 240))
+    echo "[watchdog] $(date +%F_%H-%M-%S) resume from $DIR/$FILE (iter $N); run $REM more -> $TARGET; TT_SIM_STEP_OFFSET=$TT_SIM_STEP_OFFSET" | tee -a "$WLOG"
     "$PY" -m legged_lab.scripts.train --task=$TASK --num_envs=$NUM_ENVS --headless \
       --logger=tensorboard --predictor --max_iterations=$REM \
       --resume true --load_run "$DIR" --checkpoint "$FILE" >> "$WLOG" 2>&1 &

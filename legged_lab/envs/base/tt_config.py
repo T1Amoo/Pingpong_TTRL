@@ -122,6 +122,10 @@ class BallCfg:
     # serve_curriculum_steps). Default = same as easy -> no expansion.
     serve_bounce_x_range_hard: tuple = (-1.25, -0.65)
     serve_bounce_vz_range_hard: tuple = (1.5, 1.9)
+    # idle10 (A): delay the START of the serve difficulty curriculum (RAW sim_step_counter
+    # units) so stage-1 is a fixed-EASY hitting bootstrap; difficulty ramps only after this.
+    # 0 = ramp from step 0 (legacy).
+    serve_curriculum_phase_start: int = 0
 
 
 @configclass
