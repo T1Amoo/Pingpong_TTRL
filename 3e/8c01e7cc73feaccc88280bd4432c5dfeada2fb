@@ -1,0 +1,25 @@
+legged_lab/mdp/rewards.py
+  s_2d92d93564222b::t_0cd8d6f07ba325 610
+  s_2d92d93564222b::t_5985224f2944c7 644
+legged_lab/envs/base/tt_env.py
+  s_2d92d93564222b::t_d19da3c34c3f3f 1047-1049,1055,1059-1065
+  s_2d92d93564222b::t_fbca49f6489c17 334-337
+  s_2d92d93564222b::t_f02e12215de678 1170-1182,1184-1189
+  s_2d92d93564222b::t_33ae29c5e4d315 756-757
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "3e8c01e7cc73feaccc88280bd4432c5dfeada2fb",
+  "prompts": {},
+  "sessions": {
+    "s_2d92d93564222b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b839b76-d802-4056-9521-f7cef4596b2c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
