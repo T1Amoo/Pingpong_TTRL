@@ -607,7 +607,7 @@ def reward_idle_stand(env: TTEnv) -> torch.Tensor:
     Returns 0 when there IS a playable ball (mask_invalid False) so it never competes with
     hitting -> the policy still chases and returns balls; this only shapes the no-ball idle.
     """
-    idle = env.mask_invalid.float()                                              # [N] 1 when no playable ball
+    idle = env.mask_no_ball.float()                                              # [N] 1 when TRUE no-ball (injection)
     upright = torch.clamp(-env.robot.data.projected_gravity_b[:, 2], 0.0, 1.0)   # 1 upright, 0 tipped over
     # near the HOME ready base position (robot_pos frame ~= (-1.7, 0): ball sentinel
     # -1.6 minus the -0.1 stand-behind offset). Rewards RETURNING to home -> counters
@@ -641,7 +641,7 @@ def reward_idle_pose(env: TTEnv, k: float = 1.0) -> torch.Tensor:
          -1.179, -0.536, -0.259, 0.421, -0.339]              # right(hitting) arm: raised/ready
     )
     err = torch.sum(torch.square(q_upper - ready), dim=-1)
-    return env.idle_reward_scale() * env.mask_invalid.float() * torch.exp(-k * err)
+    return env.idle_reward_scale() * env.mask_no_ball.float() * torch.exp(-k * err)
 
 
 

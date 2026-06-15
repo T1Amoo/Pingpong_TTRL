@@ -331,6 +331,10 @@ class TTEnv(VecEnv):
         self.has_touch_own_table_prev = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.has_touch_opo_table_prev = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.has_return_own_table2_prev = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        # idle10 fix: second-bounce dead-ball detection + decoupled true-no-ball mask
+        self.has_second_bounce = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        self.left_after_bounce = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        self.mask_no_ball = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
 
         self.penalty_ball_to_floor = torch.zeros(self.num_envs, device=self.device)
         self.reward_table_success = torch.zeros(self.num_envs, device=self.device)
@@ -749,6 +753,8 @@ class TTEnv(VecEnv):
         self.has_touch_own_table_prev[env_ids] = False
         self.has_touch_opo_table_prev[env_ids] = False
         self.has_return_own_table2_prev[env_ids] = False
+        self.has_second_bounce[env_ids] = False
+        self.left_after_bounce[env_ids] = False
         self.reward_vel_prev[env_ids] = 0.0
         self.ball_episode_length_buf[env_ids] = 0
         generate_new = (self.ball_reset_counter[env_ids] % self.cfg.ball.ball_reset_repeat) == 0
@@ -1038,14 +1044,25 @@ class TTEnv(VecEnv):
             # bz <= ncz_max
         )
         # print(f'env.has_touch_own_table_just_now={has_touch_own_table_just_now}')
+        # idle10: capture "ball bounced on own table in a PRIOR step" BEFORE updating the
+        # latch, so the first bounce itself is never mistaken for a second bounce.
+        bounced_before = self.has_touch_own_table_prev.clone()
         self.has_touch_own_table_prev = (
             self.has_touch_own_table_prev | has_touch_own_table_just_now
         )
         self.has_touch_opo_table_prev = (
             self.has_touch_opo_table_prev | self.has_touch_opponent_table_just_now
-        )      
+        )
         self.has_return_own_table2_prev = (
             (self.has_touch_own_table_prev & self.has_touch_paddle & has_touch_own_table_just_now) | self.has_return_own_table2_prev
+        )
+        # idle10 dead-ball: a SERVED ball that bounced on own table, rose back above it, then
+        # touches own table AGAIN without ever being hit = double bounce = dead (point lost) ->
+        # stop chasing it. (has_return_own_table2 above needs a paddle hit first, so it does NOT
+        # cover the missed-serve double bounce — this does.) bz/ncz_max are in scope from above.
+        self.left_after_bounce = self.left_after_bounce | (bounced_before & (bz > ncz_max))
+        self.has_second_bounce = self.has_second_bounce | (
+            self.left_after_bounce & has_touch_own_table_just_now & (~self.has_touch_paddle)
         )
 
         self.touched_paddel_no_bounce_table=(
@@ -1150,20 +1167,27 @@ class TTEnv(VecEnv):
         self.ball_future_pose = torch.where(
             self.mask_before.unsqueeze(-1), self.pos_pred_before, self.pos_pred_after
         )
-        # self.mask_invalid = (self.ball_pos[:, 0] < -1.6) | (vx > 0) | (z < 0.7)
-        # Invalid mask: use explicit parentheses to avoid bitwise ops on floats
-        self.mask_invalid = (
-            (self.ball_pos[:, 0] < -1.65)          # ball >5cm behind the robot line (-1.6) -> give up (was -1.9)
-            | (vx > 0)
-            | (z < 0.9)                            # ball below 0.9m -> don't hit (avoid paddle-table collision; was 0.7)
-            | ((self.ball_pos[:, 0] < -1.35) & (vz < 0))
-            | self.has_touch_paddle
-        )
-        # DEBUG: TT_NO_SERVE=1 forces perpetual no-ball; TT_SERVE_PERIOD=<sec> serves
-        # intermittently (ball active TT_SERVE_ACTIVE sec, default 2.5, then a no-ball
-        # gap) — mirrors mujoco so we can watch play -> gap -> play idle behavior.
+        # idle10 DECOUPLING — two distinct masks:
+        # mask_no_ball = TRUE no-ball (no-ball injection / TT_NO_SERVE): the ball is physically
+        #   gone. Drives the IDLE rewards ONLY (hold ready pose), so idle reward never fires on
+        #   mid-rally invalid moments (a low/behind ball is NOT "idle, relax").
+        self.mask_no_ball = torch.zeros_like(self.has_touch_paddle)
         if self._tt_no_ball_now():
-            self.mask_invalid = torch.ones_like(self.mask_invalid)
+            self.mask_no_ball = torch.ones_like(self.mask_no_ball)
+        # mask_invalid = NO valid LIVE hit target right now. Drives the actor ball-gate, the
+        #   critic ball_future_pose sentinel, and the approach-reward (ee/body) zeroing.
+        #   z<0.75 only catches a ball that dropped BELOW the table (was 0.9, which wrongly
+        #   blinded the live low BOUNCE arc at z~0.78 -> "touch but never return"). Dead balls
+        #   are caught by has_second_bounce; the old (x<-1.35 & vz<0) term wrongly killed a live
+        #   ball descending toward the paddle, so it is removed.
+        self.mask_invalid = (
+            (self.ball_pos[:, 0] < -1.65)          # ball >5cm behind the robot line -> give up
+            | (vx > 0)                             # ball moving away
+            | (z < 0.75)                           # ball dropped below the table -> dead/off
+            | self.has_second_bounce               # double bounce on own table -> dead
+            | self.has_touch_paddle                # already hit this ball
+            | self.mask_no_ball                    # true no-ball (injection)
+        )
         self.mask_terminal = (self.ball_pos[:, 0] > -1.5) | (self.ball_pos[:, 0] < -1.9) | self.has_touch_paddle_rew | (vz < 0.0) | (self.ball_pos[:, 2] < 0.6) 
             #mask_terminal: true-> future,mask_terminal: false->distance
         self.has_touch_paddle_rew = self.has_touch_paddle.clone() # finally set mask True for reward computation
