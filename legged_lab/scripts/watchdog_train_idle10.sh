@@ -24,7 +24,7 @@ PY=${TRAIN_PY:-/home/woan/.conda/envs/pingpong/bin/python}
 TASK=g1_tt
 EXP=g1_tt_idle10
 NUM_ENVS=4096
-TARGET=42000
+TARGET=30000
 LOGROOT="$REPO/logs/$EXP"
 WLOG="$REPO/train_idle10_watchdog.log"
 cd "$REPO"

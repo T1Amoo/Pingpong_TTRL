@@ -265,11 +265,11 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         # under a warm policy was OOD. From scratch avoids that mismatch.
         # 1) Bounce serves (in-court, no volley) with a difficulty curriculum easy->hard.
         self.ball.serve_bounce_enable = True
-        self.ball.serve_bounce_x_range = (-0.95, -0.75)
-        self.ball.serve_bounce_vz_range = (1.7, 1.9)           # easy: gentle moderate arc
-        self.ball.serve_y_start = 0.08                         # easy: nearly centered
-        self.ball.serve_bounce_x_range_hard = (-1.35, -0.60)
-        self.ball.serve_bounce_vz_range_hard = (1.3, 2.1)      # hard: flat-fast + high-slow
+        self.ball.serve_bounce_x_range = (-1.35, -1.20)        # easy: arrives x=-1.6 at z~1.1 (G1 paddle ready height)
+        self.ball.serve_bounce_vz_range = (2.2, 2.6)           # easy: high arc -> ball still ~1.1m at the robot plane
+        self.ball.serve_y_start = 0.5                          # easy: FULL lateral range already (mirror volley: full-range easy)
+        self.ball.serve_bounce_x_range_hard = (-1.35, -1.05)   # hard: some depth variety
+        self.ball.serve_bounce_vz_range_hard = (1.9, 2.8)      # hard: flatter/faster (low vz) + higher
         self.ball.serve_y_wide = 0.72                          # hard: corners (table half 0.7625)
         # idle10 (A) THREE-STAGE from-scratch curriculum. Units: serve uses RAW sim_step_counter
         # (240/iter @ decimation 10, num_steps_per_env 24); idle/no-ball use control steps cs
@@ -281,18 +281,19 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         #   Stage 2  (iter 15000 -> 27000): serve difficulty ramps easy->hard.
         #   Stage 3  (iter 27000 -> ...): idle reward + no-ball ramp in (hitting already competent).
         # serve difficulty: start at raw 3.6M (iter 15000), ramp over raw 2.88M (12000 iter) -> full iter 27000.
-        self.ball.serve_curriculum_phase_start = 3600000       # iter ~15000: difficulty stays EASY before this
-        self.ball.serve_curriculum_steps = 2880000             # ramp easy->hard over ~12000 iter (full ~iter 27000)
+        self.ball.serve_curriculum_phase_start = 4320000       # iter 18000: HARD balls start only AFTER no-ball is learned (sequential: easy->no-ball->hard)
+        self.ball.serve_curriculum_steps = 1440000             # ramp easy->hard(fast/wide) over ~6000 iter (full ~iter 16000)
         # No-ball idle injection: final ratio 7 s no-ball / 3 s ball per 10 s = 70% idle, long windows.
         self.ball.no_ball_period_s = 10.0
         self.ball.ball_active_s = 3.0                          # final: 3 s ball, 7 s no-ball
-        # Stage 3: idle reward + no-ball both START at curriculum_phase1_steps (cs, iter 27000), AFTER
-        # hitting is competent. idle ramps 0->1 over ~6000 iter (full ~iter 33000); no-ball gap ramps
-        # over ~12000 iter (full ~iter 39000). idle ramps 2x FASTER so the stabilizing idle_pose
-        # reference always LEADS the no-ball difficulty -> avoids the idle3 freeze-collapse.
-        self.ball.curriculum_phase1_steps = 648000             # iter ~27000: idle/no-ball start (after stages 1-2)
-        self.ball.idle_reward_ramp_steps = 144000              # idle reward 0->1 over ~6000 iter
-        self.ball.no_ball_curriculum_steps = 288000            # no-ball gap 0->full over ~12000 iter
+        # SEQUENTIAL curriculum (don't stack two new difficulties): easy(0-10k) -> +no-ball(10-16k,
+        # learn to stand on EASY balls) -> +hard balls(18k+). no-ball/idle START at curriculum_phase1_steps
+        # (cs, iter 10000); idle ramps 0->1 over ~4000 iter (full ~14000), no-ball gap over ~6000 iter
+        # (full ~16000). idle ramps FASTER so the stabilizing idle_pose reference LEADS the no-ball
+        # difficulty (anti idle3 freeze). HARD balls only after that (serve_curriculum_phase_start=iter18000).
+        self.ball.curriculum_phase1_steps = 240000             # iter 10000: no-ball/idle start (on easy balls; hard balls come later at iter18000)
+        self.ball.idle_reward_ramp_steps = 96000               # idle reward 0->1 over ~4000 iter (full ~iter 14000)
+        self.ball.no_ball_curriculum_steps = 144000            # no-ball 0->full over ~6000 iter (full ~iter 16000; idle leads)
         # clip_actions stays at the base 100 (NOT 20 — clipping the applied action decouples
         # the network output from the dynamics and does nothing for the obs/action_rate path).
         # 3) Randomization (kept): wide perception/action delay for real/deploy latency.
@@ -325,10 +326,10 @@ class G1TT_EvalEnvCfg(G1TableTennisEnvCfg):
             }
         # serving range — eval uses a FIXED medium bounce distribution (bounce path is
         # active via inherited serve_bounce_enable; the ball_speed_* below are dead code).
-        self.ball.serve_bounce_x_range = (-1.15, -0.80)   # fixed medium depth
-        self.ball.serve_bounce_vz_range = (1.5, 1.9)
-        self.ball.serve_y_start = 0.45                    # fixed medium lateral spread
-        self.ball.serve_y_wide = 0.45
+        self.ball.serve_bounce_x_range = (-1.35, -1.20)   # eval: same easy depth as training (arrives x=-1.6 at z~1.1)
+        self.ball.serve_bounce_vz_range = (2.2, 2.6)
+        self.ball.serve_y_start = 0.5                     # eval: full lateral spread
+        self.ball.serve_y_wide = 0.5
         self.ball.serve_curriculum_steps = 0   # eval: fixed serve distribution (no curriculum widening)
         self.ball.no_ball_period_s = 0.0       # eval: NO no-ball injection -> clean hitting success rate
         #   (test no-ball idle separately via the TT_SERVE_PERIOD / TT_NO_SERVE env hooks)
