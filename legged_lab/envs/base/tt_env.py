@@ -340,6 +340,8 @@ class TTEnv(VecEnv):
         # serve_c: easy->hard factor [0,1]; succ_ema: running success-return rate that gates it.
         self.serve_c = float(os.environ.get("TT_SERVE_C_INIT", "0.0"))
         self.succ_ema = 0.0
+        self.hit_ema = 0.0
+        self.opo_ema = 0.0
         self._curri_log_ctr = 0
 
         self.penalty_ball_to_floor = torch.zeros(self.num_envs, device=self.device)
@@ -750,9 +752,18 @@ class TTEnv(VecEnv):
 
         # perf-gated curriculum: record the success-return rate of the FINISHING balls BEFORE
         # their flags are cleared below. success = hit by paddle AND reached the opponent table.
+        # NOTE: succ_ema is COMPRESSED vs eval success — training's 1.5s ball-episode timeout often
+        # resets the ball before the (hit) return finishes flying to the opponent table, so it is a
+        # STRICT "return completed in-window" rate (model_12400: succ_ema~0.33 vs eval 0.98). The
+        # gate window is calibrated to THIS signal's scale, not to absolute %. hit_ema/opo_ema are
+        # logged for visibility.
         if getattr(self.cfg.ball, "serve_curriculum_perf_gated", False):
+            _hit = self.has_touch_paddle[env_ids].float().mean().item()
+            _opo = self.has_touch_opo_table_prev[env_ids].float().mean().item()
             _succ = (self.has_touch_paddle[env_ids] & self.has_touch_opo_table_prev[env_ids]).float().mean().item()
             self.succ_ema = 0.98 * self.succ_ema + 0.02 * _succ
+            self.hit_ema = 0.98 * self.hit_ema + 0.02 * _hit
+            self.opo_ema = 0.98 * self.opo_ema + 0.02 * _opo
 
         # Reset ball-related buffers for these environments
         self.has_touch_paddle[env_ids] = False
@@ -915,7 +926,7 @@ class TTEnv(VecEnv):
                 self.serve_c = min(1.0, self.serve_c + 1.0 / float(_ramp * _nspe))
             self._curri_log_ctr += 1
             if self._curri_log_ctr % 1200 == 0:   # ~ every 50 iters
-                print(f"[curriculum] serve_c={self.serve_c:.3f} succ_ema={self.succ_ema:.3f} win={_win:.2f}", flush=True)
+                print(f"[curriculum] serve_c={self.serve_c:.3f} succ_ema={self.succ_ema:.3f} (hit={self.hit_ema:.3f} opo={self.opo_ema:.3f}) win={_win:.2f}", flush=True)
 
         # Check for balls on floor and reset them without resetting the entire environment
         ball_on_floor = self.ball.data.root_pos_w[:, 2] < 0.1  # Adjust threshold as needed
