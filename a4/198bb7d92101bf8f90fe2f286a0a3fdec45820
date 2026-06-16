@@ -1,0 +1,27 @@
+legged_lab/scripts/eval.py
+  s_e9c28ec27b7fc3::t_2ff83d3dd038a0 249-266
+legged_lab/scripts/watchdog_train_idle11.sh
+  s_e9c28ec27b7fc3::t_e336bd654bfad4 1-75
+legged_lab/envs/base/tt_env.py
+  s_e9c28ec27b7fc3::t_e6ac0073309e19 762-769
+rsl_rl/rsl_rl/runners/on_policy_predictor_regression_runner.py
+  s_e9c28ec27b7fc3::t_99761dc01f8fa0 320-327
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_e9c28ec27b7fc3::t_aa8601aeb1bdb8 339
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "a4198bb7d92101bf8f90fe2f286a0a3fdec45820",
+  "prompts": {},
+  "sessions": {
+    "s_e9c28ec27b7fc3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3acc873d-713d-4d72-afa1-87601aa0e0f1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
