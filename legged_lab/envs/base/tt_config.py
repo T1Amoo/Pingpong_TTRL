@@ -126,6 +126,15 @@ class BallCfg:
     # units) so stage-1 is a fixed-EASY hitting bootstrap; difficulty ramps only after this.
     # 0 = ramp from step 0 (legacy).
     serve_curriculum_phase_start: int = 0
+    # idle12: PERFORMANCE-GATED serve difficulty. When enabled, the easy->hard factor c is no
+    # longer a function of sim_step; instead it advances only while the running success-return
+    # rate (succ_ema) is >= serve_succ_window, by a step sized so a sustained pass takes
+    # serve_c_ramp_iters training iters to go c:0->1. c=1 then freezes (consolidation). The gate
+    # self-limits: if a difficulty yields un-returnable serves, success drops below the window
+    # and c stops advancing. Threshold is overridable at runtime via env TT_SUCC_WINDOW.
+    serve_curriculum_perf_gated: bool = False
+    serve_succ_window: float = 0.6
+    serve_c_ramp_iters: int = 10000
 
 
 @configclass

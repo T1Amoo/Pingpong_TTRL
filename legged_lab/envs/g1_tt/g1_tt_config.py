@@ -283,17 +283,19 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         # serve difficulty: start at raw 3.6M (iter 15000), ramp over raw 2.88M (12000 iter) -> full iter 27000.
         self.ball.serve_curriculum_phase_start = 4320000       # iter 18000: HARD balls start only AFTER no-ball is learned (sequential: easy->no-ball->hard)
         self.ball.serve_curriculum_steps = 1440000             # ramp easy->hard(fast/wide) over ~6000 iter (full ~iter 16000)
-        # No-ball idle injection: final ratio 7 s no-ball / 3 s ball per 10 s = 70% idle, long windows.
-        self.ball.no_ball_period_s = 10.0
-        self.ball.ball_active_s = 3.0                          # final: 3 s ball, 7 s no-ball
-        # SEQUENTIAL curriculum (don't stack two new difficulties): easy(0-10k) -> +no-ball(10-16k,
-        # learn to stand on EASY balls) -> +hard balls(18k+). no-ball/idle START at curriculum_phase1_steps
-        # (cs, iter 10000); idle ramps 0->1 over ~4000 iter (full ~14000), no-ball gap over ~6000 iter
-        # (full ~16000). idle ramps FASTER so the stabilizing idle_pose reference LEADS the no-ball
-        # difficulty (anti idle3 freeze). HARD balls only after that (serve_curriculum_phase_start=iter18000).
-        self.ball.curriculum_phase1_steps = 240000             # iter 10000: no-ball/idle start (on easy balls; hard balls come later at iter18000)
-        self.ball.idle_reward_ramp_steps = 96000               # idle reward 0->1 over ~4000 iter (full ~iter 14000)
-        self.ball.no_ball_curriculum_steps = 144000            # no-ball 0->full over ~6000 iter (full ~iter 16000; idle leads)
+        # ===== idle12 (warm-start from idle10 model_10000 on the BUG-FIXED env) =====
+        # Insight: idle behavior is learned FOR FREE from inter-serve gaps (mask_invalid -> sentinel)
+        # once Bug A/B are fixed (model_10000, never no-ball-trained, idles stably). So DROP the
+        # no-ball injection entirely (no_ball_period_s=0 -> mask_no_ball always False -> idle rewards
+        # inert). Instead spend the warm-start on harder serves via a PERFORMANCE-GATED curriculum.
+        self.ball.no_ball_period_s = 0.0       # idle12: NO no-ball injection (idle is free from gaps)
+        self.ball.ball_active_s = 3.0
+        self.ball.serve_curriculum_perf_gated = True   # advance serve difficulty by success rate, not sim_step
+        self.ball.serve_succ_window = 0.6              # advance c only while success-return rate >= 0.6 (best ckp ~0.70; live-tunable via TT_SUCC_WINDOW)
+        self.ball.serve_c_ramp_iters = 10000           # ~10k iters of sustained passing to ramp c 0->1, then freeze (consolidate)
+        self.ball.curriculum_phase1_steps = 240000
+        self.ball.idle_reward_ramp_steps = 96000
+        self.ball.no_ball_curriculum_steps = 144000
         # clip_actions stays at the base 100 (NOT 20 — clipping the applied action decouples
         # the network output from the dynamics and does nothing for the obs/action_rate path).
         # 3) Randomization (kept): wide perception/action delay for real/deploy latency.
@@ -336,7 +338,7 @@ class G1TT_EvalEnvCfg(G1TableTennisEnvCfg):
 
 @configclass
 class G1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "g1_tt_idle11"
+    experiment_name: str = "g1_tt_idle12"
     logger = "tensorboard"
     save_interval = 100
     max_iterations = 100000

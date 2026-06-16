@@ -336,6 +336,12 @@ class TTEnv(VecEnv):
         self.left_after_bounce = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.mask_no_ball = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
 
+        # --- performance-gated serve difficulty curriculum (idle12 warm-start) ---
+        # serve_c: easy->hard factor [0,1]; succ_ema: running success-return rate that gates it.
+        self.serve_c = float(os.environ.get("TT_SERVE_C_INIT", "0.0"))
+        self.succ_ema = 0.0
+        self._curri_log_ctr = 0
+
         self.penalty_ball_to_floor = torch.zeros(self.num_envs, device=self.device)
         self.reward_table_success = torch.zeros(self.num_envs, device=self.device)
         self.reward_vel_prev = torch.zeros(self.num_envs, device=self.device)
@@ -741,7 +747,13 @@ class TTEnv(VecEnv):
         """Reset only the ball state for specified environments."""
         if len(env_ids) == 0:
             return
-            
+
+        # perf-gated curriculum: record the success-return rate of the FINISHING balls BEFORE
+        # their flags are cleared below. success = hit by paddle AND reached the opponent table.
+        if getattr(self.cfg.ball, "serve_curriculum_perf_gated", False):
+            _succ = (self.has_touch_paddle[env_ids] & self.has_touch_opo_table_prev[env_ids]).float().mean().item()
+            self.succ_ema = 0.98 * self.succ_ema + 0.02 * _succ
+
         # Reset ball-related buffers for these environments
         self.has_touch_paddle[env_ids] = False
         self.ball_landing_dis_rew[env_ids] = False
@@ -781,7 +793,10 @@ class TTEnv(VecEnv):
             # (RAW sim_step_counter units) -> serves stay at the EASY range during the stage-1
             # fixed-easy hitting bootstrap, then ramp easy->hard over serve_curriculum_steps.
             _cstart = getattr(self.cfg.ball, "serve_curriculum_phase_start", 0) or 0
-            c = 0.0 if not _cstep else min(1.0, max(0.0, float(self.sim_step_counter - _cstart) / float(_cstep)))
+            if getattr(self.cfg.ball, "serve_curriculum_perf_gated", False):
+                c = float(self.serve_c)   # perf-gated: difficulty advanced in step() by success rate
+            else:
+                c = 0.0 if not _cstep else min(1.0, max(0.0, float(self.sim_step_counter - _cstart) / float(_cstep)))
             if getattr(self.cfg.ball, "serve_bounce_enable", False):
                 # RALLY serve: sample a TARGET BOUNCE POINT in the robot's own half and
                 # back-compute the launch velocity so the ball ALWAYS bounces in-court
@@ -889,8 +904,20 @@ class TTEnv(VecEnv):
 
         self.compute_intermediate_values()
 
-        # Check for balls on floor and reset them without resetting the entire environment
-        ball_on_floor = self.ball.data.root_pos_w[:, 2] < 0.1  # Adjust threshold as needed
+        # perf-gated serve curriculum: advance difficulty only while the success-return rate is
+        # in the window. Step sized so a sustained pass takes serve_c_ramp_iters iters for c:0->1.
+        # Threshold overridable live via env TT_SUCC_WINDOW (so it can be relaxed if it stalls).
+        if getattr(self.cfg.ball, "serve_curriculum_perf_gated", False):
+            _win = float(os.environ.get("TT_SUCC_WINDOW", str(getattr(self.cfg.ball, "serve_succ_window", 0.6))))
+            _nspe = int(getattr(self.cfg, "num_steps_per_env", 24) or 24)
+            if self.serve_c < 1.0 and self.succ_ema >= _win:
+                _ramp = max(1, int(getattr(self.cfg.ball, "serve_c_ramp_iters", 10000)))
+                self.serve_c = min(1.0, self.serve_c + 1.0 / float(_ramp * _nspe))
+            self._curri_log_ctr += 1
+            if self._curri_log_ctr % 1200 == 0:   # ~ every 50 iters
+                print(f"[curriculum] serve_c={self.serve_c:.3f} succ_ema={self.succ_ema:.3f} win={_win:.2f}", flush=True)
+
+
         ball_timeout = self.ball_episode_length_buf >= self.max_ball_episode_length
         ball_reset_condition = ball_on_floor | ball_timeout
         # ball_reset_condition = ball_timeout
