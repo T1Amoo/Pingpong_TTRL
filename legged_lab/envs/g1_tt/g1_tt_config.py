@@ -336,7 +336,7 @@ class G1TT_EvalEnvCfg(G1TableTennisEnvCfg):
 
 @configclass
 class G1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "g1_tt_idle10"
+    experiment_name: str = "g1_tt_idle11"
     logger = "tensorboard"
     save_interval = 100
     max_iterations = 100000

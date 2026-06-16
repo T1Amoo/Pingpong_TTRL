@@ -246,6 +246,24 @@ def play():
                         runner._maybe_predict_and_update_env()
                     except Exception:
                         pass
+                # DIAG(TT_TRACE=1): per-step trace of env0 ball/pred/base to debug no-ball<->ball transition
+                if os.environ.get("TT_TRACE"):
+                    try:
+                        _ti = getattr(env, "_trace_i", 0)
+                        if _ti == 0:
+                            with open("/tmp/tt_trace.csv", "w") as _tf:
+                                _tf.write("step,mask_invalid,mask_no_ball,ball_x,ball_y,ball_z,pred_x,pred_y,pred_z,base_x,base_y,base_z,act_max\n")
+                        _mi = int(env.mask_invalid[0].item())
+                        _mnb = int(env.mask_no_ball[0].item())
+                        _bp = env.ball_pos[0].detach().cpu().numpy()
+                        _pr = env.ball_prediction[0].detach().cpu().numpy()
+                        _base = (env.robot.data.root_link_pos_w[0] - env.table.data.root_link_pos_w[0]).detach().cpu().numpy()
+                        _amax = float(actions[0].abs().max().item())
+                        with open("/tmp/tt_trace.csv", "a") as _tf:
+                            _tf.write(f"{_ti},{_mi},{_mnb},{_bp[0]:.3f},{_bp[1]:.3f},{_bp[2]:.3f},{_pr[0]:.3f},{_pr[1]:.3f},{_pr[2]:.3f},{_base[0]:.3f},{_base[1]:.3f},{_base[2]:.3f},{_amax:.3f}\n")
+                        env._trace_i = _ti + 1
+                    except Exception:
+                        pass
                 # Track success/serve and print periodically
                 try:
                     # Update per-env success/hit flags during ongoing serve

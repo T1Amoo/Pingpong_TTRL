@@ -317,6 +317,14 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
             return
         with torch.no_grad():
             ball_pos = self.env.ball_pos.detach().to("cpu")  # [N, 3]
+            # Bug B fix: during a no-ball window the ball is parked underground (z=-50). Recording
+            # that off-field position poisons the H-frame predictor history, producing garbage
+            # (OOD) predictions for H steps after the ball returns -> the actor (gate already open)
+            # eats the garbage and the action explodes. Skip off-field samples and invalidate the
+            # history so predictions resume only after H fresh, valid ball samples accumulate.
+            if bool((ball_pos[:, 2] < -1.0).any()):
+                self._traj_len = 0
+                return
             self._traj_buf_cpu[self._traj_write_idx].copy_(ball_pos)
             # also record env-provided ground truth future pose as regression target
             # only needed while predictor training is active to save bandwidth

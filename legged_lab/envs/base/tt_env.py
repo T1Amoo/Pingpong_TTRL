@@ -759,7 +759,14 @@ class TTEnv(VecEnv):
         self.ball_episode_length_buf[env_ids] = 0
         generate_new = (self.ball_reset_counter[env_ids] % self.cfg.ball.ball_reset_repeat) == 0
         reuse_old = ~generate_new
-        self.ball_reset_counter[env_ids] += 1
+        # Bug A fix: a no-ball window parks the ball underground (z=-50), so ball_on_floor (z<0.1)
+        # fires every step and reset_ball is called every step. Counting each of those as a "serve"
+        # inflated ball_reset_counter past max_serve_per_episode within ~6 steps, tripping the
+        # episode time-out in check_reset -> a FULL env reset (robot teleported to spawn) ~every 6
+        # steps during no-ball, so the policy could never learn to stand idle. A no-ball re-park is
+        # not a serve -> do not count it.
+        if not self._tt_no_ball_now():
+            self.ball_reset_counter[env_ids] += 1
         self.touch_info = []
 
         if generate_new.any():
