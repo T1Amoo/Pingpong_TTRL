@@ -1,0 +1,19 @@
+legged_lab/envs/base/tt_env.py
+  s_e9c28ec27b7fc3::t_b36706020f1884 920-921
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "68f10f7c19b5949c69b1ca2c42bfbc3f454782e3",
+  "prompts": {},
+  "sessions": {
+    "s_e9c28ec27b7fc3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3acc873d-713d-4d72-afa1-87601aa0e0f1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
