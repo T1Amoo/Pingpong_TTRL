@@ -917,7 +917,8 @@ class TTEnv(VecEnv):
             if self._curri_log_ctr % 1200 == 0:   # ~ every 50 iters
                 print(f"[curriculum] serve_c={self.serve_c:.3f} succ_ema={self.succ_ema:.3f} win={_win:.2f}", flush=True)
 
-
+        # Check for balls on floor and reset them without resetting the entire environment
+        ball_on_floor = self.ball.data.root_pos_w[:, 2] < 0.1  # Adjust threshold as needed
         ball_timeout = self.ball_episode_length_buf >= self.max_ball_episode_length
         ball_reset_condition = ball_on_floor | ball_timeout
         # ball_reset_condition = ball_timeout
