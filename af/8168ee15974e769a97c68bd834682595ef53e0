@@ -1,0 +1,29 @@
+legged_lab/envs/base/tt_config.py
+  s_e9c28ec27b7fc3::t_92977d861b5d3a 129-137
+legged_lab/envs/base/tt_env.py
+  s_e9c28ec27b7fc3::t_1f3569c2baf803 796-799
+  s_e9c28ec27b7fc3::t_9d4ff92b0bb116 907-920
+  s_e9c28ec27b7fc3::t_dac9ff0c40a641 750-756
+  s_e9c28ec27b7fc3::t_c14dfeaefcd520 339-344
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_e9c28ec27b7fc3::t_d950ca4e7e48a0 341
+  s_e9c28ec27b7fc3::t_44bd78844d4a54 286-298
+legged_lab/scripts/watchdog_train_idle12.sh
+  s_e9c28ec27b7fc3::t_40cf3ac771093e 1-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "af8168ee15974e769a97c68bd834682595ef53e0",
+  "prompts": {},
+  "sessions": {
+    "s_e9c28ec27b7fc3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3acc873d-713d-4d72-afa1-87601aa0e0f1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
