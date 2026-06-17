@@ -336,6 +336,21 @@ class G1TT_EvalEnvCfg(G1TableTennisEnvCfg):
         self.ball.no_ball_period_s = 0.0       # eval: NO no-ball injection -> clean hitting success rate
         #   (test no-ball idle separately via the TT_SERVE_PERIOD / TT_NO_SERVE env hooks)
 
+
+@configclass
+class G1TT_EvalHardEnvCfg(G1TT_EvalEnvCfg):
+    """HARD eval: the training serve_c=1.0 distribution (deep + flatter/faster + wide corners).
+    g1_tt_eval is the EASY distribution and saturates ~90-95% for idle12; this discriminates
+    hard-serve capability across ckpts. Fixed distribution (serve_curriculum_steps=0)."""
+    def __post_init__(self):
+        super().__post_init__()
+        self.ball.serve_bounce_x_range = (-1.35, -1.05)   # hard: depth variety toward the net
+        self.ball.serve_bounce_vz_range = (1.9, 2.8)      # hard: flatter/faster + higher
+        self.ball.serve_y_start = 0.72                    # hard: corners (table half 0.7625)
+        self.ball.serve_y_wide = 0.72
+        self.ball.serve_curriculum_steps = 0
+
+
 @configclass
 class G1TableTennisAgentCfg(TTAgentCfg):
     experiment_name: str = "g1_tt_idle12"
