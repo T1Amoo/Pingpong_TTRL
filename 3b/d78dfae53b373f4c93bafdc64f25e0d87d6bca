@@ -1,0 +1,24 @@
+legged_lab/envs/g1_locomotion/g1_locomotion_config.py
+  s_67291ad3e89daa::t_700cf549d7afe7 70-73
+  s_67291ad3e89daa::t_c2598780020194 1-69,74-88
+legged_lab/envs/__init__.py
+  s_67291ad3e89daa::t_701cce682014e0 31-35,42-43
+legged_lab/envs/base/legged_env.py
+  s_67291ad3e89daa::t_e593b08cf27988 381-386
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "3bd78dfae53b373f4c93bafdc64f25e0d87d6bca",
+  "prompts": {},
+  "sessions": {
+    "s_67291ad3e89daa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "415058ec-c840-42a5-b334-0dd65bab25a1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
