@@ -37,7 +37,7 @@ G1_TT_CFG = ArticulationCfg(
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(-1.6, 0.0, 0.76),
+        pos=(-2.0, 0.0, 0.76),   # stance >=60cm from table (was -1.6=23cm); matches hit_plane_x
         joint_pos={
             ".*_hip_pitch_joint": -0.312,
             ".*_knee_joint": 0.669,

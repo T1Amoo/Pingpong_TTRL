@@ -125,6 +125,16 @@ class G1TableTennisRewardCfg(RewardCfg):
     joint_deviation_torso = RewTerm(func=mdp.joint_deviation_l1, weight=-0.2,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=["waist_yaw_joint"])})
 
+    # --- ankle-overrun fix (2026-06-18): real robot pins L/R ankle_roll at the ±0.262 clip
+    # limit ~100% of the time (no-ball AND during hits) because training NEVER penalized the
+    # COMMANDED target exceeding limits (dof_pos_limits罚 actual angle, physics-clamped -> never
+    # fires; energy_ankle ~0 when vel~0). These three close that loop. Weights are smoke/early-
+    # iter tunable (too strong -> suppresses legit hitting swing; too weak -> ankle still saturates).
+    joint_pos_target_limits = RewTerm(func=mdp.joint_pos_target_limits, weight=-1.0)  # penalize越限 INTENT (key)
+    action_l2 = RewTerm(func=mdp.action_l2, weight=-0.002)                            # weak raw-action magnitude reg
+    joint_deviation_ankle = RewTerm(func=mdp.joint_deviation_l1, weight=-0.2,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"])})
+
     reward_contact = RewTerm(
         func=mdp.reward_contact,
         weight=150.0,
@@ -237,11 +247,17 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         self.domain_rand.events.reset_manipulation_joints.params["asset_cfg"].joint_names = [
             "right_shoulder_.*", "right_elbow_joint", "right_wrist_roll_joint",
         ]
-        # paddle / hitting geometry (real-mesh PACE adapter: contact/blade center at wrist +X 0.337m)
+        # paddle / hitting geometry (real-mesh PACE adapter: contact/blade center at wrist +X 0.30m;
+        # extension shortened 0.16->0.123 in build_tt_urdf.py to match the REAL 30cm wrist->paddle-center)
         self.robot.paddle_body_name = "right_wrist_roll_rubber_hand"
-        self.robot.paddle_offset = (0.337, 0.0, 0.0)
+        self.robot.paddle_offset = (0.30, 0.0, 0.0)
         self.robot.hit_body_height = 0.685   # FK: steady pelvis height in ready stance
         self.robot.paddle_y_offset = -0.55   # hitting-extension lateral offset (was -0.227 ready-stance; caused ~0.37m paddle-ball gap -> hit~0). ~T1's -0.60.
+        # Robot >=60cm from table (real: waist marker occluded if closer). Table own edge x=-1.37;
+        # stance/hit-plane moved -1.6 -> -2.0 (~63cm). HOME/intercept-clamp/give-up/terminal/idle
+        # anchors all derive from hit_plane_x in tt_env.py. Serve must be re-tuned (ball flies ~0.63m
+        # past the table-edge bounce to reach -2.0 at ready height) — see smoke-tune below.
+        self.robot.hit_plane_x = -2.0
         G1_JOINT_NAMES = [
             "left_hip_pitch_joint","left_hip_roll_joint","left_hip_yaw_joint","left_knee_joint",
             "left_ankle_pitch_joint","left_ankle_roll_joint",
@@ -283,19 +299,22 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         # serve difficulty: start at raw 3.6M (iter 15000), ramp over raw 2.88M (12000 iter) -> full iter 27000.
         self.ball.serve_curriculum_phase_start = 4320000       # iter 18000: HARD balls start only AFTER no-ball is learned (sequential: easy->no-ball->hard)
         self.ball.serve_curriculum_steps = 1440000             # ramp easy->hard(fast/wide) over ~6000 iter (full ~iter 16000)
-        # ===== idle12 (warm-start from idle10 model_10000 on the BUG-FIXED env) =====
-        # Insight: idle behavior is learned FOR FREE from inter-serve gaps (mask_invalid -> sentinel)
-        # once Bug A/B are fixed (model_10000, never no-ball-trained, idles stably). So DROP the
-        # no-ball injection entirely (no_ball_period_s=0 -> mask_no_ball always False -> idle rewards
-        # inert). Instead spend the warm-start on harder serves via a PERFORMANCE-GATED curriculum.
-        self.ball.no_ball_period_s = 0.0       # idle12: NO no-ball injection (idle is free from gaps)
-        self.ball.ball_active_s = 3.0
+        # ===== g1_tt_v6 (FROM-SCRATCH; new geometry: stance -2.0, arm 30cm; ankle-overrun fix;
+        # idle ACTUALLY trained this time). 3-day weekend -> ~42k iter (L20 ~600 iter/h). =====
+        #   Stage1 (~0-15k): perf-gated serve stays EASY (c=0) until succ_ema>=0.6 -> pure hitting
+        #                    bootstrap on the new geometry. (門控: iter~13-15k eval easy success >0.4.)
+        #   Stage2 (~15-30k): once competent, serve difficulty c ramps 0->1 over serve_c_ramp_iters
+        #                    of sustained passing (easy->hard depth/speed/wide corners).
+        #   Stage3 (~30k+):  idle reward + no-ball gap ramp in (hitting already competent) -> learn
+        #                    a STABLE no-ball idle (idle12's bug: no_ball_period_s=0 -> never trained).
+        self.ball.no_ball_period_s = 5.0       # g1_tt_v6: TRAIN no-ball idle. period 5s, active 3s ->
+        self.ball.ball_active_s = 3.0          #   ~2s no-ball per 5s cycle = 40% cap (45% plan limit).
         self.ball.serve_curriculum_perf_gated = True   # advance serve difficulty by success rate, not sim_step
-        self.ball.serve_succ_window = 0.6              # advance c only while success-return rate >= 0.6 (best ckp ~0.70; live-tunable via TT_SUCC_WINDOW)
-        self.ball.serve_c_ramp_iters = 10000           # ~10k iters of sustained passing to ramp c 0->1, then freeze (consolidate)
-        self.ball.curriculum_phase1_steps = 240000
-        self.ball.idle_reward_ramp_steps = 96000
-        self.ball.no_ball_curriculum_steps = 144000
+        self.ball.serve_succ_window = 0.6              # advance c only while success-return rate >= 0.6 (live-tunable via TT_SUCC_WINDOW)
+        self.ball.serve_c_ramp_iters = 15000           # ~15k iters of sustained passing to ramp c 0->1 (longer than idle12's 10k: 3-day budget)
+        self.ball.curriculum_phase1_steps = 720000     # idle/no-ball START at iter 30000 (cs=24/iter) -> Stage3 (was 240000=10k)
+        self.ball.idle_reward_ramp_steps = 96000       # idle reward ramps 0->1 over 4000 iter (leads no-ball)
+        self.ball.no_ball_curriculum_steps = 192000    # no-ball gap ramps over 8000 iter (slower; idle reference leads)
         # clip_actions stays at the base 100 (NOT 20 — clipping the applied action decouples
         # the network output from the dynamics and does nothing for the obs/action_rate path).
         # 3) Randomization (kept): wide perception/action delay for real/deploy latency.
@@ -353,7 +372,7 @@ class G1TT_EvalHardEnvCfg(G1TT_EvalEnvCfg):
 
 @configclass
 class G1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "g1_tt_idle12"
+    experiment_name: str = "g1_tt_v6"
     logger = "tensorboard"
     save_interval = 100
     max_iterations = 100000

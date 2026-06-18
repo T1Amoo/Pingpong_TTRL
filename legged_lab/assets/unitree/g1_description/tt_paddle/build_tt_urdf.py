@@ -35,7 +35,7 @@ PARENT_LINK = "right_wrist_roll_rubber_hand"
 P = dict(
     mount_xyz="0 0 0", mount_rpy="0 0 0",
     mount_radius=0.025, mount_length=0.012, mount_mass=0.03,
-    extension_length=0.16, extension_radius=0.018, extension_mass=0.08,
+    extension_length=0.123, extension_radius=0.018, extension_mass=0.08,
     # slot enlarged to fit the real paddle handle (~30.8 x 20 mm) + clearance
     slot_length=0.075, slot_width=0.032, slot_height=0.022,
     wall_thickness=0.004, holder_mass=0.05,

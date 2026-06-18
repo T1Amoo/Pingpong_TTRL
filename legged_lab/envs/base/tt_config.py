@@ -72,6 +72,9 @@ class RobotCfg:
     hit_body_height: float = 0.69               # target body height for robot_future_pos
     paddle_y_offset: float = -0.60              # lateral base->paddle offset in ready stance
     robot_vel_max: float = 7.0                  # clamp for robot_future_vel target
+    hit_plane_x: float = -1.6                   # robot stance / hit-plane x (env-local). HOME, intercept
+                                                # clamp, give-up/terminal lines & idle anchor all derive
+                                                # from this. G1 overrides to -2.0 (robot >=60cm from table).
 
 @configclass
 class BallCfg:

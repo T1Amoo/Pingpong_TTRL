@@ -528,7 +528,7 @@ class TTEnv(VecEnv):
         mexp = self.mask_invalid.unsqueeze(-1)  # [N,1]; set this step in compute_intermediate_values
         # (a) prediction is in ball_future_pose's frame (robot-table): sentinel == modified_ball_pos
         pred_sentinel = torch.tensor(
-            [-1.6, 0.0 + self.cfg.robot.paddle_y_offset, self.cfg.robot.hit_body_height + 0.2],
+            [self.cfg.robot.hit_plane_x, 0.0 + self.cfg.robot.paddle_y_offset, self.cfg.robot.hit_body_height + 0.2],
             device=self.device, dtype=self.ball_prediction.dtype,
         ).unsqueeze(0)  # [1,3]
         ball_pred_g = torch.where(mexp, pred_sentinel.expand_as(self.ball_prediction), self.ball_prediction)
@@ -890,6 +890,7 @@ class TTEnv(VecEnv):
 
         cliped_actions = torch.clip(delayed_actions, -self.clip_actions, self.clip_actions).to(self.device)
         processed_actions = cliped_actions * self.action_scale + self.robot.data.default_joint_pos[:, self.action_joint_ids]
+        self.processed_actions = processed_actions   # commanded joint target (for joint_pos_target_limits reward)
 
         for _ in range(self.cfg.sim.decimation):
             self.sim_step_counter += 1
@@ -1152,6 +1153,8 @@ class TTEnv(VecEnv):
         body_height = self.cfg.robot.hit_body_height
         vel_max = self.cfg.robot.robot_vel_max
         paddle_y_offset = self.cfg.robot.paddle_y_offset
+        hx = self.cfg.robot.hit_plane_x   # robot stance / hit-plane x (env-local); all the
+                                          # -1.6/-1.65/-1.5/-1.9/-1.87 below derive from this.
 
         self.mask_before = (has_bounced == 0).squeeze(-1)
         self.mask_after = (has_bounced == 1).squeeze(-1)
@@ -1201,8 +1204,8 @@ class TTEnv(VecEnv):
         xpa = x + dx_after
         ypa = y + dy_after
 
-        xpb=torch.clamp(xpb, max=-1.6)
-        xpa=torch.clamp(xpa, max=-1.6)
+        xpb=torch.clamp(xpb, max=hx)
+        xpa=torch.clamp(xpa, max=hx)
 
         self.pos_pred_before = torch.stack([xpb, ypb, zpb], dim=-1)
         self.pos_pred_after = torch.stack([xpa, ypa, zpa], dim=-1)
@@ -1227,14 +1230,14 @@ class TTEnv(VecEnv):
         #   are caught by has_second_bounce; the old (x<-1.35 & vz<0) term wrongly killed a live
         #   ball descending toward the paddle, so it is removed.
         self.mask_invalid = (
-            (self.ball_pos[:, 0] < -1.65)          # ball >5cm behind the robot line -> give up
+            (self.ball_pos[:, 0] < hx - 0.05)      # ball >5cm behind the robot line -> give up
             | (vx > 0)                             # ball moving away
             | (z < 0.75)                           # ball dropped below the table -> dead/off
             | self.has_second_bounce               # double bounce on own table -> dead
             | self.has_touch_paddle                # already hit this ball
             | self.mask_no_ball                    # true no-ball (injection)
         )
-        self.mask_terminal = (self.ball_pos[:, 0] > -1.5) | (self.ball_pos[:, 0] < -1.9) | self.has_touch_paddle_rew | (vz < 0.0) | (self.ball_pos[:, 2] < 0.6) 
+        self.mask_terminal = (self.ball_pos[:, 0] > hx + 0.1) | (self.ball_pos[:, 0] < hx - 0.3) | self.has_touch_paddle_rew | (vz < 0.0) | (self.ball_pos[:, 2] < 0.6)
             #mask_terminal: true-> future,mask_terminal: false->distance
         self.has_touch_paddle_rew = self.has_touch_paddle.clone() # finally set mask True for reward computation
         # Expand to match shape (N, 3)
@@ -1245,7 +1248,7 @@ class TTEnv(VecEnv):
         # ready target has rel_target_x == -0.1 constant (no restoring force) -> over a long
         # no-ball gap the robot drifts backward chasing it and falls. Anchoring x,y to the
         # trained home (-1.6, 0) gives a restoring force -> stable idle at home.
-        modified_ball_pos[:, 0] = -1.6 # HOME_X (env-local; robot trained base)
+        modified_ball_pos[:, 0] = hx # HOME_X (env-local; robot trained base)
         modified_ball_pos[:, 1] = 0.0 + paddle_y_offset  # HOME_Y + paddle offset (-0.55)
         modified_ball_pos[:, 2] = body_height + 0.2     # ready height (0.885)
         self.ball_future_pose = torch.where(
@@ -1266,7 +1269,7 @@ class TTEnv(VecEnv):
         )
         self.robot_future_pos = torch.where(
             mask_invalid_expanded,      # [N,3] bool
-            self.robot_future_pos.new_tensor([-1.87, 0.0, body_height]).expand_as(self.robot_future_pos),               
+            self.robot_future_pos.new_tensor([hx - 0.27, 0.0, body_height]).expand_as(self.robot_future_pos),
             # [-0.9, 0.2, body_height] for all envs
             self.robot_future_pos
         )

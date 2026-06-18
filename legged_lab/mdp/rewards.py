@@ -86,6 +86,27 @@ def action_rate_l2(env: BaseEnv) -> torch.Tensor:
     )
 
 
+def action_l2(env: BaseEnv) -> torch.Tensor:
+    """Penalize RAW network action magnitude (regularize toward 0). action_rate_l2 only
+    penalizes CHANGE, so a STEADY large output (e.g. the no-ball ankle_roll runaway raw~11)
+    has ~0 action_rate but large action_l2. Gives every dim a weak pull back to default."""
+    return torch.sum(torch.square(env.action_buffer._circular_buffer.buffer[:, -1, :]), dim=1)
+
+
+def joint_pos_target_limits(env) -> torch.Tensor:
+    """Penalize the COMMANDED joint target (processed_actions = scale*action + default) for
+    exceeding the SOFT joint limits. The built-in joint_pos_limits penalizes the ACTUAL angle
+    — which PhysX clamps to the limit, so it never fires for an over-command. This catches the
+    INTENT to drive a joint past its limit (the no-ball ankle_roll 'target 2.7rad vs limit
+    0.262' runaway that, undeployed-clip, blew up the real motor). Closes the missing loop."""
+    if not hasattr(env, "processed_actions"):
+        return torch.zeros(env.num_envs, device=env.device)
+    target = env.processed_actions                                              # [N, 23] action order
+    limits = env.robot.data.soft_joint_pos_limits[:, env.action_joint_ids, :]   # [N, 23, 2]
+    over = (target - limits[..., 1]).clamp(min=0.0) + (limits[..., 0] - target).clamp(min=0.0)
+    return torch.sum(torch.square(over), dim=1)
+
+
 def undesired_contacts(env: BaseEnv, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     net_contact_forces = contact_sensor.data.net_forces_w_history
@@ -613,7 +634,7 @@ def reward_idle_stand(env: TTEnv) -> torch.Tensor:
     # -1.6 minus the -0.1 stand-behind offset). Rewards RETURNING to home -> counters
     # backward drift / re-centers when idle (reward_future_body_target is zeroed while
     # idle, so without this nothing pulls the base back to the -1.6 line).
-    home_xy = env.robot_pos.new_tensor([-1.7, 0.0])
+    home_xy = env.robot_pos.new_tensor([env.cfg.robot.hit_plane_x - 0.1, 0.0])
     near_home = torch.exp(-torch.linalg.norm(env.robot_pos[:, 0:2] - home_xy, dim=-1))  # 1 at home, ->0 far
     # base 0.5 for staying upright anywhere (so it does not fall while returning) + up to
     # 0.5 more for actually being home.
@@ -635,12 +656,17 @@ def reward_idle_pose(env: TTEnv, k: float = 1.0) -> torch.Tensor:
     arm, 18-22 right arm. exp(-k * ||q_upper - ready||^2). Zero when a ball is present.
     """
     ids = env.action_joint_ids                               # action order == G1_JOINT_NAMES
-    q_upper = env.robot.data.joint_pos[:, ids][:, 12:23]     # waist_yaw + L/R arm; legs (0-11) left free
-    ready = q_upper.new_tensor(
-        [0.005,  0.234, 0.164, -0.005, 0.581, -0.029,        # waist_yaw, left arm (sh p/r/y, elbow, wrist)
+    q_full = env.robot.data.joint_pos[:, ids]                # all 23 joints
+    # Full ready stance: legs at the squat default (incl ankle_roll target 0 -> directly
+    # counters the no-ball ankle_roll wandering-to-limit), upper body at the proven hitting
+    # ready pose. Gives the policy an explicit stable idle posture for the WHOLE body.
+    ready = q_full.new_tensor(
+        [-0.312, 0.0, 0.0, 0.669, -0.363, 0.0,               # left leg: hip p/r/y, knee, ankle p/r
+         -0.312, 0.0, 0.0, 0.669, -0.363, 0.0,               # right leg
+         0.005,  0.234, 0.164, -0.005, 0.581, -0.029,        # waist_yaw, left arm (sh p/r/y, elbow, wrist)
          -1.179, -0.536, -0.259, 0.421, -0.339]              # right(hitting) arm: raised/ready
     )
-    err = torch.sum(torch.square(q_upper - ready), dim=-1)
+    err = torch.sum(torch.square(q_full - ready), dim=-1)
     return env.idle_reward_scale() * env.mask_no_ball.float() * torch.exp(-k * err)
 
 
