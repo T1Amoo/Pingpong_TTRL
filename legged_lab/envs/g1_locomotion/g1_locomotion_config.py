@@ -69,7 +69,8 @@ class G1LocomotionEnvCfg(LeggedEnvCfg):
         self.robot.feet_body_names = [".*_ankle_roll_link"]
         # base RobotCfg leaves these as [] (LeggedEnv needs scalars: get_phase() fmod, height term)
         self.robot.phase_dt = 0.8          # gait-phase clock period (s)
-        self.robot.min_base_height = 0.5   # terminate if robot height drops below (fall)
+        self.robot.min_base_height = 0.3   # robot_height(pelvis-above-feet)=0.486 in the squat default
+                                           # (knee 0.669); 0.5 terminated every step. 0.3 catches real falls.
         self.robot.max_base_height = 1.0   # terminate if above (jump/launch)
         self.domain_rand.events.add_base_mass.params["asset_cfg"].body_names = ["torso_link"]
         self.observations.joint_names = G1_JOINT_NAMES
