@@ -378,6 +378,12 @@ class LeggedEnv(VecEnv):
         )
         return phase
 
+    def close(self):
+        """Cleanup hook (train.py calls env.close() at the end). VecEnv does not provide one
+        and LeggedEnv holds no resources needing explicit teardown before simulation_app.close(),
+        so this is a safe no-op (mirrors TTEnv.close but without the TT-only managers)."""
+        pass
+
     def clock(self) -> torch.Tensor:
         """Clock time using sin and cos from the phase of the simulation."""
         phase = self.get_phase()
