@@ -1,0 +1,56 @@
+legged_lab/assets/unitree/g1.py
+  s_67291ad3e89daa::t_89c8bf799f7d4c 40
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_67291ad3e89daa::t_24b00d8cd6589d 302-311,313-317
+  s_67291ad3e89daa::t_4db9fa7be72f12 250-251,253
+  s_67291ad3e89daa::t_d4016ecfd08bc4 128-137
+  s_67291ad3e89daa::t_23fefc28b45bab 256-260
+  s_67291ad3e89daa::t_344d2ea7cec4cd 375
+legged_lab/scripts/watchdog_train_idle8.sh
+  s_2d92d93564222b::t_ae48daada10146 1-72
+legged_lab/scripts/watchdog_train_idle7.sh
+  s_2d92d93564222b::t_854e8790e1bc8f 1-72
+legged_lab/assets/unitree/g1_description/g1_23dof_tt_paddle.urdf
+  s_67291ad3e89daa::t_c95fc503d40ec6 786
+legged_lab/assets/unitree/g1_description/tt_paddle/build_tt_urdf.py
+  s_67291ad3e89daa::t_ac3bd24777fd9c 38
+legged_lab/envs/base/tt_config.py
+  s_67291ad3e89daa::t_aa1e7f7daa0fd9 75-77
+legged_lab/envs/base/tt_env.py
+  s_67291ad3e89daa::t_cabed78dead4d6 1240
+  s_67291ad3e89daa::t_9fe99119cad404 893
+  s_67291ad3e89daa::t_df19ea283bd4a5 1156-1157
+  s_67291ad3e89daa::t_5b0d641a4b97a7 1272
+  s_67291ad3e89daa::t_090d2f69eae149 1207-1208
+  s_67291ad3e89daa::t_9a07559e3993fc 1233
+  s_67291ad3e89daa::t_b8507db2aa67cf 531
+  s_67291ad3e89daa::t_3f989a79812805 1251
+legged_lab/mdp/rewards.py
+  s_67291ad3e89daa::t_a2e28710534c4c 89-109
+  s_67291ad3e89daa::t_1535f9dfd0fd57 637
+  s_67291ad3e89daa::t_0db12a09767622 659-666,669
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "575a874fe3ed3f55771dee28f96a88ce90f6d58e",
+  "prompts": {},
+  "sessions": {
+    "s_2d92d93564222b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b839b76-d802-4056-9521-f7cef4596b2c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    },
+    "s_67291ad3e89daa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "415058ec-c840-42a5-b334-0dd65bab25a1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
