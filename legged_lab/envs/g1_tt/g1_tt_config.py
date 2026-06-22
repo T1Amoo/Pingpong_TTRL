@@ -303,24 +303,23 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         #   Stage 2  (iter 15000 -> 27000): serve difficulty ramps easy->hard.
         #   Stage 3  (iter 27000 -> ...): idle reward + no-ball ramp in (hitting already competent).
         # serve difficulty: start at raw 3.6M (iter 15000), ramp over raw 2.88M (12000 iter) -> full iter 27000.
-        self.ball.serve_curriculum_phase_start = 4320000       # iter 18000: HARD balls start only AFTER no-ball is learned (sequential: easy->no-ball->hard)
-        self.ball.serve_curriculum_steps = 1440000             # ramp easy->hard(fast/wide) over ~6000 iter (full ~iter 16000)
-        # ===== g1_tt_v6 (FROM-SCRATCH; new geometry: stance -2.0, arm 30cm; ankle-overrun fix;
-        # idle ACTUALLY trained this time). 3-day weekend -> ~42k iter (L20 ~600 iter/h). =====
-        #   Stage1 (~0-15k): perf-gated serve stays EASY (c=0) until succ_ema>=0.6 -> pure hitting
-        #                    bootstrap on the new geometry. (門控: iter~13-15k eval easy success >0.4.)
-        #   Stage2 (~15-30k): once competent, serve difficulty c ramps 0->1 over serve_c_ramp_iters
-        #                    of sustained passing (easy->hard depth/speed/wide corners).
-        #   Stage3 (~30k+):  idle reward + no-ball gap ramp in (hitting already competent) -> learn
-        #                    a STABLE no-ball idle (idle12's bug: no_ball_period_s=0 -> never trained).
+        # ===== g1_tt_v7 (FROM-SCRATCH; serve re-tuned so ball reaches -2.0 — see serve block above.
+        # v6's failure was the BAD serve, not from-scratch, so from-scratch is correct now.) =====
+        # User-specified FIXED-ITER 3-stage curriculum (sim_step-keyed, 240 raw steps/iter):
+        #   Stage 1 (iter 0     -> 15000): FIXED EASY serve. Pure easy-ball hitting bootstrap.
+        #   Stage 2 (iter 15000 -> 25000): serve difficulty ramps easy->hard over 10000 iter.
+        #   Stage 3 (iter 25000 -> 30000): CONSOLIDATE at full hard difficulty (c=1.0).
+        # NO idle / NO no-ball (no_ball_period_s=0): v6 diverged when no-ball ramped full; deploy
+        # clip handles no-ball safety. TARGET=30000.
+        self.ball.serve_curriculum_perf_gated = False          # FIXED-iter schedule (not success-gated)
+        self.ball.serve_curriculum_phase_start = 3600000       # iter 15000: easy until here (15000*240)
+        self.ball.serve_curriculum_steps = 2400000             # ramp easy->hard over 10000 iter (15000->25000), then full
         self.ball.no_ball_period_s = 0.0       # v7: NO no-ball injection (v6 diverged ~iter39k when
         self.ball.ball_active_s = 3.0          #   no-ball ramped full; idle-region instability. Deploy clip handles no-ball.
-        self.ball.serve_curriculum_perf_gated = True   # advance serve difficulty by success rate, not sim_step
-        self.ball.serve_succ_window = 0.6              # advance c only while success-return rate >= 0.6 (live-tunable via TT_SUCC_WINDOW)
-        self.ball.serve_c_ramp_iters = 15000           # ~15k iters of sustained passing to ramp c 0->1 (longer than idle12's 10k: 3-day budget)
-        self.ball.curriculum_phase1_steps = 720000     # idle/no-ball START at iter 30000 (cs=24/iter) -> Stage3 (was 240000=10k)
-        self.ball.idle_reward_ramp_steps = 96000       # idle reward ramps 0->1 over 4000 iter (leads no-ball)
-        self.ball.no_ball_curriculum_steps = 192000    # no-ball gap ramps over 8000 iter (slower; idle reference leads)
+        # idle/no-ball params below are INERT (no_ball_period_s=0) — kept for reference only.
+        self.ball.curriculum_phase1_steps = 720000
+        self.ball.idle_reward_ramp_steps = 96000
+        self.ball.no_ball_curriculum_steps = 192000
         # clip_actions stays at the base 100 (NOT 20 — clipping the applied action decouples
         # the network output from the dynamics and does nothing for the obs/action_rate path).
         # 3) Randomization (kept): wide perception/action delay for real/deploy latency.
