@@ -1,0 +1,20 @@
+legged_lab/scripts/watchdog_train_locomotion.sh
+  s_ee10fa3faf43f2::t_5b79308d91b06c 12-13
+  s_ee10fa3faf43f2::t_c30e7d2a5467c4 43-56,59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "53fd39fa48ca40d447667f98fa400d7d2420fcdd",
+  "prompts": {},
+  "sessions": {
+    "s_ee10fa3faf43f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed0f5a6-6a65-42d3-92c4-84134b849a25",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
