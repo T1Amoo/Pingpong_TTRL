@@ -1,0 +1,25 @@
+legged_lab/scripts/watchdog_train_v7.sh
+  s_67291ad3e89daa::t_0b0d6eafe0e4cb 1-99
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_67291ad3e89daa::t_24616a5845a6a7 356-357
+  s_67291ad3e89daa::t_d184b7e2699ac9 381
+  s_67291ad3e89daa::t_a11f80c8cd90c0 372-373
+  s_67291ad3e89daa::t_d747e0c96093df 284-291,293-294
+  s_67291ad3e89daa::t_847e39b3610dcf 316-317
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "aad06215ae866cc0614d8d2365dc6daaae7cd6bf",
+  "prompts": {},
+  "sessions": {
+    "s_67291ad3e89daa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "415058ec-c840-42a5-b334-0dd65bab25a1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
