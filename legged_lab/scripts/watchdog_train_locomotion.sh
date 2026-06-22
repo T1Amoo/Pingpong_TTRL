@@ -9,8 +9,8 @@ REPO="$(cd "$HERE/../.." && pwd)"
 PY=${TRAIN_PY:-/home/woan/.conda/envs/pingpong/bin/python}
 TASK=g1_locomotion
 EXP=g1_locomotion_v2
-NUM_ENVS=512
-TARGET=15000
+NUM_ENVS=${NUM_ENVS:-512}
+TARGET=${TARGET:-15000}
 LOGROOT="$REPO/logs/$EXP"
 WLOG="$REPO/train_locomotion_watchdog.log"
 cd "$REPO"
@@ -40,9 +40,22 @@ while true; do
     echo "[wd] $(date +%F_%H-%M-%S) resume $DIR/$FILE (iter $N) -> +$REM" | tee -a "$WLOG"
     "$PY" -m legged_lab.scripts.train --task=$TASK --num_envs=$NUM_ENVS --headless --logger=tensorboard --max_iterations=$REM --resume true --load_run "$DIR" --checkpoint "$FILE" >> "$WLOG" 2>&1 &
   fi
-  CHILD=$!; wait "$CHILD"; CODE=$?; CHILD=""
+  CHILD=$!
+  # Isaac Sim 4.5's simulation_app.close() busy-spins forever on teardown after the
+  # final checkpoint is already flushed by runner.learn (root cause of v1's 3-day zombie).
+  # So don't blindly wait: poll, and once the target ckpt is on disk, kill the hung child.
+  while kill -0 "$CHILD" 2>/dev/null; do
+    IFS='|' read -r NC _ _ <<< "$(latest)"
+    if [ "$NC" -ge "$((TARGET-1))" ]; then
+      echo "[wd] $(date +%F_%H-%M-%S) target ckpt $NC saved; killing child $CHILD (Isaac shutdown-hang workaround)" | tee -a "$WLOG"
+      kill -9 "$CHILD" 2>/dev/null
+      break
+    fi
+    sleep 30
+  done
+  wait "$CHILD" 2>/dev/null; CODE=$?; CHILD=""
   IFS='|' read -r N2 _ _ <<< "$(latest)"
   echo "[wd] $(date +%F_%H-%M-%S) trainer exited code=$CODE; iter=$N2" | tee -a "$WLOG"
-  if [ "$CODE" -eq 0 ] && [ "$N2" -ge "$((TARGET-1))" ]; then echo "[wd] completed at $N2." | tee -a "$WLOG"; break; fi
+  if [ "$N2" -ge "$((TARGET-1))" ]; then echo "[wd] completed at $N2." | tee -a "$WLOG"; break; fi
   echo "[wd] resume in 20s (kill PID $$ to stop)" | tee -a "$WLOG"; sleep 20
 done
