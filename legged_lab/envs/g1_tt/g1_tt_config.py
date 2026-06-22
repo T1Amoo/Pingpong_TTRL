@@ -281,11 +281,17 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         # under a warm policy was OOD. From scratch avoids that mismatch.
         # 1) Bounce serves (in-court, no volley) with a difficulty curriculum easy->hard.
         self.ball.serve_bounce_enable = True
-        self.ball.serve_bounce_x_range = (-1.35, -1.20)        # easy: arrives x=-1.6 at z~1.1 (G1 paddle ready height)
-        self.ball.serve_bounce_vz_range = (2.2, 2.6)           # easy: high arc -> ball still ~1.1m at the robot plane
+        # v7 SERVE RE-TUNED FOR -2.0 (root cause of v6 fail: old serve apex/ready-height was at
+        # x=-1.6; at -2.0 the ball had dropped to z~0.5-0.7 or didn't arrive -> robot could only
+        # touch, never return). Empirical sim sweep (/tmp/serve_sweep.py): ping-pong ball has heavy
+        # air drag, so HIGH-arc serves (vz>=2.6) FAIL to carry to -2.0 (9/24). FLAT+FAST + deep
+        # bounce (near table edge -1.37) carries: vz(1.7,2.0) xb(-1.37,-1.31) -> 24/24 reach -2.0
+        # at z~1.01 (paddle ready height), clears net (z@x=0 ~1.16 > 0.91).
+        self.ball.serve_bounce_x_range = (-1.37, -1.31)        # easy: deep bounce near table edge
+        self.ball.serve_bounce_vz_range = (1.7, 2.0)           # easy: FLAT+fast -> reaches -2.0 at z~1.0
         self.ball.serve_y_start = 0.5                          # easy: FULL lateral range already (mirror volley: full-range easy)
-        self.ball.serve_bounce_x_range_hard = (-1.35, -1.05)   # hard: some depth variety
-        self.ball.serve_bounce_vz_range_hard = (1.9, 2.8)      # hard: flatter/faster (low vz) + higher
+        self.ball.serve_bounce_x_range_hard = (-1.37, -1.28)   # hard: some depth variety (still reaches -2.0)
+        self.ball.serve_bounce_vz_range_hard = (1.6, 2.2)      # hard: flatter+faster..slightly higher (vz<=2.2 keeps reach)
         self.ball.serve_y_wide = 0.72                          # hard: corners (table half 0.7625)
         # idle10 (A) THREE-STAGE from-scratch curriculum. Units: serve uses RAW sim_step_counter
         # (240/iter @ decimation 10, num_steps_per_env 24); idle/no-ball use control steps cs
@@ -307,8 +313,8 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         #                    of sustained passing (easy->hard depth/speed/wide corners).
         #   Stage3 (~30k+):  idle reward + no-ball gap ramp in (hitting already competent) -> learn
         #                    a STABLE no-ball idle (idle12's bug: no_ball_period_s=0 -> never trained).
-        self.ball.no_ball_period_s = 5.0       # g1_tt_v6: TRAIN no-ball idle. period 5s, active 3s ->
-        self.ball.ball_active_s = 3.0          #   ~2s no-ball per 5s cycle = 40% cap (45% plan limit).
+        self.ball.no_ball_period_s = 0.0       # v7: NO no-ball injection (v6 diverged ~iter39k when
+        self.ball.ball_active_s = 3.0          #   no-ball ramped full; idle-region instability. Deploy clip handles no-ball.
         self.ball.serve_curriculum_perf_gated = True   # advance serve difficulty by success rate, not sim_step
         self.ball.serve_succ_window = 0.6              # advance c only while success-return rate >= 0.6 (live-tunable via TT_SUCC_WINDOW)
         self.ball.serve_c_ramp_iters = 15000           # ~15k iters of sustained passing to ramp c 0->1 (longer than idle12's 10k: 3-day budget)
@@ -347,8 +353,8 @@ class G1TT_EvalEnvCfg(G1TableTennisEnvCfg):
             }
         # serving range — eval uses a FIXED medium bounce distribution (bounce path is
         # active via inherited serve_bounce_enable; the ball_speed_* below are dead code).
-        self.ball.serve_bounce_x_range = (-1.35, -1.20)   # eval: same easy depth as training (arrives x=-1.6 at z~1.1)
-        self.ball.serve_bounce_vz_range = (2.2, 2.6)
+        self.ball.serve_bounce_x_range = (-1.37, -1.31)   # eval: same -2.0-reaching serve as training easy
+        self.ball.serve_bounce_vz_range = (1.7, 2.0)
         self.ball.serve_y_start = 0.5                     # eval: full lateral spread
         self.ball.serve_y_wide = 0.5
         self.ball.serve_curriculum_steps = 0   # eval: fixed serve distribution (no curriculum widening)
@@ -363,8 +369,8 @@ class G1TT_EvalHardEnvCfg(G1TT_EvalEnvCfg):
     hard-serve capability across ckpts. Fixed distribution (serve_curriculum_steps=0)."""
     def __post_init__(self):
         super().__post_init__()
-        self.ball.serve_bounce_x_range = (-1.35, -1.05)   # hard: depth variety toward the net
-        self.ball.serve_bounce_vz_range = (1.9, 2.8)      # hard: flatter/faster + higher
+        self.ball.serve_bounce_x_range = (-1.37, -1.28)   # hard: depth variety toward the net (still reaches -2.0)
+        self.ball.serve_bounce_vz_range = (1.6, 2.2)      # hard: flatter+faster..slightly higher (vz<=2.2 reaches -2.0)
         self.ball.serve_y_start = 0.72                    # hard: corners (table half 0.7625)
         self.ball.serve_y_wide = 0.72
         self.ball.serve_curriculum_steps = 0
@@ -372,7 +378,7 @@ class G1TT_EvalHardEnvCfg(G1TT_EvalEnvCfg):
 
 @configclass
 class G1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "g1_tt_v6"
+    experiment_name: str = "g1_tt_v7"
     logger = "tensorboard"
     save_interval = 100
     max_iterations = 100000
