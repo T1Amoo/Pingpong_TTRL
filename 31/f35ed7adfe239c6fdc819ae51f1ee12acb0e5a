@@ -1,0 +1,22 @@
+legged_lab/scripts/overnight_locomotion_finish.sh
+  s_ee10fa3faf43f2::t_d79865e8c2a411 1-58
+legged_lab/scripts/eval_locomotion.py
+  s_ee10fa3faf43f2::t_285cacb48bc9d6 1-3,12,14-17,22-25,32-46,52-53,55,57,59,62
+  s_ee10fa3faf43f2::t_afabc3941be0ac 4-11,13,18-21,26-31,47-51,54,56,58,60-61,63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "31f35ed7adfe239c6fdc819ae51f1ee12acb0e5a",
+  "prompts": {},
+  "sessions": {
+    "s_ee10fa3faf43f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed0f5a6-6a65-42d3-92c4-84134b849a25",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
