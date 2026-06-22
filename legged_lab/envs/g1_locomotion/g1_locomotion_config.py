@@ -79,11 +79,17 @@ class G1LocomotionEnvCfg(LeggedEnvCfg):
         self.commands.ranges.lin_vel_x = (-0.5, 0.8)
         self.commands.ranges.lin_vel_y = (-0.4, 0.4)
         self.commands.ranges.ang_vel_z = (-1.0, 1.0)
+        # sim2real: model command latency (base LeggedEnvCfg leaves action_delay OFF). 1-3 control
+        # steps @ 50Hz = 20-60ms, matching the g1_tt deploy latency band.
+        self.domain_rand.action_delay.enable = True
+        self.domain_rand.action_delay.params["min_delay"] = 1
+        self.domain_rand.action_delay.params["max_delay"] = 3
 
 
 @configclass
 class G1LocomotionAgentCfg(LeggedAgentCfg):
-    experiment_name = "g1_locomotion"
+    experiment_name = "g1_locomotion_v2"   # v2: actor obs without base lin_vel (deploy-compatible);
+                                            # action_delay on; noise vector aligned. (v1 kept in logs/g1_locomotion.)
     logger = "tensorboard"
     save_interval = 200
     max_iterations = 15000

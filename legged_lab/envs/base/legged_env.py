@@ -158,10 +158,12 @@ class LeggedEnv(VecEnv):
         action = self.action_buffer._circular_buffer.buffer[:, -1, :]
         root_lin_vel = robot.data.root_lin_vel_b
         clock = self.clock()
+        # ACTOR obs: NO base linear velocity (unobservable on the real robot; the deploy RLBase
+        # framework has no base_lin_vel term). lin_vel is privileged -> critic only (asymmetric
+        # actor-critic, matching the deployable TableTennis policy). clock == deploy gait_phase.
         current_actor_obs = torch.cat(
             [
                 clock * self.obs_scales.clock,
-                root_lin_vel * self.obs_scales.lin_vel,
                 ang_vel * self.obs_scales.ang_vel,
                 projected_gravity * self.obs_scales.projected_gravity,
                 command * self.obs_scales.commands,
@@ -192,8 +194,9 @@ class LeggedEnv(VecEnv):
             .repeat(self.num_envs, 1)
         )
 
+        # CRITIC obs: actor obs + privileged base linear velocity + feet contact.
         current_critic_obs = torch.cat(
-            [current_actor_obs, feet_contact], dim=-1
+            [current_actor_obs, root_lin_vel * self.obs_scales.lin_vel, feet_contact], dim=-1
         )
 
         return current_actor_obs, current_critic_obs
@@ -322,15 +325,17 @@ class LeggedEnv(VecEnv):
             actor_obs, _ = self.compute_current_observations()
             noise_vec = torch.zeros_like(actor_obs[0])
             noise_scales = self.cfg.noise.noise_scales
-            noise_vec[:3] = noise_scales.lin_vel * self.obs_scales.lin_vel
-            noise_vec[3:6] = noise_scales.ang_vel * self.obs_scales.ang_vel
-            noise_vec[6:9] = noise_scales.projected_gravity * self.obs_scales.projected_gravity
-            noise_vec[9:12] = 0
-            noise_vec[12 : 12 + self.num_joints] = noise_scales.joint_pos * self.obs_scales.joint_pos
-            noise_vec[12 + self.num_joints : 12 + self.num_joints * 2] = (
-                noise_scales.joint_vel * self.obs_scales.joint_vel
-            )
-            noise_vec[12 + self.num_joints * 2 : 12 + 12 + self.num_joints * 2 + self.num_actions] = 0.0
+            # actor layout: clock(2), ang_vel(3), proj_grav(3), command(3), jpos(nj), jvel(nj), action(na).
+            # noise only on the SENSED quantities (ang_vel, proj_grav, joint pos/vel); clock(gait_phase),
+            # command, and last_action carry no sensor noise.
+            nj = self.num_joints
+            noise_vec[0:2] = 0.0                                                          # clock
+            noise_vec[2:5] = noise_scales.ang_vel * self.obs_scales.ang_vel               # base ang vel
+            noise_vec[5:8] = noise_scales.projected_gravity * self.obs_scales.projected_gravity
+            noise_vec[8:11] = 0.0                                                         # velocity command
+            noise_vec[11 : 11 + nj] = noise_scales.joint_pos * self.obs_scales.joint_pos  # joint pos
+            noise_vec[11 + nj : 11 + 2 * nj] = noise_scales.joint_vel * self.obs_scales.joint_vel  # joint vel
+            noise_vec[11 + 2 * nj : 11 + 2 * nj + self.num_actions] = 0.0                 # last action
             self.noise_scale_vec = noise_vec
 
             if self.cfg.scene.height_scanner.enable_height_scan:
