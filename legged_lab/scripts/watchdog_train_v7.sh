@@ -27,7 +27,13 @@ PY=${TRAIN_PY:-/home/woan/.conda/envs/pingpong/bin/python}
 TASK=g1_tt
 EXP=g1_tt_v7
 NUM_ENVS=4096
-TARGET=25000
+# WARM-START preserves the loaded iter counter (model_24500 -> runner resumes at iter 24500),
+# and runner.learn(max_iterations) runs max_iterations ADDITIONAL iters. So:
+#   SEED_ITER=24500 (the warm-start ckpt's number); FINETUNE=20000 desired fine-tune iters;
+#   TARGET=SEED_ITER+FINETUNE=44500 (real ckpts run model_24600..model_44500).
+#   max_iterations for ANY run = TARGET - loaded_iter (first run loaded=SEED_ITER; resume loaded=N).
+SEED_ITER=24500
+TARGET=44500
 LOGROOT="$REPO/logs/$EXP"
 WLOG="$REPO/train_v7_watchdog.log"
 SEED_SRC="$REPO/logs/g1_tt_idle12/2026-06-16_11-09-29/model_24500.pt"
@@ -71,11 +77,13 @@ while true; do
   fi
 
   if [ "$N" -lt 0 ]; then
-    # FIRST run: warm-start from the staged seed, fresh optimizer, curriculum from easy (offset 0)
-    echo "[watchdog] $(date +%F_%H-%M-%S) WARM-START from seed_24500/$SEED_CKPT -> $TARGET iters (fresh optimizer, curriculum@0)" | tee -a "$WLOG"
+    # FIRST run: warm-start from the staged seed, fresh optimizer, curriculum from easy (offset 0).
+    # Loaded iter counter = SEED_ITER (24500); run TARGET-SEED_ITER additional iters -> TARGET.
+    FINE=$((TARGET - SEED_ITER))
+    echo "[watchdog] $(date +%F_%H-%M-%S) WARM-START from seed_24500/$SEED_CKPT -> +$FINE iters to $TARGET (fresh optimizer, curriculum@0)" | tee -a "$WLOG"
     export TT_SIM_STEP_OFFSET=0
     LOAD_OPTIMIZER=0 "$PY" -m legged_lab.scripts.train --task=$TASK --num_envs=$NUM_ENVS --headless \
-      --logger=tensorboard --predictor --max_iterations=$TARGET \
+      --logger=tensorboard --predictor --max_iterations=$FINE \
       --resume true --load_run seed_24500 --checkpoint "$SEED_CKPT" >> "$WLOG" 2>&1 &
   else
     REM=$((TARGET - N))
