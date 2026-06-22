@@ -1,0 +1,26 @@
+legged_lab/scripts/watchdog_train_locomotion.sh
+  s_67291ad3e89daa::t_136e4af7559908 11
+legged_lab/envs/base/legged_env.py
+  s_67291ad3e89daa::t_50ca4b16ee20d1 161-163
+  s_67291ad3e89daa::t_b8e9df94d5a8e7 197,199
+  s_67291ad3e89daa::t_5dcaf640782202 328-338
+legged_lab/envs/g1_locomotion/g1_locomotion_config.py
+  s_67291ad3e89daa::t_2a54fc7e794fd1 82-86
+  s_67291ad3e89daa::t_98484a33553a09 91-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "e85e1a6095a9e6eb4aa99ed80a3a0a45fa232bfd",
+  "prompts": {},
+  "sessions": {
+    "s_67291ad3e89daa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "415058ec-c840-42a5-b334-0dd65bab25a1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
