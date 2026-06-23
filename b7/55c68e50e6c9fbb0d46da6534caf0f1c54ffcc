@@ -1,0 +1,34 @@
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_d8dfbcb428441c::t_5cd862c0ac497a 380
+  s_d8dfbcb428441c::t_20f36f4f132ffa 43
+legged_lab/scripts/eval.py
+  s_ee10fa3faf43f2::t_4d8821dab13db2 207-211,217-224
+  s_ee10fa3faf43f2::t_a74e4a67b20d9d 390-392,394-395
+  s_ee10fa3faf43f2::t_705a92404d164d 384-389,393,396-397
+legged_lab/scripts/watchdog_train_v8.sh
+  s_d8dfbcb428441c::t_d07fd5599bb806 1-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "b755c68e50e6c9fbb0d46da6534caf0f1c54ffcc",
+  "prompts": {},
+  "sessions": {
+    "s_d8dfbcb428441c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "09a9aa2b-7662-4905-bc22-39230f3e08a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    },
+    "s_ee10fa3faf43f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed0f5a6-6a65-42d3-92c4-84134b849a25",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
