@@ -28,12 +28,14 @@ G1_JOINT_NAMES = [
 class G1LocomotionRewardCfg(RewardCfg):
     # velocity tracking (the task)
     track_lin_vel_xy = RewTerm(func=mdp.track_lin_vel_xy_yaw_frame_exp, weight=1.0, params={"std": 0.5})
-    track_ang_vel_z = RewTerm(func=mdp.track_ang_vel_z_world_exp, weight=0.5, params={"std": 0.5})
+    track_ang_vel_z = RewTerm(func=mdp.track_ang_vel_z_world_exp, weight=1.0, params={"std": 0.5})
     # stability / smoothness (params reused from the proven g1_tt cfg; all BaseEnv-safe)
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-2.5)
-    energy = RewTerm(func=mdp.energy, weight=-1.0e-3)
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)
+    # v3: energy slashed 1e-3 -> 2e-5 (ref unitree_rl_lab g1). v2's heavy energy penalty
+    # made "don't lift the feet" optimal -> the ankle-shuffle gait. Lower it so stepping pays.
+    energy = RewTerm(func=mdp.energy, weight=-2.0e-5)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-2.0)
@@ -49,6 +51,30 @@ class G1LocomotionRewardCfg(RewardCfg):
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=["waist_yaw_joint"])})
     joint_deviation_hip = RewTerm(func=mdp.joint_deviation_l1, weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_yaw_joint", ".*_hip_roll_joint"])})
+
+    # -- GAIT / STEPPING (v3, 2026-06-23): v2 had NO foot-lift/gait reward -> the policy
+    # learned an ankle-shuffle that slides over the ground without stepping (user-observed in
+    # sim2sim). These force a real alternating gait. Adapted from the two proven locomotion
+    # reward sets: unitree_rl_lab g1-velocity (feet_gait/clearance/slide) + LeggedLab g1
+    # (air_time/fly/slide). All funcs are command-gated & LeggedEnv-native (no air_time sensor needed).
+    gait = RewTerm(  # phase-synced alternating stance (== ref feet_gait); uses env.get_phase() clock
+        func=mdp.reward_feet_contact_number, weight=0.5,
+        params={"sensor_cfg": SceneEntityCfg("contact_sensor", body_names=".*_ankle_roll_link"),
+                "pos_rw": 1.0, "neg_rw": -0.3, "command_name": "base_velocity"})
+    feet_clearance = RewTerm(  # reward swing feet clearing 10cm -> forces foot LIFT
+        func=mdp.foot_clearance_reward, weight=1.0,
+        params={"target_height": 0.10, "std": 0.05, "tanh_mult": 2.0,
+                "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"), "command_name": "base_velocity"})
+    feet_slide = RewTerm(  # penalize foot sliding while in contact -> kills the shuffle
+        func=mdp.feet_slide, weight=-0.3,
+        params={"sensor_cfg": SceneEntityCfg("contact_sensor", body_names=".*_ankle_roll_link"),
+                "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link")})
+    fly = RewTerm(  # no both-feet-airborne hopping
+        func=mdp.fly, weight=-1.0,
+        params={"sensor_cfg": SceneEntityCfg("contact_sensor", body_names=".*_ankle_roll_link"), "threshold": 1.0})
+    feet_too_near = RewTerm(  # keep the feet apart (no self-collision / crossed legs)
+        func=mdp.feet_too_near_humanoid, weight=-1.0,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=[".*_ankle_roll_link"]), "threshold": 0.2})
 
 
 @configclass
@@ -88,8 +114,8 @@ class G1LocomotionEnvCfg(LeggedEnvCfg):
 
 @configclass
 class G1LocomotionAgentCfg(LeggedAgentCfg):
-    experiment_name = "g1_locomotion_v2"   # v2: actor obs without base lin_vel (deploy-compatible);
-                                            # action_delay on; noise vector aligned. (v1 kept in logs/g1_locomotion.)
+    experiment_name = "g1_locomotion_v3"   # v3: + gait/clearance/slide/fly stepping rewards,
+                                            # energy 1e-3->2e-5 (v2 shuffled: no foot-lift reward).
     logger = "tensorboard"
     save_interval = 200
     max_iterations = 15000
