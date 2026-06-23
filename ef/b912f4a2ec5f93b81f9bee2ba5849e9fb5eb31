@@ -1,0 +1,23 @@
+legged_lab/envs/g1_locomotion/g1_locomotion_config.py
+  s_ee10fa3faf43f2::t_462a2595efef98 55-78
+  s_ee10fa3faf43f2::t_16035b4fadce67 117-118
+  s_ee10fa3faf43f2::t_9c12106784df22 31,35-38
+legged_lab/scripts/watchdog_train_locomotion.sh
+  s_ee10fa3faf43f2::t_11b50e97391c25 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "efb912f4a2ec5f93b81f9bee2ba5849e9fb5eb31",
+  "prompts": {},
+  "sessions": {
+    "s_ee10fa3faf43f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed0f5a6-6a65-42d3-92c4-84134b849a25",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
