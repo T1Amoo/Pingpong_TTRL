@@ -204,11 +204,24 @@ def play():
         except Exception as e:
             print(f"[WARN] Failed to save evaluation results: {e}")
 
+    # action smoothness diagnostics (mean over envs/joints/steps of raw policy action):
+    #   act_mag=|a|, act_rate=|a_t - a_{t-1}|, act_accel=|a_t - 2a_{t-1} + a_{t-2}|
+    _act_sum = 0.0; _arate_sum = 0.0; _aacc_sum = 0.0; _act_n = 0
+    _prev_a = None; _prev2_a = None
+
     try:
         while simulation_app.is_running():
 
             with torch.inference_mode():
                 actions = policy(obs)
+                # action smoothness accumulation
+                _a = actions.detach()
+                _act_sum += _a.abs().mean().item(); _act_n += 1
+                if _prev_a is not None:
+                    _arate_sum += (_a - _prev_a).abs().mean().item()
+                    if _prev2_a is not None:
+                        _aacc_sum += (_a - 2.0 * _prev_a + _prev2_a).abs().mean().item()
+                _prev2_a = _prev_a; _prev_a = _a
                 # Record inputs/outputs of policy inference for env 0
                 if record_action:
                     try:
@@ -368,6 +381,20 @@ def play():
                     succ_rate = (succ_total / serve_total) if serve_total > 0 else 0.0
                     hit_rate = (hit_total / serve_total) if serve_total > 0 else 0.0
                     print(f"[Play] Success {succ_total}/{serve_total} ({succ_rate:.3f}) | Hits {hit_total}/{serve_total} ({hit_rate:.3f})")
+                    # Batch eval auto-exit (opt-in via TT_EVAL_MAX_SERVES): once enough serves
+                    # are sampled, print the final rate and force-exit. os._exit bypasses Isaac's
+                    # shutdown (which can hang on the 4060) and releases the GPU cleanly so the
+                    # next checkpoint's eval can create its GPU device. Default 0 = disabled.
+                    _max_serves = int(os.environ.get("TT_EVAL_MAX_SERVES", "0"))
+                    if _max_serves > 0 and serve_total >= _max_serves:
+                        _am = _act_sum / max(1, _act_n)
+                        _ar = _arate_sum / max(1, _act_n - 1)
+                        _aa = _aacc_sum / max(1, _act_n - 2)
+                        print(f"[EVAL_DONE] serves={serve_total} success={succ_total} succ_rate={succ_rate:.4f} "
+                              f"hits={hit_total} hit_rate={hit_rate:.4f} "
+                              f"act_mag={_am:.4f} act_rate={_ar:.4f} act_accel={_aa:.4f}", flush=True)
+                        _save_eval_rows()
+                        os._exit(0)
                 # Periodic autosave every 1000 steps to be robust to interruptions
                 if step_count % 1000 == 0 and len(eval_rows) > last_saved_len:
                     _save_eval_rows()

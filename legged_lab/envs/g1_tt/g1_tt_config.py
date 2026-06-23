@@ -40,7 +40,7 @@ class G1TableTennisRewardCfg(RewardCfg):
     ang_vel_z_l2 = RewTerm(func=mdp.ang_vel_z_l2, weight=-0.02)
     energy = RewTerm(func=mdp.energy, weight=-1.5e-3)
     energy_ankle = RewTerm(func=mdp.energy, weight=-2e-3,params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"])})
-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1.25e-7)
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-3.75e-7)   # v8 de-jitter: 3x v7's -1.25e-7 (joint accel = jitter)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.025)
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
@@ -377,7 +377,7 @@ class G1TT_EvalHardEnvCfg(G1TT_EvalEnvCfg):
 
 @configclass
 class G1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "g1_tt_v7"
+    experiment_name: str = "g1_tt_v8"
     logger = "tensorboard"
     save_interval = 100
     max_iterations = 100000
