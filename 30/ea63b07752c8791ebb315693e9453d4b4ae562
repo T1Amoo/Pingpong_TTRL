@@ -1,0 +1,26 @@
+legged_lab/envs/base/legged_env.py
+  s_6c710e83880694::t_7c9ad74d4bd879 161-165
+legged_lab/mdp/rewards.py
+  s_6c710e83880694::t_5cf125e9ea6eae 947-957
+legged_lab/envs/g1_locomotion/g1_locomotion_config.py
+  s_6c710e83880694::t_406242e37f3ff4 32-33
+  s_6c710e83880694::t_3f57b4bb419259 119
+legged_lab/scripts/watchdog_train_locomotion.sh
+  s_6c710e83880694::t_8768ab730d0c11 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.11",
+  "base_commit_sha": "30ea63b07752c8791ebb315693e9453d4b4ae562",
+  "prompts": {},
+  "sessions": {
+    "s_6c710e83880694": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "447c545e-4e7d-4983-a73e-f42a11850540",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
