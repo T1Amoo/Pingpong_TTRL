@@ -1,0 +1,21 @@
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_6c710e83880694::t_5a87ef8a8d9698 423-425,430
+legged_lab/scripts/verify_paddle_dr.py
+  s_6c710e83880694::t_9bb942c915b9b4 48-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "23f3b914ce0508c36f40246c64b33871d589736b",
+  "prompts": {},
+  "sessions": {
+    "s_6c710e83880694": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "447c545e-4e7d-4983-a73e-f42a11850540",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
