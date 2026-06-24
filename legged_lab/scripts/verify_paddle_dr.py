@@ -45,8 +45,9 @@ def main():
     mat = robot.root_physx_view.get_material_properties()
     restit = mat[..., 2]
 
-    # locate the paddle body's shape index range (mirrors randomize_rigid_body_material)
-    body_ids, body_names = robot.find_bodies("right_tt_paddle_link")
+    # locate the paddle body's shape index range (mirrors randomize_rigid_body_material).
+    # The paddle is fixed-joint-merged into the wrist body, so target that body.
+    body_ids, body_names = robot.find_bodies("right_wrist_roll_rubber_hand")
     bid = body_ids[0]
     num_shapes_per_body = []
     for link_path in robot.root_physx_view.link_paths[0]:

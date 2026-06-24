@@ -420,11 +420,14 @@ class G1TableTennisDREnvCfg(G1TableTennisEnvCfg):
         # NOTE: restitution_range is the key tunable. Span from near the current sim value up to
         # clearly bouncier-than-real so the policy is robust to the real rubber. Friction kept at
         # the inherited .* ranges (paddle friction is not the sim2real issue here).
+        # The paddle's collision is fixed-joint-MERGED into the wrist body by Isaac's URDF importer,
+        # so we randomize the wrist body (= paddle_body_name "right_wrist_roll_rubber_hand"), whose
+        # shapes carry the paddle blade — there is no standalone right_tt_paddle_link body.
         self.domain_rand.events.paddle_restitution = EventTerm(
             func=mdp.randomize_rigid_body_material,
             mode="startup",
             params={
-                "asset_cfg": SceneEntityCfg("robot", body_names=["right_tt_paddle_link"]),
+                "asset_cfg": SceneEntityCfg("robot", body_names=["right_wrist_roll_rubber_hand"]),
                 "static_friction_range": (0.6, 1.0),
                 "dynamic_friction_range": (0.4, 0.8),
                 "restitution_range": (0.05, 0.75),
