@@ -1,0 +1,27 @@
+legged_lab/scripts/verify_paddle_dr.py
+  s_6c710e83880694::t_acbdf0cc80c026 1-80
+legged_lab/scripts/watchdog_train_v9_dr.sh
+  s_6c710e83880694::t_ed32abdf6d58ae 1-94
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_6c710e83880694::t_f591296d679566 397-438
+  s_6c710e83880694::t_f90f6bcf82d565 14
+legged_lab/envs/__init__.py
+  s_6c710e83880694::t_b82679b9b9a92a 45
+  s_6c710e83880694::t_5062e9928ba30e 29-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "19b1a838a91d8703c1ab1d19a0b57f8b7f68b026",
+  "prompts": {},
+  "sessions": {
+    "s_6c710e83880694": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "447c545e-4e7d-4983-a73e-f42a11850540",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
