@@ -29,6 +29,8 @@ class G1LocomotionRewardCfg(RewardCfg):
     # velocity tracking (the task)
     track_lin_vel_xy = RewTerm(func=mdp.track_lin_vel_xy_yaw_frame_exp, weight=1.0, params={"std": 0.5})
     track_ang_vel_z = RewTerm(func=mdp.track_ang_vel_z_world_exp, weight=1.0, params={"std": 0.5})
+    # v4: pull pelvis up out of the squat default (~0.486) so it stands taller while walking.
+    base_height = RewTerm(func=mdp.base_height_l2, weight=-10.0, params={"target_height": 0.62})
     # stability / smoothness (params reused from the proven g1_tt cfg; all BaseEnv-safe)
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
@@ -114,7 +116,7 @@ class G1LocomotionEnvCfg(LeggedEnvCfg):
 
 @configclass
 class G1LocomotionAgentCfg(LeggedAgentCfg):
-    experiment_name = "g1_locomotion_v3"   # v3: + gait/clearance/slide/fly stepping rewards,
+    experiment_name = "g1_locomotion_v4"   # v4: clock gated by command (no idle stepping) + base_height (no crouch). was v3: + gait/clearance/slide/fly stepping rewards,
                                             # energy 1e-3->2e-5 (v2 shuffled: no foot-lift reward).
     logger = "tensorboard"
     save_interval = 200

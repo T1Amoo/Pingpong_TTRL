@@ -944,3 +944,14 @@ def penalty_stand_still(
     penalty = both_feet_in_contact & (position_diff > move_threshold)
     penalty = penalty.float()
     return penalty
+
+
+def base_height_l2(
+    env: "LeggedEnv",
+    target_height: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """v4: penalize pelvis (root) height deviation from target on flat terrain. Pulls the policy
+    out of the squat default (pelvis ~0.486) so it stands taller while walking."""
+    asset = env.scene[asset_cfg.name]
+    return torch.square(asset.data.root_pos_w[:, 2] - target_height)

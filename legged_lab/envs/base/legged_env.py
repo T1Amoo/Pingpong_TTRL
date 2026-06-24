@@ -158,6 +158,11 @@ class LeggedEnv(VecEnv):
         action = self.action_buffer._circular_buffer.buffer[:, -1, :]
         root_lin_vel = robot.data.root_lin_vel_b
         clock = self.clock()
+        # v4: gate the gait-phase clock to ZERO when there is ~no velocity command, so the policy
+        # stands still at idle instead of marching in place (the clock ticks regardless of command
+        # otherwise -> idle stepping). DEPLOY must mirror this (zero gait_phase when |cmd|<0.1) for
+        # sim2real consistency.
+        clock = clock * (torch.norm(command, dim=1, keepdim=True) > 0.1).float()
         # ACTOR obs: NO base linear velocity (unobservable on the real robot; the deploy RLBase
         # framework has no base_lin_vel term). lin_vel is privileged -> critic only (asymmetric
         # actor-critic, matching the deployable TableTennis policy). clock == deploy gait_phase.
