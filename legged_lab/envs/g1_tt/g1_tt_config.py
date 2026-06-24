@@ -430,7 +430,7 @@ class G1TableTennisDREnvCfg(G1TableTennisEnvCfg):
                 "asset_cfg": SceneEntityCfg("robot", body_names=["right_wrist_roll_rubber_hand"]),
                 "static_friction_range": (0.6, 1.0),
                 "dynamic_friction_range": (0.4, 0.8),
-                "restitution_range": (0.05, 0.75),
+                "restitution_range": (0.35, 0.65),
                 "num_buckets": 64,
             },
         )
