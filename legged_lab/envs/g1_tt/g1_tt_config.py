@@ -11,6 +11,7 @@
 
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers.scene_entity_cfg import SceneEntityCfg
 from isaaclab.utils import configclass
 from isaaclab_rl.rsl_rl import  RslRlPpoAlgorithmCfg
@@ -393,3 +394,45 @@ class G1TableTennisAgentCfg(TTAgentCfg):
         "batch_size": 1024,
         "train_until_iters":20,
     }
+
+
+@configclass
+class G1TableTennisDREnvCfg(G1TableTennisEnvCfg):
+    """v9: domain-randomize the PADDLE (right_tt_paddle_link) contact restitution per-env so the
+    learned swing lands the ball on the table across a RANGE of paddle bounciness — the sim2real
+    fix for the 'kill' overshoots ("杀球出界"): the real rubber is bouncier than the sim's fixed
+    paddle restitution (~0.005 from the inherited .* material event), so v7/v8 returns fly long on
+    the real robot.
+
+    Only the ball-PADDLE contact restitution varies. The ball-TABLE bounce (the ~0.8 = global
+    default 0.8 combined w/ ball 0.9) is left untouched, so table physics stay realistic. The
+    ball returns via the paddle SWING velocity (as in real TT), with restitution adding the
+    elastic component — randomizing it teaches the policy to modulate the swing so the ball
+    lands regardless of how bouncy the contact is.
+
+    Mechanism: a startup event overriding ONLY the paddle blade body's per-env material. It is
+    added AFTER the inherited physics_material event (.* @ restitution 0.0-0.005) so it WINS on
+    the paddle shapes. VERIFY with scripts/verify_paddle_dr.py before training — the readback
+    paddle restitution must vary per-env (guards against the no-op trap)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        # NOTE: restitution_range is the key tunable. Span from near the current sim value up to
+        # clearly bouncier-than-real so the policy is robust to the real rubber. Friction kept at
+        # the inherited .* ranges (paddle friction is not the sim2real issue here).
+        self.domain_rand.events.paddle_restitution = EventTerm(
+            func=mdp.randomize_rigid_body_material,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", body_names=["right_tt_paddle_link"]),
+                "static_friction_range": (0.6, 1.0),
+                "dynamic_friction_range": (0.4, 0.8),
+                "restitution_range": (0.05, 0.75),
+                "num_buckets": 64,
+            },
+        )
+
+
+@configclass
+class G1TableTennisDRAgentCfg(G1TableTennisAgentCfg):
+    experiment_name: str = "g1_tt_v9_dr"
