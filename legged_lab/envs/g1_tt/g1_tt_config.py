@@ -15,6 +15,7 @@ from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers.scene_entity_cfg import SceneEntityCfg
 from isaaclab.utils import configclass
 from isaaclab_rl.rsl_rl import  RslRlPpoAlgorithmCfg
+import os
 import legged_lab.mdp as mdp
 from legged_lab.assets.unitree.g1 import G1_TT_CFG
 from legged_lab.assets.table_tennis.table import TABLE_CFG
@@ -338,6 +339,25 @@ class G1TT_EvalEnvCfg(G1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.max_episode_length_s = 99999999999 # prevent frequent reset
+        # diagnostic: override the per-ball flight timeout via env (default keeps training value).
+        # Lets us test whether table_success is compressed by the 1.8s ball timeout cutting returns
+        # off mid-flight (TT_BALL_MAX=5 vs 1.8 on the same ckpt isolates timeout-truncation).
+        self.ball.ball_max_eposide_length = float(os.environ.get("TT_BALL_MAX", str(self.ball.ball_max_eposide_length)))
+        # diagnostic: match eval paddle restitution to the trained physics (e.g. v10's 0.75),
+        # else eval at the base ~0.005 underrates a policy trained on a bouncier paddle.
+        if os.environ.get("TT_EVAL_PADDLE_REST"):
+            _rest = float(os.environ["TT_EVAL_PADDLE_REST"])
+            self.domain_rand.events.paddle_restitution = EventTerm(
+                func=mdp.randomize_rigid_body_material,
+                mode="startup",
+                params={
+                    "asset_cfg": SceneEntityCfg("robot", body_names=["right_wrist_roll_rubber_hand"]),
+                    "static_friction_range": (0.6, 1.0),
+                    "dynamic_friction_range": (0.4, 0.8),
+                    "restitution_range": (_rest, _rest),
+                    "num_buckets": 64,
+                },
+            )
         self.domain_rand.events.reset_base.params["pose_range"] = {
             "x": (-0.41, -0.4),
             "y": (0.3, 0.4),#(-0.4, 0.4),

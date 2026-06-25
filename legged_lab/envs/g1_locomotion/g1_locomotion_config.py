@@ -30,7 +30,7 @@ class G1LocomotionRewardCfg(RewardCfg):
     track_lin_vel_xy = RewTerm(func=mdp.track_lin_vel_xy_yaw_frame_exp, weight=1.0, params={"std": 0.5})
     track_ang_vel_z = RewTerm(func=mdp.track_ang_vel_z_world_exp, weight=1.0, params={"std": 0.5})
     # v4: pull pelvis up out of the squat default (~0.486) so it stands taller while walking.
-    base_height = RewTerm(func=mdp.base_height_l2, weight=-10.0, params={"target_height": 0.62})
+    base_height = RewTerm(func=mdp.base_height_l2, weight=-15.0, params={"target_height": 0.70})
     # stability / smoothness (params reused from the proven g1_tt cfg; all BaseEnv-safe)
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
@@ -63,9 +63,9 @@ class G1LocomotionRewardCfg(RewardCfg):
         func=mdp.reward_feet_contact_number, weight=0.5,
         params={"sensor_cfg": SceneEntityCfg("contact_sensor", body_names=".*_ankle_roll_link"),
                 "pos_rw": 1.0, "neg_rw": -0.3, "command_name": "base_velocity"})
-    feet_clearance = RewTerm(  # reward swing feet clearing 10cm -> forces foot LIFT
-        func=mdp.foot_clearance_reward, weight=1.0,
-        params={"target_height": 0.10, "std": 0.05, "tanh_mult": 2.0,
+    feet_clearance = RewTerm(  # reward swing feet clearing 14cm -> forces higher foot LIFT (v5: 0.10->0.14, w1->2)
+        func=mdp.foot_clearance_reward, weight=2.0,
+        params={"target_height": 0.14, "std": 0.05, "tanh_mult": 2.0,
                 "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"), "command_name": "base_velocity"})
     feet_slide = RewTerm(  # penalize foot sliding while in contact -> kills the shuffle
         func=mdp.feet_slide, weight=-0.3,
@@ -116,7 +116,7 @@ class G1LocomotionEnvCfg(LeggedEnvCfg):
 
 @configclass
 class G1LocomotionAgentCfg(LeggedAgentCfg):
-    experiment_name = "g1_locomotion_v4"   # v4: clock gated by command (no idle stepping) + base_height (no crouch). was v3: + gait/clearance/slide/fly stepping rewards,
+    experiment_name = "g1_locomotion_v5"   # v5: base_height target 0.62->0.70(w-15) + feet_clearance 0.10->0.14(w2) = stand upright + lift feet higher. v4: clock gated + base_height(crouch still low at 0.62).
                                             # energy 1e-3->2e-5 (v2 shuffled: no foot-lift reward).
     logger = "tensorboard"
     save_interval = 200
