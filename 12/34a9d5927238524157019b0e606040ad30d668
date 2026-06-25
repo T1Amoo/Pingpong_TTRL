@@ -1,0 +1,27 @@
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_6c710e83880694::t_265bd505194f4f 441
+  s_6c710e83880694::t_d7793aa94ba1fe 433
+legged_lab/envs/base/tt_env.py
+  s_6c710e83880694::t_f27884aa5d339c 169-171
+legged_lab/assets/table_tennis/ball.py
+  s_6c710e83880694::t_11053458274f14 36-37
+legged_lab/scripts/watchdog_train_v9_dr.sh
+  s_6c710e83880694::t_e9fbb5e17d060b 32
+  s_6c710e83880694::t_9ed4eaee823d0d 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.11",
+  "base_commit_sha": "1234a9d5927238524157019b0e606040ad30d668",
+  "prompts": {},
+  "sessions": {
+    "s_6c710e83880694": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "447c545e-4e7d-4983-a73e-f42a11850540",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
