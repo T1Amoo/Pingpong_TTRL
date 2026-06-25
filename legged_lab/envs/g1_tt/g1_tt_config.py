@@ -42,7 +42,7 @@ class G1TableTennisRewardCfg(RewardCfg):
     ang_vel_z_l2 = RewTerm(func=mdp.ang_vel_z_l2, weight=-0.02)
     energy = RewTerm(func=mdp.energy, weight=-1.5e-3)
     energy_ankle = RewTerm(func=mdp.energy, weight=-2e-3,params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"])})
-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-3.75e-7)   # v8 de-jitter: 3x v7's -1.25e-7 (joint accel = jitter)
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-6.0e-7)   # v11 de-jitter: up from v8 -3.75e-7 (41200 drifted jittery on warm-start; joint accel = jitter)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.025)
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
@@ -255,11 +255,11 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         self.robot.paddle_offset = (0.30, 0.0, 0.0)
         self.robot.hit_body_height = 0.685   # FK: steady pelvis height in ready stance
         self.robot.paddle_y_offset = -0.55   # hitting-extension lateral offset (was -0.227 ready-stance; caused ~0.37m paddle-ball gap -> hit~0). ~T1's -0.60.
-        # Robot >=60cm from table (real: waist marker occluded if closer). Table own edge x=-1.37;
-        # stance/hit-plane moved -1.6 -> -2.0 (~63cm). HOME/intercept-clamp/give-up/terminal/idle
-        # anchors all derive from hit_plane_x in tt_env.py. Serve must be re-tuned (ball flies ~0.63m
-        # past the table-edge bounce to reach -2.0 at ready height) — see smoke-tune below.
-        self.robot.hit_plane_x = -2.0
+        # Robot >=40cm from table. Table own edge x=-1.37; stance/hit-plane at -1.8 (~43cm; v11
+        # moved -2.0 -> -1.8 because -2.0 felt too far from the table). HOME/intercept-clamp/
+        # give-up/terminal/idle anchors all derive from hit_plane_x in tt_env.py. Serve re-tuned
+        # (vz dropped ~0.2 vs the -2.0 serve) so the ball reaches -1.8 at ready z~1.0 — see below.
+        self.robot.hit_plane_x = -1.8
         G1_JOINT_NAMES = [
             "left_hip_pitch_joint","left_hip_roll_joint","left_hip_yaw_joint","left_knee_joint",
             "left_ankle_pitch_joint","left_ankle_roll_joint",
@@ -283,17 +283,15 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         # under a warm policy was OOD. From scratch avoids that mismatch.
         # 1) Bounce serves (in-court, no volley) with a difficulty curriculum easy->hard.
         self.ball.serve_bounce_enable = True
-        # v7 SERVE RE-TUNED FOR -2.0 (root cause of v6 fail: old serve apex/ready-height was at
-        # x=-1.6; at -2.0 the ball had dropped to z~0.5-0.7 or didn't arrive -> robot could only
-        # touch, never return). Empirical sim sweep (/tmp/serve_sweep.py): ping-pong ball has heavy
-        # air drag, so HIGH-arc serves (vz>=2.6) FAIL to carry to -2.0 (9/24). FLAT+FAST + deep
-        # bounce (near table edge -1.37) carries: vz(1.7,2.0) xb(-1.37,-1.31) -> 24/24 reach -2.0
-        # at z~1.01 (paddle ready height), clears net (z@x=0 ~1.16 > 0.91).
+        # v11 SERVE RE-TUNED FOR -1.8 (home moved -2.0 -> -1.8). Ping-pong ball has heavy air drag;
+        # FLAT+FAST + deep bounce (table edge -1.37) carries. vs the -2.0 serve, vz dropped ~0.2 so
+        # the ball reaches the NEW home -1.8 at z~1.0-1.06 (smoke-tune /tmp/serve_verify.py: easy
+        # vz(1.5,1.8) xb(-1.37,-1.31) -> home@-1.8 z 1.02-1.06, clears net z@x=0 ~1.10-1.15 > 0.91).
         self.ball.serve_bounce_x_range = (-1.37, -1.31)        # easy: deep bounce near table edge
-        self.ball.serve_bounce_vz_range = (1.7, 2.0)           # easy: FLAT+fast -> reaches -2.0 at z~1.0
+        self.ball.serve_bounce_vz_range = (1.5, 1.8)           # easy: FLAT+fast -> reaches -1.8 at z~1.0
         self.ball.serve_y_start = 0.5                          # easy: FULL lateral range already (mirror volley: full-range easy)
-        self.ball.serve_bounce_x_range_hard = (-1.37, -1.28)   # hard: some depth variety (still reaches -2.0)
-        self.ball.serve_bounce_vz_range_hard = (1.6, 2.2)      # hard: flatter+faster..slightly higher (vz<=2.2 keeps reach)
+        self.ball.serve_bounce_x_range_hard = (-1.37, -1.28)   # hard: some depth variety (still reaches -1.8)
+        self.ball.serve_bounce_vz_range_hard = (1.4, 1.9)      # hard: flatter+faster..slightly higher (reaches -1.8 z<=1.09)
         self.ball.serve_y_wide = 0.72                          # hard: corners (table half 0.7625)
         # idle10 (A) THREE-STAGE from-scratch curriculum. Units: serve uses RAW sim_step_counter
         # (240/iter @ decimation 10, num_steps_per_env 24); idle/no-ball use control steps cs
@@ -373,8 +371,8 @@ class G1TT_EvalEnvCfg(G1TableTennisEnvCfg):
             }
         # serving range — eval uses a FIXED medium bounce distribution (bounce path is
         # active via inherited serve_bounce_enable; the ball_speed_* below are dead code).
-        self.ball.serve_bounce_x_range = (-1.37, -1.31)   # eval: same -2.0-reaching serve as training easy
-        self.ball.serve_bounce_vz_range = (1.7, 2.0)
+        self.ball.serve_bounce_x_range = (-1.37, -1.31)   # eval: same -1.8-reaching serve as training easy
+        self.ball.serve_bounce_vz_range = (1.5, 1.8)
         self.ball.serve_y_start = 0.5                     # eval: full lateral spread
         self.ball.serve_y_wide = 0.5
         self.ball.serve_curriculum_steps = 0   # eval: fixed serve distribution (no curriculum widening)
@@ -389,8 +387,8 @@ class G1TT_EvalHardEnvCfg(G1TT_EvalEnvCfg):
     hard-serve capability across ckpts. Fixed distribution (serve_curriculum_steps=0)."""
     def __post_init__(self):
         super().__post_init__()
-        self.ball.serve_bounce_x_range = (-1.37, -1.28)   # hard: depth variety toward the net (still reaches -2.0)
-        self.ball.serve_bounce_vz_range = (1.6, 2.2)      # hard: flatter+faster..slightly higher (vz<=2.2 reaches -2.0)
+        self.ball.serve_bounce_x_range = (-1.37, -1.28)   # hard: depth variety toward the net (still reaches -1.8)
+        self.ball.serve_bounce_vz_range = (1.4, 1.9)      # hard: flatter+faster..slightly higher (reaches -1.8 z<=1.09)
         self.ball.serve_y_start = 0.72                    # hard: corners (table half 0.7625)
         self.ball.serve_y_wide = 0.72
         self.ball.serve_curriculum_steps = 0
@@ -458,4 +456,4 @@ class G1TableTennisDREnvCfg(G1TableTennisEnvCfg):
 
 @configclass
 class G1TableTennisDRAgentCfg(G1TableTennisAgentCfg):
-    experiment_name: str = "g1_tt_v10"
+    experiment_name: str = "g1_tt_v11"
