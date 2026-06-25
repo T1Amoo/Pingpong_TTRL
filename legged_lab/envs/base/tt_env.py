@@ -166,9 +166,9 @@ class TTEnv(VecEnv):
             render_interval=cfg.sim.decimation,
             physx=PhysxCfg(gpu_max_rigid_patch_count=cfg.sim.physx.gpu_max_rigid_patch_count),
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                friction_combine_mode="min", 
-                restitution_combine_mode="min", 
-                restitution=0.8,
+                friction_combine_mode="min",
+                restitution_combine_mode="min",
+                restitution=0.95,
             ),
         )
         self.sim = SimulationContext(sim_cfg)

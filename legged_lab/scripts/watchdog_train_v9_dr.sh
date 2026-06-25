@@ -22,14 +22,14 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 PY=${TRAIN_PY:-/home/woan/.conda/envs/pingpong/bin/python}
 TASK=g1_tt_dr
-EXP=g1_tt_v9_dr
+EXP=${EXP:-g1_tt_v9_dr}
 SEED_EXP=g1_tt_v8                       # warm-start source experiment
 SEED_ITER=${SEED_ITER:-34999}           # warm-start source checkpoint iter (set to eval winner)
 NUM_ENVS=${NUM_ENVS:-4096}
 TARGET=${TARGET:-$((SEED_ITER + 20000))}
 LOGROOT="$REPO/logs/$EXP"
 SEED_DIR="$LOGROOT/seed_v8"
-WLOG="$REPO/train_v9_dr_watchdog.log"
+WLOG="$REPO/train_${EXP}_watchdog.log"
 cd "$REPO"
 
 # --- one-time seed: copy v8 model_<SEED_ITER> into logs/g1_tt_v9_dr/seed_v8/.
