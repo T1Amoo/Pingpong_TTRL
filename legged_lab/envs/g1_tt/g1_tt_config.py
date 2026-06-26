@@ -42,7 +42,7 @@ class G1TableTennisRewardCfg(RewardCfg):
     ang_vel_z_l2 = RewTerm(func=mdp.ang_vel_z_l2, weight=-0.02)
     energy = RewTerm(func=mdp.energy, weight=-1.5e-3)
     energy_ankle = RewTerm(func=mdp.energy, weight=-2e-3,params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"])})
-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-6.0e-7)   # v11 de-jitter: up from v8 -3.75e-7 (41200 drifted jittery on warm-start; joint accel = jitter)
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-3.75e-7)   # v8-proven de-jitter value (v11's -6e-7 didn't actually reduce sim2sim jitter; reverted for v12 from-scratch stability)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.025)
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
