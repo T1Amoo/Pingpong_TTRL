@@ -1,0 +1,19 @@
+legged_lab/envs/g1_tt/g1_tt_config.py
+  s_6c710e83880694::t_67b4aba0c074a6 45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.1",
+  "base_commit_sha": "2b7dc88194771cbd1c9a58188875988e7b9f71c2",
+  "prompts": {},
+  "sessions": {
+    "s_6c710e83880694": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "447c545e-4e7d-4983-a73e-f42a11850540",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
