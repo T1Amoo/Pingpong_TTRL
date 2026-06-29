@@ -42,7 +42,7 @@ class G1TableTennisRewardCfg(RewardCfg):
     ang_vel_z_l2 = RewTerm(func=mdp.ang_vel_z_l2, weight=-0.02)
     energy = RewTerm(func=mdp.energy, weight=-1.5e-3)
     energy_ankle = RewTerm(func=mdp.energy, weight=-2e-3,params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"])})
-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-3.75e-7)   # v8-proven de-jitter value (v11's -6e-7 didn't actually reduce sim2sim jitter; reverted for v12 from-scratch stability)
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1.25e-7)   # v13: reverted to v7's original value (the v8 3x -3.75e-7 over-stiffened the policy -> near-frozen body in sim2sim; v7 could play at -1.25e-7)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.025)
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
@@ -283,37 +283,35 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         # under a warm policy was OOD. From scratch avoids that mismatch.
         # 1) Bounce serves (in-court, no volley) with a difficulty curriculum easy->hard.
         self.ball.serve_bounce_enable = True
-        # v11 SERVE RE-TUNED FOR -1.8 (home moved -2.0 -> -1.8). Ping-pong ball has heavy air drag;
-        # FLAT+FAST + deep bounce (table edge -1.37) carries. vs the -2.0 serve, vz dropped ~0.2 so
-        # the ball reaches the NEW home -1.8 at z~1.0-1.06 (smoke-tune /tmp/serve_verify.py: easy
-        # vz(1.5,1.8) xb(-1.37,-1.31) -> home@-1.8 z 1.02-1.06, clears net z@x=0 ~1.10-1.15 > 0.91).
-        self.ball.serve_bounce_x_range = (-1.37, -1.31)        # easy: deep bounce near table edge
-        self.ball.serve_bounce_vz_range = (1.5, 1.8)           # easy: FLAT+fast -> reaches -1.8 at z~1.0
-        self.ball.serve_y_start = 0.5                          # easy: FULL lateral range already (mirror volley: full-range easy)
-        self.ball.serve_bounce_x_range_hard = (-1.37, -1.28)   # hard: some depth variety (still reaches -1.8)
-        self.ball.serve_bounce_vz_range_hard = (1.4, 1.9)      # hard: flatter+faster..slightly higher (reaches -1.8 z<=1.09)
-        self.ball.serve_y_wide = 0.72                          # hard: corners (table half 0.7625)
-        # idle10 (A) THREE-STAGE from-scratch curriculum. Units: serve uses RAW sim_step_counter
-        # (240/iter @ decimation 10, num_steps_per_env 24); idle/no-ball use control steps cs
-        # (24/iter). From-scratch hitting needs ~15-20k iter to become competent (eval 0.37@13k,
-        # 0.60@19k on the proven runs) — the earlier "phase1=5000" was WRONG (it was based on the
-        # warm-started rally / a shaped-reward misread). So:
-        #   Stage 1  (iter 0  -> 15000): FIXED EASY serve, no difficulty, no idle, no no-ball.
-        #                                Pure easy-ball hitting bootstrap (the proven 2026-06-03 recipe).
-        #   Stage 2  (iter 15000 -> 27000): serve difficulty ramps easy->hard.
-        #   Stage 3  (iter 27000 -> ...): idle reward + no-ball ramp in (hitting already competent).
-        # serve difficulty: start at raw 3.6M (iter 15000), ramp over raw 2.88M (12000 iter) -> full iter 27000.
-        # ===== g1_tt_v7 (FROM-SCRATCH; serve re-tuned so ball reaches -2.0 — see serve block above.
-        # v6's failure was the BAD serve, not from-scratch, so from-scratch is correct now.) =====
-        # User-specified FIXED-ITER 3-stage curriculum (sim_step-keyed, 240 raw steps/iter):
-        #   Stage 1 (iter 0     -> 15000): FIXED EASY serve. Pure easy-ball hitting bootstrap.
-        #   Stage 2 (iter 15000 -> 25000): serve difficulty ramps easy->hard over 10000 iter.
-        #   Stage 3 (iter 25000 -> 30000): CONSOLIDATE at full hard difficulty (c=1.0).
-        # NO idle / NO no-ball (no_ball_period_s=0): v6 diverged when no-ball ramped full; deploy
-        # clip handles no-ball safety. TARGET=30000.
+        # ===== v13 SPEED curriculum (2026-06-29): warm-start from v12 model_10000 =====
+        # v12 only ever saw FAST balls (old deep-bounce serve arrives at -1.8 at ~4.4 m/s, 0.62 s
+        # reaction) -> NO robustness to slow balls. v13 keeps the lateral range FIXED (the v12 stage-2
+        # LATERAL widening 0.5->0.72 is what spiked action_rate and collapsed it) and instead uses the
+        # curriculum to ADD SLOWER balls (speed variety). Physics (/tmp/serve_speed_design.py): to keep
+        # a SLOW ball (high vz) hittable at -1.8 (z 1.0-1.06) the bounce must be SHALLOW/mid-court
+        # (~-0.78); at the old DEEP edge bounce a slow ball overshoots z>1.07 (un-hittable). So:
+        #   bounce_x FIXED shallow (-0.80,-0.76); vz is the SPEED knob (low vz=fast, high vz=slow).
+        # Verified: bounce_x(-0.80,-0.76) x vz(1.2,2.7) ALL arrive at -1.8 at z 1.0-1.06, bounce in
+        # court, clear net. Speed 3.0-4.1 m/s, reaction window 0.64-1.1 s.
+        self.ball.serve_bounce_x_range = (-0.80, -0.76)        # shallow/mid-court bounce (FIXED; keeps slow balls hittable)
+        self.ball.serve_bounce_vz_range = (1.2, 1.6)           # easy c=0: FAST only (~4.0 m/s) = matches what model_10000 knows
+        self.ball.serve_y_start = 0.5                          # lateral range (FIXED; NOT widened — that collapsed v12)
+        self.ball.serve_bounce_x_range_hard = (-0.80, -0.76)   # SAME as easy: no bounce lerp (speed axis only)
+        self.ball.serve_bounce_vz_range_hard = (1.2, 2.7)      # hard c=1: ADD SLOW balls (vz up to 2.7 -> ~3.0 m/s, 1.1 s reaction); fast still in range
+        self.ball.serve_y_wide = 0.5                           # SAME as easy: NO lateral widening
+        # ===== v13 SPEED curriculum schedule (sim_step-keyed, 240 raw steps/iter). WARM-START =====
+        # from v12 model_10000 (TT_SIM_STEP_OFFSET=10000*240 continues the clock). model_10000 already
+        # plays FAST center balls, so:
+        #   c=0  (iter 10000 -> 15000): FAST-only serve (vz 1.2-1.6). 5k iters to settle on the new
+        #                               shallow-bounce serve (mild OOD vs 10000's deep bounce) before
+        #                               anything new is added.
+        #   ramp (iter 15000 -> 25000): vz upper end grows 1.6 -> 2.7, ADDING progressively SLOWER
+        #                               balls (down to ~3.0 m/s, 1.1 s reaction). Lateral range FIXED.
+        #   c=1  (iter 25000 -> 30000): consolidate on the full fast+slow speed mix. TARGET=30000.
+        # NO lateral widening (v12 collapse cause), NO idle / no-ball (no_ball_period_s=0).
         self.ball.serve_curriculum_perf_gated = False          # FIXED-iter schedule (not success-gated)
-        self.ball.serve_curriculum_phase_start = 3600000       # iter 15000: easy until here (15000*240)
-        self.ball.serve_curriculum_steps = 2400000             # ramp easy->hard over 10000 iter (15000->25000), then full
+        self.ball.serve_curriculum_phase_start = 3600000       # iter 15000: fast-only until here (15000*240)
+        self.ball.serve_curriculum_steps = 2400000             # add slow balls over 10000 iter (15000->25000), then full mix
         self.ball.no_ball_period_s = 0.0       # v7: NO no-ball injection (v6 diverged ~iter39k when
         self.ball.ball_active_s = 3.0          #   no-ball ramped full; idle-region instability. Deploy clip handles no-ball.
         # idle/no-ball params below are INERT (no_ball_period_s=0) — kept for reference only.
@@ -369,11 +367,11 @@ class G1TT_EvalEnvCfg(G1TableTennisEnvCfg):
             "pitch": (-0.02, 0.02),
             "yaw": (-0.02, 0.02),
             }
-        # serving range — eval uses a FIXED medium bounce distribution (bounce path is
+        # serving range — eval uses a FIXED bounce distribution (bounce path is
         # active via inherited serve_bounce_enable; the ball_speed_* below are dead code).
-        self.ball.serve_bounce_x_range = (-1.37, -1.31)   # eval: same -1.8-reaching serve as training easy
-        self.ball.serve_bounce_vz_range = (1.5, 1.8)
-        self.ball.serve_y_start = 0.5                     # eval: full lateral spread
+        self.ball.serve_bounce_x_range = (-0.80, -0.76)   # v13 eval easy: FAST-only serve (matches training c=0)
+        self.ball.serve_bounce_vz_range = (1.2, 1.6)
+        self.ball.serve_y_start = 0.5                     # eval: fixed lateral (NOT widened)
         self.ball.serve_y_wide = 0.5
         self.ball.serve_curriculum_steps = 0   # eval: fixed serve distribution (no curriculum widening)
         self.ball.no_ball_period_s = 0.0       # eval: NO no-ball injection -> clean hitting success rate
@@ -382,15 +380,15 @@ class G1TT_EvalEnvCfg(G1TableTennisEnvCfg):
 
 @configclass
 class G1TT_EvalHardEnvCfg(G1TT_EvalEnvCfg):
-    """HARD eval: the training serve_c=1.0 distribution (deep + flatter/faster + wide corners).
-    g1_tt_eval is the EASY distribution and saturates ~90-95% for idle12; this discriminates
-    hard-serve capability across ckpts. Fixed distribution (serve_curriculum_steps=0)."""
+    """HARD eval (v13): the training c=1.0 SPEED distribution = fast+slow mix at the shallow bounce.
+    g1_tt_eval is FAST-only and saturates high; this adds the SLOW balls to discriminate slow-ball
+    robustness across ckpts. Fixed distribution (serve_curriculum_steps=0)."""
     def __post_init__(self):
         super().__post_init__()
-        self.ball.serve_bounce_x_range = (-1.37, -1.28)   # hard: depth variety toward the net (still reaches -1.8)
-        self.ball.serve_bounce_vz_range = (1.4, 1.9)      # hard: flatter+faster..slightly higher (reaches -1.8 z<=1.09)
-        self.ball.serve_y_start = 0.72                    # hard: corners (table half 0.7625)
-        self.ball.serve_y_wide = 0.72
+        self.ball.serve_bounce_x_range = (-0.80, -0.76)   # v13 hard: same shallow bounce
+        self.ball.serve_bounce_vz_range = (1.2, 2.7)      # v13 hard: full speed mix (adds slow balls ~3.0 m/s)
+        self.ball.serve_y_start = 0.5                     # NO lateral widening
+        self.ball.serve_y_wide = 0.5
         self.ball.serve_curriculum_steps = 0
 
 
@@ -456,4 +454,4 @@ class G1TableTennisDREnvCfg(G1TableTennisEnvCfg):
 
 @configclass
 class G1TableTennisDRAgentCfg(G1TableTennisAgentCfg):
-    experiment_name: str = "g1_tt_v12"
+    experiment_name: str = "g1_tt_v13"
