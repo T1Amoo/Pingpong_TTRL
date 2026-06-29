@@ -283,21 +283,22 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         # under a warm policy was OOD. From scratch avoids that mismatch.
         # 1) Bounce serves (in-court, no volley) with a difficulty curriculum easy->hard.
         self.ball.serve_bounce_enable = True
-        # ===== v13 SPEED curriculum (2026-06-29): warm-start from v12 model_10000 =====
-        # v12 only ever saw FAST balls (old deep-bounce serve arrives at -1.8 at ~4.4 m/s, 0.62 s
-        # reaction) -> NO robustness to slow balls. v13 keeps the lateral range FIXED (the v12 stage-2
-        # LATERAL widening 0.5->0.72 is what spiked action_rate and collapsed it) and instead uses the
-        # curriculum to ADD SLOWER balls (speed variety). Physics (/tmp/serve_speed_design.py): to keep
-        # a SLOW ball (high vz) hittable at -1.8 (z 1.0-1.06) the bounce must be SHALLOW/mid-court
-        # (~-0.78); at the old DEEP edge bounce a slow ball overshoots z>1.07 (un-hittable). So:
-        #   bounce_x FIXED shallow (-0.80,-0.76); vz is the SPEED knob (low vz=fast, high vz=slow).
-        # Verified: bounce_x(-0.80,-0.76) x vz(1.2,2.7) ALL arrive at -1.8 at z 1.0-1.06, bounce in
-        # court, clear net. Speed 3.0-4.1 m/s, reaction window 0.64-1.1 s.
-        self.ball.serve_bounce_x_range = (-0.80, -0.76)        # shallow/mid-court bounce (FIXED; keeps slow balls hittable)
-        self.ball.serve_bounce_vz_range = (1.2, 1.6)           # easy c=0: FAST only (~4.0 m/s) = matches what model_10000 knows
+        # ===== v13 SPEED + HEIGHT curriculum (2026-06-29): warm-start from v12 model_10000 =====
+        # v12 only ever saw FAST balls at a FIXED arrival height (~1.05) -> no robustness to slow OR
+        # different-height balls. v13 keeps lateral FIXED (the v12 stage-2 LATERAL widening 0.5->0.72
+        # spiked action_rate and collapsed it) and uses the curriculum to ADD slower balls AND a spread
+        # of arrival heights. Physics (/tmp/serve_speed_design.py): at home -1.8, vz sets SPEED and
+        # bounce_x sets arrival HEIGHT (deeper bounce -> ball still rising/higher at -1.8; shallow ->
+        # lower/flatter). To keep everything hittable:
+        #   bounce_x RANGE = arrival-HEIGHT knob; vz RANGE = SPEED knob; both widen over the curriculum.
+        # Verified all-hittable (reach -1.8, bounce in court, clear net):
+        #   easy c=0: xb(-0.90,-0.76) vz(1.2,1.6) -> z 1.00-1.05, spd 3.6-4.3 (fast, near model_10000)
+        #   hard c=1: xb(-1.10,-0.76) vz(1.2,2.4) -> z 1.00-1.17 (HEIGHT variety), spd 3.0-4.7 (SPEED variety)
+        self.ball.serve_bounce_x_range = (-0.90, -0.76)        # easy: shallow bounce -> z~1.0-1.05 (narrow height)
+        self.ball.serve_bounce_vz_range = (1.2, 1.6)           # easy c=0: FAST (~4.0 m/s) = near what model_10000 knows
         self.ball.serve_y_start = 0.5                          # lateral range (FIXED; NOT widened — that collapsed v12)
-        self.ball.serve_bounce_x_range_hard = (-0.80, -0.76)   # SAME as easy: no bounce lerp (speed axis only)
-        self.ball.serve_bounce_vz_range_hard = (1.2, 2.7)      # hard c=1: ADD SLOW balls (vz up to 2.7 -> ~3.0 m/s, 1.1 s reaction); fast still in range
+        self.ball.serve_bounce_x_range_hard = (-1.10, -0.76)   # hard: deeper bounce ADDS higher arrivals (z up to 1.17) = HEIGHT variety
+        self.ball.serve_bounce_vz_range_hard = (1.2, 2.4)      # hard c=1: ADD SLOW balls (vz up to 2.4 -> ~3.0 m/s, 1.1 s reaction); fast still in range
         self.ball.serve_y_wide = 0.5                           # SAME as easy: NO lateral widening
         # ===== v13 SPEED curriculum schedule (sim_step-keyed, 240 raw steps/iter). WARM-START =====
         # from v12 model_10000 (TT_SIM_STEP_OFFSET=10000*240 continues the clock). model_10000 already
@@ -385,8 +386,8 @@ class G1TT_EvalHardEnvCfg(G1TT_EvalEnvCfg):
     robustness across ckpts. Fixed distribution (serve_curriculum_steps=0)."""
     def __post_init__(self):
         super().__post_init__()
-        self.ball.serve_bounce_x_range = (-0.80, -0.76)   # v13 hard: same shallow bounce
-        self.ball.serve_bounce_vz_range = (1.2, 2.7)      # v13 hard: full speed mix (adds slow balls ~3.0 m/s)
+        self.ball.serve_bounce_x_range = (-1.10, -0.76)   # v13 hard: full HEIGHT spread (z 1.0-1.17)
+        self.ball.serve_bounce_vz_range = (1.2, 2.4)      # v13 hard: full SPEED spread (adds slow ~3.0 m/s)
         self.ball.serve_y_start = 0.5                     # NO lateral widening
         self.ball.serve_y_wide = 0.5
         self.ball.serve_curriculum_steps = 0
