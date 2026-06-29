@@ -1,0 +1,19 @@
+legged_lab/scripts/auto_consolidate_v14.sh
+  s_8aa4d77bcf6faf::t_f092c3aa6c2435 1-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "52593d55f0f01ca7ced552ef0f793e7fc26ff3cb",
+  "prompts": {},
+  "sessions": {
+    "s_8aa4d77bcf6faf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f631d844-f58c-42e4-98f7-67b32f2148c9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
