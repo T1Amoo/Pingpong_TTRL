@@ -60,7 +60,7 @@ class G1TableTennisRewardCfg(RewardCfg):
         params={"sensor_cfg": SceneEntityCfg("contact_sensor", body_names=".*_ankle_roll_link"), "threshold": 1.0},
     )
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.5)
-    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-1000.0)
+    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-100.0)   # v16 (#1): was -1000; the huge fall penalty injected ±1000 value targets -> critic value_loss spiked to 1e7 at the ramp (c~0.3) and diverged. -100 keeps a strong fall deterrent but bounds value swings to other-rewards scale (O(1-150)).
 
     hit_unstable_support = RewTerm(
         func=mdp.hit_unstable_support,
@@ -452,4 +452,4 @@ class G1TableTennisDREnvCfg(G1TableTennisEnvCfg):
 
 @configclass
 class G1TableTennisDRAgentCfg(G1TableTennisAgentCfg):
-    experiment_name: str = "g1_tt_v15"
+    experiment_name: str = "g1_tt_v16"
