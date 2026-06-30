@@ -452,4 +452,4 @@ class G1TableTennisDREnvCfg(G1TableTennisEnvCfg):
 
 @configclass
 class G1TableTennisDRAgentCfg(G1TableTennisAgentCfg):
-    experiment_name: str = "g1_tt_v14"
+    experiment_name: str = "g1_tt_v15"
