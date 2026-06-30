@@ -309,7 +309,7 @@ class G1TableTennisEnvCfg(TTEnvCfg):
         # NO lateral widening (v12 collapse cause), NO idle / no-ball (no_ball_period_s=0).
         self.ball.serve_curriculum_perf_gated = False          # FIXED-iter schedule (not success-gated)
         self.ball.serve_curriculum_phase_start = 3600000       # iter 15000: fast-only until here (15000*240)
-        self.ball.serve_curriculum_steps = 2400000             # add slow balls over 10000 iter (15000->25000), then full mix
+        self.ball.serve_curriculum_steps = 3600000             # v14b GENTLER ramp: add difficulty over 15000 iter (15000->30000) so the critic keeps up (#3; v14 critic diverged at c~0.32 / iter~18220 under the old 10000-iter ramp)
         self.ball.no_ball_period_s = 0.0       # v7: NO no-ball injection (v6 diverged ~iter39k when
         self.ball.ball_active_s = 3.0          #   no-ball ramped full; idle-region instability. Deploy clip handles no-ball.
         # idle/no-ball params below are INERT (no_ball_period_s=0) — kept for reference only.

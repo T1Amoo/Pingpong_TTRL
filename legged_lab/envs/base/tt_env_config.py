@@ -284,7 +284,7 @@ class TTAgentCfg(RslRlOnPolicyRunnerCfg):
         entropy_coef=0.006,# 0.005, alt 0.01
         num_learning_epochs= 5,#5,
         num_mini_batches=4, #4,
-        learning_rate=1.0e-3,#1.0e-3,
+        learning_rate=5.0e-4,# v14b: was 1e-3; critic value_loss diverged at iter~18220 (0.3 -> 2.5e7) -> halve LR for critic stability (#3)
         schedule="adaptive",
         gamma=0.95, #0.99
         lam=0.95,
