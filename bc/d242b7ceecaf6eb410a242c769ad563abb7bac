@@ -1,0 +1,21 @@
+legged_lab/scripts/inspect_a1.py
+  s_8aa4d77bcf6faf::t_fd20869fe7ba5d 1-154
+docs/superpowers/plans/a1_facts.md
+  s_8aa4d77bcf6faf::t_fe07ba628b21f8 1-230
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "bcd242b7ceecaf6eb410a242c769ad563abb7bac",
+  "prompts": {},
+  "sessions": {
+    "s_8aa4d77bcf6faf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f631d844-f58c-42e4-98f7-67b32f2148c9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
