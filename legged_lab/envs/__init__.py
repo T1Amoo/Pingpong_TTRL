@@ -36,6 +36,13 @@ from legged_lab.envs.g1_locomotion.g1_locomotion_config import (
 )
 
 
+from legged_lab.envs.a1_tt.a1_tt_config import (
+    A1TableTennisEnvCfg,
+    A1TableTennisAgentCfg,
+    A1TT_EvalEnvCfg,
+)
+from legged_lab.envs.a1_tt.a1_tt_env import A1TTEnv
+
 from legged_lab.utils.task_registry import task_registry
 task_registry.register("t1_tt", TTEnv, T1TableTennisEnvCfg(), T1TableTennisAgentCfg()) #TTEnv
 task_registry.register("t1_tt_eval", TTEnv, T1TT_EvalEnvCfg(), T1TableTennisAgentCfg())
@@ -44,3 +51,5 @@ task_registry.register("g1_tt_eval", TTEnv, G1TT_EvalEnvCfg(), G1TableTennisAgen
 task_registry.register("g1_tt_eval_hard", TTEnv, G1TT_EvalHardEnvCfg(), G1TableTennisAgentCfg())
 task_registry.register("g1_tt_dr", TTEnv, G1TableTennisDREnvCfg(), G1TableTennisDRAgentCfg())
 task_registry.register("g1_locomotion", LeggedEnv, G1LocomotionEnvCfg(), G1LocomotionAgentCfg())
+task_registry.register("a1_tt", A1TTEnv, A1TableTennisEnvCfg(), A1TableTennisAgentCfg())
+task_registry.register("a1_tt_eval", A1TTEnv, A1TT_EvalEnvCfg(), A1TableTennisAgentCfg())
