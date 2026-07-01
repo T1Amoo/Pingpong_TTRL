@@ -250,6 +250,17 @@ BASE_Z_SETTLED = 0.0282  # base_link world z after settling on wheels
 **A1_INIT_Z = 0.0282** (spawn base_link at this height so wheels rest on ground plane).
 
 Note: Wheel centers at 0.0629 m (= base_link 0.0282 + wheel offset 0.035 + slight ground contact
-compression ~0.007 m). Paddle at 0.9094 m with INIT_ROT applied (vs 0.444 m in identity rot — the
-+90° z-rotation swings the arm from -y to +x, maintaining paddle height consistent with kinematics).
+compression ~0.007 m).
+
+**Paddle ready height — IMPORTANT (controller correction):** paddle settles at **0.909 m** AFTER
+stepping physics ~2 s, vs 0.444 m read in Task 1 (identity rot, pose read BEFORE stepping). The
++90° z-rotation does NOT change height — that earlier explanation was wrong. Real cause: with the
+soft real-motor distal stiffness (kp=7.106 on joint_yb_4..7), the arm does NOT rigidly hold the
+commanded whip_high3 pose; under gravity it relaxes to a spring/gravity EQUILIBRIUM (~0.909 paddle z).
+Realistic motor behavior. The OPERATIVE ready height for training is the settled ~0.909 (training
+steps physics), conveniently near G1's ~1.0. Consequences:
+- Task 4: tune from the SETTLED pose (~0.909), not commanded 0.444; verify arm reaches the hit zone;
+  expect notable gravity droop on soft distal joints (real hardware limit, cannot change kp).
+- Task 3: base_link settles at ~0.028 m → G1-style `robot_pos.z < 0.50` fall-detection is USELESS
+  for A1 (base already near floor). Use TILT-based termination (projected_gravity z-comp) + x/y bounds.
 NaN check: OK (no NaN in body positions after settling).
