@@ -1,0 +1,19 @@
+legged_lab/scripts/watchdog_train_a1.sh
+  s_8aa4d77bcf6faf::t_f7fa20bb865e29 1-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "d919bb5bf4d426d17369743092d8caf196e060c5",
+  "prompts": {},
+  "sessions": {
+    "s_8aa4d77bcf6faf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f631d844-f58c-42e4-98f7-67b32f2148c9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
