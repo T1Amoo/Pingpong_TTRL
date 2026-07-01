@@ -13,6 +13,8 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser()
 parser.add_argument("--settle", action="store_true",
                     help="Drop robot free-base from z=0.3, step 2s, report settled heights.")
+parser.add_argument("--lift", type=float, default=-0.28,
+                    help="joint_lift init value to test (default -0.28).")
 AppLauncher.add_app_launcher_args(parser)
 args, _ = parser.parse_known_args()
 app = AppLauncher(args).app
@@ -22,6 +24,9 @@ import torch
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, Articulation
 from isaaclab.actuators import ImplicitActuatorCfg
+
+# Allow SETTLE_A1_CFG to be built after args are parsed (for --lift)
+_LIFT_INIT = args.lift
 
 USD_PATH = os.path.join(
     os.path.dirname(__file__),
@@ -146,7 +151,7 @@ SETTLE_A1_CFG = ArticulationCfg(
         pos=(0.0, 0.0, 0.3),      # safe drop height; will settle onto wheels
         rot=(0.7071, 0.0, 0.0, 0.7071),  # wxyz, +90° around z (arm faces +x)
         joint_pos={
-            "joint_lift": -0.28,
+            "joint_lift": _LIFT_INIT,
             "joint_yb_1": 1.769, "joint_yb_2": -0.762, "joint_yb_3": -1.863,
             "joint_yb_4": 1.445, "joint_yb_5": 0.206, "joint_yb_6": -0.827, "joint_yb_7": 1.043,
             "joint_zb_1": 0.0, "joint_zb_2": 0.0, "joint_zb_3": 0.0, "joint_zb_4": 0.0,
@@ -211,6 +216,7 @@ if args.settle:
 
     robot = Articulation(SETTLE_A1_CFG)
     sim.reset()
+    print(f"Testing joint_lift = {_LIFT_INIT}")
 
     # step 2 seconds = 400 steps @ dt=0.005
     n_steps = 400
@@ -224,7 +230,8 @@ if args.settle:
             base_z = robot.data.body_pos_w[0, 0, 2].item()
             print(f"  step {i:4d}  base_link z = {base_z:.4f}")
 
-    body_pos = robot.data.body_pos_w[0]  # (num_bodies, 3)
+    body_pos = robot.data.body_pos_w[0]   # (num_bodies, 3)
+    body_quat = robot.data.body_quat_w[0]  # (num_bodies, 4) wxyz
     base_idx = robot.body_names.index("base_link")
     rw_idx = robot.body_names.index("link_right_wheel")
     lw_idx = robot.body_names.index("link_left_wheel")
@@ -233,14 +240,41 @@ if args.settle:
     base_z    = body_pos[base_idx, 2].item()
     rw_z      = body_pos[rw_idx, 2].item()
     lw_z      = body_pos[lw_idx, 2].item()
-    paddle_z  = body_pos[paddle_idx, 2].item()
+    paddle_xyz = body_pos[paddle_idx].tolist()
+    paddle_quat = body_quat[paddle_idx].tolist()  # wxyz
 
     print("=" * 60)
     print("SETTLE RESULTS (after 2 s free simulation):")
     print(f"  base_link        z = {base_z:.4f}  m")
     print(f"  link_right_wheel z = {rw_z:.4f}  m")
     print(f"  link_left_wheel  z = {lw_z:.4f}  m")
-    print(f"  Link_yb_paddle   z = {paddle_z:.4f}  m")
+    print(f"  Link_yb_paddle   x = {paddle_xyz[0]:.4f}  y = {paddle_xyz[1]:.4f}  z = {paddle_xyz[2]:.4f}  m")
+    print(f"  Link_yb_paddle quat(wxyz) = ({paddle_quat[0]:.4f}, {paddle_quat[1]:.4f}, {paddle_quat[2]:.4f}, {paddle_quat[3]:.4f})")
+
+    # Blade center offset in body local z = +0.045 m (from USD mesh bbox center)
+    # Rotate local_z (0,0,1) by paddle quaternion to get world direction
+    w, qx, qy, qz = paddle_quat
+    # Rotate (0,0,1) by quaternion: v' = q * v * q^-1
+    # For unit vector (0,0,1): result = (2*(qx*qz+qy*w), 2*(qy*qz-qx*w), 1-2*(qx^2+qy^2))
+    lz_world = [
+        2*(qx*qz + qy*w),
+        2*(qy*qz - qx*w),
+        1 - 2*(qx*qx + qy*qy),
+    ]
+    blade_center_offset = 0.045
+    blade_world = [
+        paddle_xyz[0] + blade_center_offset * lz_world[0],
+        paddle_xyz[1] + blade_center_offset * lz_world[1],
+        paddle_xyz[2] + blade_center_offset * lz_world[2],
+    ]
+    print(f"  Blade center (body_origin + 0.045*local_z) world =")
+    print(f"    x={blade_world[0]:.4f}  y={blade_world[1]:.4f}  z={blade_world[2]:.4f}")
+
+    # All bodies (x, y, z)
+    print("\nAll body world positions (x, y, z):")
+    for i, (name, pos) in enumerate(zip(robot.body_names, body_pos.tolist())):
+        print(f"  [{i:02d}] {name:40s}  x={pos[0]:8.4f}  y={pos[1]:8.4f}  z={pos[2]:8.4f}")
+
     print("=" * 60)
     print(f"A1_INIT_Z (set to base_link settled z) = {base_z:.4f}")
     print(f"Wheel centers settled z = {(rw_z + lw_z) / 2:.4f}  (expect ≈0.035 if on ground)")

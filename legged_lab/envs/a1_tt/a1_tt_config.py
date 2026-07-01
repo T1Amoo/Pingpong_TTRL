@@ -107,9 +107,11 @@ class A1TableTennisEnvCfg(TTEnvCfg):
         self.domain_rand.events.reset_base.params["pose_range"] = {
             "x": (-0.05, 0.05), "y": (-0.05, 0.05), "yaw": (-0.05, 0.05),
         }
-        # paddle geometry (Task 4 will refine offsets)
+        # paddle geometry (Task 4): body origin is at joint attachment (bottom of handle);
+        # blade rubber face center is ~8.5 cm above body origin in local +z
+        # (mesh z range: handle −0.08..0 m, blade 0..0.17 m, blade center z≈0.085 m).
         self.robot.paddle_body_name = "Link_yb_paddle"
-        self.robot.paddle_offset = (0.0, 0.0, 0.0)
+        self.robot.paddle_offset = (0.0, 0.0, 0.085)
         # hit_body_height: settled base_link z ≈ 0.028 m (from a1_facts.md BASE_Z_SETTLED)
         self.robot.hit_body_height = 0.028
         self.robot.paddle_y_offset = -0.55

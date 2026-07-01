@@ -43,7 +43,10 @@ A1_TT_CFG = ArticulationCfg(
         pos=(-1.8, 0.0, A1_INIT_Z),
         rot=A1_INIT_ROT,
         joint_pos={
-            "joint_lift": -0.28,   # tuned in Task 4 for G1-prior paddle-ready height
+            # Task 4: lift kept at -0.28 — changing lift has negligible effect on paddle height
+            # (arm droop on soft distal joints kp=7.1 dominates; lift=-0.28 gives blade z≈0.935 m,
+            # lift=-0.45 only gains +0.006 m). Blade center at 0.935 m is within ~0.065 m of 1.0 target.
+            "joint_lift": -0.28,   # range [-0.8,-0.05]; kept at design default
             "joint_yb_1": 1.769, "joint_yb_2": -0.762, "joint_yb_3": -1.863,
             "joint_yb_4": 1.445, "joint_yb_5": 0.206, "joint_yb_6": -0.827, "joint_yb_7": 1.043,
             "joint_zb_1": 0.0, "joint_zb_2": 0.0, "joint_zb_3": 0.0, "joint_zb_4": 0.0,
