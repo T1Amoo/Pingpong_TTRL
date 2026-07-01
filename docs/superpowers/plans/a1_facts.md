@@ -228,3 +228,28 @@ z=  1.4365  link_head_ud
 | Arm z range | 0.44 m (paddle) to 1.18 m (shoulder) |
 | Lift link z | 1.22 m |
 | Head z | ≈ 1.44 m |
+
+---
+
+## BASE_Z_SETTLED
+
+Measured by `inspect_a1.py --settle`: drop robot free-base from z=0.3, step 2 s (400 steps @ dt=0.005),
+read settled world positions. Config: `fix_root_link=False`, `rot=(0.7071,0,0,0.7071)`, whip_high3 arm pose.
+
+```python
+BASE_Z_SETTLED = 0.0282  # base_link world z after settling on wheels
+```
+
+| Body | Settled world z |
+|------|----------------|
+| `base_link` | 0.0282 m |
+| `link_right_wheel` | 0.0629 m |
+| `link_left_wheel` | 0.0629 m |
+| `Link_yb_paddle` | 0.9094 m |
+
+**A1_INIT_Z = 0.0282** (spawn base_link at this height so wheels rest on ground plane).
+
+Note: Wheel centers at 0.0629 m (= base_link 0.0282 + wheel offset 0.035 + slight ground contact
+compression ~0.007 m). Paddle at 0.9094 m with INIT_ROT applied (vs 0.444 m in identity rot — the
++90° z-rotation swings the arm from -y to +x, maintaining paddle height consistent with kinematics).
+NaN check: OK (no NaN in body positions after settling).
