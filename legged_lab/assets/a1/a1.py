@@ -56,7 +56,7 @@ A1_TT_CFG = ArticulationCfg(
         },
         joint_vel={".*": 0.0},
     ),
-    soft_joint_pos_limit_factor=1.0,
+    soft_joint_pos_limit_factor=0.95,   # 5% margin inside hard limits: joint_pos_target_limits engages before hard stop
     actuators={
         "right_arm": ImplicitActuatorCfg(
             joint_names_expr=["joint_yb_[1-7]"],

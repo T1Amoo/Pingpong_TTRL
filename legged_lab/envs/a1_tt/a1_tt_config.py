@@ -33,7 +33,7 @@ class A1TableTennisRewardCfg(RewardCfg):
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.025)
     action_l2 = RewTerm(func=mdp.action_l2, weight=-0.002)
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-2.0)
-    joint_pos_target_limits = RewTerm(func=mdp.joint_pos_target_limits, weight=-1.0)
+    joint_pos_target_limits = RewTerm(func=mdp.joint_pos_target_limits, weight=-0.1)   # was -1.0; quadratic+unbounded -> value-fn bomb (critic diverged ~iter1000). Now bounded by clip_actions=10 + soft 0.95; keep as a mild nudge only.
     joint_deviation_right_arm = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.05,
@@ -87,6 +87,10 @@ class A1TableTennisEnvCfg(TTEnvCfg):
         super().__post_init__()
         self.sim.dt = 0.002
         self.sim.decimation = 10  # 50 Hz
+        # Bound applied action target: processed = clip(action,±10)*scale(0.25)+default -> target within default±2.5rad.
+        # Base default is 100 (~no clip) -> targets ran unbounded past joint limits, joint_pos_target_limits (quadratic)
+        # exploded the critic value fn ~iter1000. 10 covers the hitting workspace while capping the runaway (raw hit ~32).
+        self.normalization.clip_actions = 10.0
         self.scene.height_scanner.enable_height_scan = False
         self.scene.height_scanner.prim_body_name = "base_link"
         self.scene.robot = A1_TT_CFG
