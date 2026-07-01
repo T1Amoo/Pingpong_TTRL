@@ -104,13 +104,43 @@ class A1TableTennisEnvCfg(TTEnvCfg):
         self.robot.num_actions = 7
         self.robot.num_joints = 7
         self.domain_rand.events.add_base_mass.params["asset_cfg"].body_names = ["base_link"]
-        # DR reset joint groups: only the right arm is active (no locomotion joints)
-        self.domain_rand.events.reset_locomotion_joints.params["asset_cfg"].joint_names = A1_ARM_JOINTS[:1]
-        self.domain_rand.events.reset_manipulation_joints.params["asset_cfg"].joint_names = A1_ARM_JOINTS
-        # base is free but should not be reset-scattered like a walking robot
+
+        # ---- Domain randomization for a FREE AGV chassis (NOT a balancing biped) ----
+        # The base is a heavy free rigid body the policy does not actuate. Biped-style base velocity
+        # kicks / pushes only make it drift with no way to recover (the "wobble" seen in the GUI).
+        # We randomize only the right arm (the controlled DoF) plus the physics material.
+
+        # reset_base: no randomization. Keep the term but zero every range so each episode is a clean
+        # deterministic reset to the spawn pose. (Dropping the term would leave the base at its terminal
+        # pose across resets — scene.reset() does not rewrite the root state; only this event does.)
         self.domain_rand.events.reset_base.params["pose_range"] = {
-            "x": (-0.05, 0.05), "y": (-0.05, 0.05), "yaw": (-0.05, 0.05),
+            "x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0),
         }
+        self.domain_rand.events.reset_base.params["velocity_range"] = {
+            "x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0),
+            "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0),
+        }
+
+        # push_robot: disabled — a free unactuated base cannot recover from an external push.
+        self.domain_rand.events.push_robot = None
+
+        # reset_locomotion_joints: disabled. It was a biped hip/knee "scale" reset mis-applied to
+        # joint_yb_1, which is already covered by the arm-offset reset below (so this merges into it).
+        self.domain_rand.events.reset_locomotion_joints = None
+
+        # reset_manipulation_joints: all 7 arm joints, tightened to a small ±0.1 rad offset so the policy
+        # starts near its ready pose each episode (±0.5 rad was too scattered for precise ready-pose learning).
+        self.domain_rand.events.reset_manipulation_joints.params["asset_cfg"].joint_names = A1_ARM_JOINTS
+        self.domain_rand.events.reset_manipulation_joints.params["position_range"] = (-0.1, 0.1)
+
+        # physics_material: AGV-oriented. Higher wheel/ground friction keeps the free base planted against
+        # arm-swing reaction; restitution kept low (non-bouncy chassis). Starting values — tune from GUI.
+        self.domain_rand.events.physics_material.params["static_friction_range"] = (0.8, 1.2)
+        self.domain_rand.events.physics_material.params["dynamic_friction_range"] = (0.6, 1.0)
+        self.domain_rand.events.physics_material.params["restitution_range"] = (0.0, 0.005)
+
+        # action_delay: enabled (1-step ≈ 20 ms control latency at 50 Hz) to match real-robot actuation lag.
+        self.domain_rand.action_delay.enable = True
         # paddle geometry (Task 4): body origin is at joint attachment (bottom of handle);
         # blade rubber face center is ~8.5 cm above body origin in local +z
         # (mesh z range: handle −0.08..0 m, blade 0..0.17 m, blade center z≈0.085 m).

@@ -18,8 +18,14 @@ _EFFORT = {"joint_yb_1": 28.0, "joint_yb_2": 28.0, "joint_yb_3": 28.0,
 _VEL = {"joint_yb_1": 8.0, "joint_yb_2": 8.0, "joint_yb_3": 8.0,
         "joint_yb_4": 20.0, "joint_yb_5": 20.0, "joint_yb_6": 20.0, "joint_yb_7": 20.0}
 
-# From a1_facts.md (Task 1): quaternion (w,x,y,z) that stands the robot upright + arm toward +x
-A1_INIT_ROT = (0.7071, 0.0, 0.0, 0.7071)  # wxyz, +90° around z
+# Robot FACING (whole-body orientation), from a1_facts.md measured link positions under identity rot:
+# the chassis is built spread along Y — both wheels on ±y (±0.146), both arms on ±y (±0.24), torso/head
+# clustered at x≈+0.04 — so the body's FRONT is +x. The robot spawns at x=-1.8 with the table at x=0,
+# so identity already makes the whole robot FACE THE TABLE (+x). The right arm (yb) sits on the -y side =
+# the robot's right when facing the table (human-like); its 7 DoF swing the paddle forward to hit.
+# Do NOT use +90° — that points the arm's *rest* pose at the table but turns the *body* sideways (+y),
+# which reads as "robot not facing the table". Body-facing wins; the arm reaches forward via its joints.
+A1_INIT_ROT = (1.0, 0.0, 0.0, 0.0)  # wxyz identity — whole robot faces +x (the table)
 
 # Settled free-base height: measured by inspect_a1.py --settle (drop from z=0.3, step 2 s).
 # base_link settled z=0.0282 m; wheel centers z=0.0629 m (≈0.035 above base_link).
@@ -47,8 +53,12 @@ A1_TT_CFG = ArticulationCfg(
             # (arm droop on soft distal joints kp=7.1 dominates; lift=-0.28 gives blade z≈0.935 m,
             # lift=-0.45 only gains +0.006 m). Blade center at 0.935 m is within ~0.065 m of 1.0 target.
             "joint_lift": -0.28,   # range [-0.8,-0.05]; kept at design default
-            "joint_yb_1": 1.769, "joint_yb_2": -0.762, "joint_yb_3": -1.863,
-            "joint_yb_4": 1.445, "joint_yb_5": 0.206, "joint_yb_6": -0.827, "joint_yb_7": 1.043,
+            # FOREHAND ready pose (was backhand). From /tmp probe single-joint scan on the old pose:
+            #   yb_2 -1.57 (-0.762->-2.33) swings the paddle to the RIGHT (-y) side, front, ~0.89 m high;
+            #   yb_7 -pi (1.043->-2.10) rolls the blade in place so the FOREHAND face points at the table (+x).
+            # Old backhand pose was: yb=[1.769,-0.762,-1.863,1.445,0.206,-0.827,1.043] (paddle front-centered).
+            "joint_yb_1": 1.769, "joint_yb_2": -2.33, "joint_yb_3": -1.863,
+            "joint_yb_4": 1.445, "joint_yb_5": 0.206, "joint_yb_6": -0.827, "joint_yb_7": -2.10,
             "joint_zb_1": 0.0, "joint_zb_2": 0.0, "joint_zb_3": 0.0, "joint_zb_4": 0.0,
             "joint_zb_5": 0.0, "joint_zb_6": 0.0, "joint_zb_7": 0.0,
             "joint_head_lr": 0.0, "joint_head_ud": 0.0,
