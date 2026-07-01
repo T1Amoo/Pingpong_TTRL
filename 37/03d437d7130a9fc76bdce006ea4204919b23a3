@@ -1,0 +1,26 @@
+legged_lab/scripts/inspect_a1.py
+  s_8aa4d77bcf6faf::t_6d99d35d76dd20 6-8,14-15,128-291
+docs/superpowers/plans/a1_facts.md
+  s_8aa4d77bcf6faf::t_f4b5bff5d0467e 231-255
+legged_lab/scripts/verify_a1_tt.py
+  s_8aa4d77bcf6faf::t_b500368c4ba2a1 1-92
+legged_lab/assets/a1/a1.py
+  s_8aa4d77bcf6faf::t_9dede81db78999 1-23,28-72
+  s_8aa4d77bcf6faf::t_6970b7366536a7 24-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "3703d437d7130a9fc76bdce006ea4204919b23a3",
+  "prompts": {},
+  "sessions": {
+    "s_8aa4d77bcf6faf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f631d844-f58c-42e4-98f7-67b32f2148c9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
