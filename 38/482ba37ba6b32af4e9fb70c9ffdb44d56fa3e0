@@ -1,0 +1,19 @@
+docs/superpowers/plans/a1_facts.md
+  s_8aa4d77bcf6faf::t_e099520dfa2acb 253-265
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "38482ba37ba6b32af4e9fb70c9ffdb44d56fa3e0",
+  "prompts": {},
+  "sessions": {
+    "s_8aa4d77bcf6faf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f631d844-f58c-42e4-98f7-67b32f2148c9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
