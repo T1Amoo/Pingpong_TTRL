@@ -7,6 +7,7 @@ parser.add_argument("--task", type=str, default="g1_tt")
 parser.add_argument("--steps", type=int, default=100)
 parser.add_argument("--out", type=str, default="/tmp/g1_probe_result.txt")
 parser.add_argument("--bounce", action="store_true")
+parser.add_argument("--face_axis", type=str, default=None, choices=["x", "y", "z", "-x", "-y", "-z"])
 AppLauncher.add_app_launcher_args(parser)
 args, _ = parser.parse_known_args()
 args.headless = True
@@ -60,9 +61,21 @@ rel = (face - base)[0]
 report("[probe] paddle_face - base (x,y,z): " + str([round(float(v),3) for v in rel]))
 
 if args.bounce:
-    # shoot the ball at the blade FACE along its world normal (blade local +Z), check rebound
-    normal = mu.quat_apply(paddle_quat, torch.tensor([[0.0, 0.0, 1.0]], device=env.device))  # (1,3)
+    axis = args.face_axis
+    if axis is None:
+        axis = "y" if args.task.startswith("a1_") else "z"
+    axis_map = {
+        "x": (1.0, 0.0, 0.0),
+        "y": (0.0, 1.0, 0.0),
+        "z": (0.0, 0.0, 1.0),
+        "-x": (-1.0, 0.0, 0.0),
+        "-y": (0.0, -1.0, 0.0),
+        "-z": (0.0, 0.0, -1.0),
+    }
+    local_axis = torch.tensor([axis_map[axis]], device=env.device)
+    normal = mu.quat_apply(paddle_quat, local_axis)  # (1,3)
     n = normal[0] / normal[0].norm()
+    report("[probe] bounce face_axis=" + axis + " normal_world=" + str([round(float(v), 3) for v in n]))
     P = face[0]
     approach = 2.0  # m/s toward face
     bstate = env.ball.data.default_root_state.clone()

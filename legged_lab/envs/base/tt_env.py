@@ -51,7 +51,7 @@ class TTSceneCfg(SceneCfg):
         self.ball_future: RigidObjectCfg = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/BallFuture",
             spawn=sim_utils.SphereCfg(
-                radius=0.02,
+                radius=0.035,
                 rigid_props=sim_utils.RigidBodyPropertiesCfg(
                     kinematic_enabled=True,
                     disable_gravity=True,
@@ -70,7 +70,7 @@ class TTSceneCfg(SceneCfg):
         self.ball_pred: RigidObjectCfg = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/BallPred",
             spawn=sim_utils.SphereCfg(
-                radius=0.02,
+                radius=0.04,
                 rigid_props=sim_utils.RigidBodyPropertiesCfg(
                     kinematic_enabled=True,
                     disable_gravity=True,
@@ -325,6 +325,8 @@ class TTEnv(VecEnv):
         self.has_touch_paddle_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.ball_landing_dis_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.ball_contact_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
+        self.ball_contact_raw_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
+        self.active_paddle_hit = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.has_first_bounce = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.has_first_bounce_prev = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.has_touch_own_table = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
@@ -365,6 +367,8 @@ class TTEnv(VecEnv):
         self.robot_future_vel = torch.zeros(self.num_envs, 3, device=self.device)
 
         self.paddle_touch_point = torch.zeros(self.num_envs, 3, device=self.device)
+        self.paddle_touch_point_vel = torch.zeros(self.num_envs, 3, device=self.device)
+        self.ball_linvel_prev = torch.zeros(self.num_envs, 3, device=self.device)
         self.robot.write_joint_effort_limit_to_sim(self.robot.data.joint_effort_limits[:, self.action_joint_ids] * self.cfg.robot.effort_limit_scale, self.action_joint_ids)
 
         self.init_obs_buffer()
@@ -398,6 +402,31 @@ class TTEnv(VecEnv):
         env_ids = torch.arange(self.num_envs, device=self.device)
         self.ball_pred_visual.write_root_pose_to_sim(pose, env_ids)
         self.scene.write_data_to_sim()
+
+    def _ball_prediction_plausible(self, pred: torch.Tensor) -> torch.Tensor:
+        """Reject early/OOD predictor outputs before they become actor targets."""
+        hx = self.cfg.robot.hit_plane_x
+        y_center = self.cfg.robot.home_y + self.cfg.robot.paddle_y_offset
+        finite = torch.isfinite(pred).all(dim=-1)
+        return (
+            finite
+            & (pred[:, 0] > hx - 0.50)
+            & (pred[:, 0] < hx + 0.30)
+            & (torch.abs(pred[:, 1] - y_center) < 0.45)
+            & (pred[:, 2] > 0.85)
+            & (pred[:, 2] < 1.55)
+        )
+
+    def _project_prediction_to_target_geometry(self, pred: torch.Tensor) -> torch.Tensor:
+        """Match learned predictions to the task's analytic hit-target geometry."""
+        tx_min, tx_max = getattr(self.cfg.robot, "hit_target_x_range", (-100.0, 100.0))
+        if tx_min <= -99.0 and tx_max >= 99.0:
+            return pred
+
+        projected = pred.clone()
+        projected[:, 0] = torch.clamp(projected[:, 0], min=float(tx_min), max=float(tx_max))
+        return projected
+
     def update_robot_future_pos_visual(self):
         if self.headless:
             return
@@ -446,10 +475,13 @@ class TTEnv(VecEnv):
         # ball_pos = self.ball.data.root_pos_w - self.scene.env_origins  
         ball_linvel = self.ball.data.root_lin_vel_w
         robot_pos = robot.data.root_link_pos_w - table.data.root_link_pos_w
-        # Relative target offset (x,y): use ball prediction shifted by (-0.1, +0.6) as desired robot target
+        pred_ok = self._ball_prediction_plausible(self.ball_prediction).unsqueeze(-1)
+        ball_pred_safe = torch.where(pred_ok, self.ball_prediction, self.ball_future_pose)
+
+        # Relative target offset (x,y): use ball prediction shifted by paddle offset as desired robot target
         ball_target_xy = torch.stack([
-            self.ball_prediction[:, 0] - 0.1,
-            self.ball_prediction[:, 1] + 0.6,
+            ball_pred_safe[:, 0] - 0.1,
+            ball_pred_safe[:, 1] - self.cfg.robot.paddle_y_offset,
         ], dim=1)
         rel_target_xy = (ball_target_xy - robot_pos[:, :2]) * self.obs_scales.robot_pos
 
@@ -463,7 +495,7 @@ class TTEnv(VecEnv):
                 ball_pos * self.obs_scales.ball_pos,
                 robot_pos * self.obs_scales.robot_pos,
                 # self.paddle_touch_point* self.obs_scales.ball_pos,
-                self.ball_prediction * self.obs_scales.ball_pos, # use learned prediction in actor obs
+                ball_pred_safe * self.obs_scales.ball_pos, # use learned prediction in actor obs
                 rel_target_xy,  # 2D relative target base pos
                 heading.unsqueeze(-1) * self.obs_scales.projected_gravity,
             ],
@@ -528,10 +560,16 @@ class TTEnv(VecEnv):
         mexp = self.mask_invalid.unsqueeze(-1)  # [N,1]; set this step in compute_intermediate_values
         # (a) prediction is in ball_future_pose's frame (robot-table): sentinel == modified_ball_pos
         pred_sentinel = torch.tensor(
-            [self.cfg.robot.hit_plane_x, 0.0 + self.cfg.robot.paddle_y_offset, self.cfg.robot.hit_body_height + 0.2],
+            [
+                self.cfg.robot.hit_plane_x,
+                self.cfg.robot.home_y + self.cfg.robot.paddle_y_offset,
+                self.cfg.robot.hit_body_height + 0.2,
+            ],
             device=self.device, dtype=self.ball_prediction.dtype,
         ).unsqueeze(0)  # [1,3]
-        ball_pred_g = torch.where(mexp, pred_sentinel.expand_as(self.ball_prediction), self.ball_prediction)
+        pred_ok = self._ball_prediction_plausible(self.ball_prediction).unsqueeze(-1)
+        ball_pred_safe = torch.where(pred_ok, self.ball_prediction, self.ball_future_pose)
+        ball_pred_g = torch.where(mexp, pred_sentinel.expand_as(self.ball_prediction), ball_pred_safe)
         # (b) perception ball slot [0:3] is in (ball - env_origins) frame: convert the same
         #     home point -> world (table + sentinel_rel) -> perception (- env_origins).
         percep_ball_sentinel = (self.table.data.root_link_pos_w + pred_sentinel) - self.scene.env_origins
@@ -541,7 +579,7 @@ class TTEnv(VecEnv):
         # Relative target offset (x,y) for actor obs with perception (from GATED prediction)
         ball_target_xy = torch.stack([
             ball_pred_g[:, 0] - 0.1,
-            ball_pred_g[:, 1] + 0.6,
+            ball_pred_g[:, 1] - self.cfg.robot.paddle_y_offset,
         ], dim=1)
         rel_target_xy = (ball_target_xy - robot_pos[:, :2]) * self.obs_scales.robot_pos
 
@@ -611,18 +649,38 @@ class TTEnv(VecEnv):
                     preds = preds[:, :3]
                 else:
                     return
-            # Store prediction (env-local frame)
-            self.ball_prediction = preds
-            # Compute visualization positions in world frame
-            self.ball_prediction_vis = self.ball_prediction + self.scene.env_origins
-            # debug print once
-            if not hasattr(self, "_printed_pred_once"):
+            # Store prediction in env-local frame, projected into the same target geometry as
+            # the analytic hit point. For fixed-plane tasks this pins x to hit_plane_x, leaving
+            # y/z as the learned quantities that matter.
+            self.ball_prediction = self._project_prediction_to_target_geometry(preds)
+            # Visualize only the learned prediction that is valid enough to be a live target.
+            # The actor already gates unusable/OOD predictions; drawing raw predictions during
+            # invalid flight segments makes the yellow marker look like a drifting trajectory.
+            pred_usable = self._ball_prediction_plausible(self.ball_prediction) & (~self.mask_invalid)
+            pred_vis = torch.nan_to_num(self.ball_prediction, nan=0.0, posinf=0.0, neginf=0.0).clone()
+            pred_vis[:, 2] = torch.where(
+                pred_usable,
+                torch.clamp(pred_vis[:, 2], min=0.82),
+                torch.full_like(pred_vis[:, 2], -10.0),
+            )
+            self.ball_prediction_vis = pred_vis + self.scene.env_origins
+            # debug print once, then sparsely
+            if not hasattr(self, "_pred_debug_counter"):
+                self._pred_debug_counter = 0
+            self._pred_debug_counter += 1
+            if self._pred_debug_counter == 1 or self._pred_debug_counter % 50 == 0:
                 try:
                     p0 = self.ball_prediction[0].detach().cpu().numpy()
-                    print(f"[TTEnv] update_prediction received, first env: {p0}")
+                    f0 = self.ball_future_pose[0].detach().cpu().numpy()
+                    err0 = float(torch.norm(self.ball_prediction[0] - self.ball_future_pose[0]).detach().cpu())
+                    valid0 = bool((~self.mask_invalid[0]).detach().cpu())
+                    usable0 = bool((self._ball_prediction_plausible(self.ball_prediction)[0] & (~self.mask_invalid[0])).detach().cpu())
+                    print(
+                        "[TTVis] env0 learned_pred="
+                        f"{p0} analytic_hit={f0} err={err0:.3f} valid_hit={valid0} pred_usable={usable0}"
+                    )
                 except Exception:
                     pass
-                self._printed_pred_once = True
             if not self.headless:
                 self.update_ball_pred_visual()
         except Exception:
@@ -770,6 +828,8 @@ class TTEnv(VecEnv):
         self.ball_landing_dis_rew[env_ids] = False
         self.has_touch_paddle_rew[env_ids] = False
         self.ball_contact_rew[env_ids] = 0.0
+        self.ball_contact_raw_rew[env_ids] = 0.0
+        self.active_paddle_hit[env_ids] = False
         self.has_first_bounce[env_ids] = False
         self.has_first_bounce_prev[env_ids] = False
         self.has_touch_own_table[env_ids] = False
@@ -820,9 +880,10 @@ class TTEnv(VecEnv):
                 xb_lo, xb_hi = _bclerp(self.cfg.ball.serve_bounce_x_range, getattr(self.cfg.ball, "serve_bounce_x_range_hard", self.cfg.ball.serve_bounce_x_range), c)
                 vz_lo, vz_hi = _bclerp(self.cfg.ball.serve_bounce_vz_range, getattr(self.cfg.ball, "serve_bounce_vz_range_hard", self.cfg.ball.serve_bounce_vz_range), c)
                 y_half = self.cfg.ball.serve_y_start + c * (self.cfg.ball.serve_y_wide - self.cfg.ball.serve_y_start)
+                y_center = getattr(self.cfg.ball, "serve_y_center", 0.0)
                 g, Z_LAUNCH, Z_BOUNCE, X_LAUNCH = 9.81, 1.03, 0.78, 1.35
                 x_b = torch.empty(n, 1, device=self.device).uniform_(xb_lo, xb_hi)
-                y_b = torch.empty(n, 1, device=self.device).uniform_(-y_half, y_half)
+                y_b = y_center + torch.empty(n, 1, device=self.device).uniform_(-y_half, y_half)
                 v_z = torch.empty(n, 1, device=self.device).uniform_(vz_lo, vz_hi)
                 t_b = (v_z + torch.sqrt(v_z * v_z + 2.0 * g * (Z_LAUNCH - Z_BOUNCE))) / g
                 v_x = (x_b - X_LAUNCH) / t_b   # launch x = 1.35 (env-local)
@@ -883,6 +944,8 @@ class TTEnv(VecEnv):
             # Apply old states to simulation
             self.ball.write_root_pose_to_sim(old_states[:, :7], old_state_env_ids)
             self.ball.write_root_velocity_to_sim(old_states[:, 7:], old_state_env_ids)
+
+        self.ball_linvel_prev[env_ids] = self.reset_ball_state_buf[env_ids, 7:10]
 
     def step(self, actions: torch.Tensor):
 
@@ -1032,6 +1095,7 @@ class TTEnv(VecEnv):
         rotated_offset: torch.Tensor = math_utils.quat_apply(paddle_quat, local_offset)
         # 4) Compute your touch point:
         self.paddle_touch_point = paddle_pos + rotated_offset # paddle_position in the world frame.
+        self.paddle_touch_point_vel = self.robot.data.body_lin_vel_w[:, paddle_index, :]
         # 5) Compute touch reward:
 
         distance = torch.norm(self.ball_global_pos - self.paddle_touch_point, dim=1) - 0.02 # corrected for ball radius
@@ -1039,14 +1103,55 @@ class TTEnv(VecEnv):
         contact_score = (
             self.cfg.ball.contact_threshold - distance
         ) / self.cfg.ball.contact_threshold
+        ball_linvel_now = self.ball.data.root_lin_vel_w
+        ball_vx_before_step = self.ball_linvel_prev[:, 0]
         self.ball_contact = torch.clamp(contact_score, min=0.0, max=1.0) # determine if in contact region
-        self.ball_contact_rew = torch.maximum(self.ball_contact_rew, self.ball_contact) # finds reward for closest ball paddle distance
-        # self.ball_contact = torch.where(contact_score > 0.0, torch.ones_like(contact_score), torch.zeros_like(contact_score))
-        # self.ball_contact = self.ball_contact * ~self.has_touch_paddle # mask invalid if previous ball_contact True
-        # new_hits = contact_score > 0  # Tensor[N] bool
-        new_hits = (contact_score > 0) & (self.ball_contact < self.ball_contact_rew)  # Tensor[N] bool
+        self.ball_contact_raw_rew = torch.maximum(self.ball_contact_raw_rew, self.ball_contact)
+        if getattr(self.cfg.ball, "require_active_contact", False):
+            ball_local = self.ball_global_pos - self.scene.env_origins
+            paddle_speed = torch.linalg.norm(self.paddle_touch_point_vel, dim=1)
+            paddle_forward_speed = self.paddle_touch_point_vel[:, 0]
+            min_speed = float(getattr(self.cfg.ball, "active_contact_min_paddle_speed", 0.0))
+            min_forward = float(getattr(self.cfg.ball, "active_contact_min_forward_speed", -100.0))
+            speed_score = torch.clamp((paddle_speed - min_speed) / max(min_speed, 0.1), min=0.0, max=1.0)
+            forward_score = torch.clamp(
+                (paddle_forward_speed - min_forward) / max(abs(min_forward), 0.1),
+                min=0.0,
+                max=1.0,
+            )
+            own_bounce_ok = self.has_touch_own_table_prev
+            if not getattr(self.cfg.ball, "active_contact_require_own_bounce", False):
+                own_bounce_ok = torch.ones_like(own_bounce_ok, dtype=torch.bool)
+            hx = self.cfg.robot.hit_plane_x
+            contact_candidate = contact_score > 0.0
+            active_hit = (
+                contact_candidate
+                & (~self.has_touch_paddle)
+                & own_bounce_ok
+                & (ball_vx_before_step < -0.05)
+                & (ball_local[:, 0] > hx - 0.28)
+                & (ball_local[:, 0] < hx + 0.28)
+                & (ball_local[:, 2] > 0.75)
+                & (paddle_speed >= min_speed)
+                & (paddle_forward_speed >= min_forward)
+            )
+            active_score = self.ball_contact * torch.minimum(speed_score, forward_score)
+            self.ball_contact_rew = torch.maximum(
+                self.ball_contact_rew,
+                torch.where(active_hit, active_score, torch.zeros_like(active_score)),
+            )
+            self.active_paddle_hit = active_hit
+            new_hits = active_hit
+        else:
+            self.ball_contact_rew = torch.maximum(self.ball_contact_rew, self.ball_contact) # finds reward for closest ball paddle distance
+            # self.ball_contact = torch.where(contact_score > 0.0, torch.ones_like(contact_score), torch.zeros_like(contact_score))
+            # self.ball_contact = self.ball_contact * ~self.has_touch_paddle # mask invalid if previous ball_contact True
+            # new_hits = contact_score > 0  # Tensor[N] bool
+            new_hits = (contact_score > 0) & (self.ball_contact < self.ball_contact_rew)  # Tensor[N] bool
+            self.active_paddle_hit = new_hits
         still_false = ~self.has_touch_paddle  # Tensor[N] bool
         self.has_touch_paddle[still_false] = new_hits[still_false] # set has_touch_paddle True for env with ball_contact True
+        self.ball_linvel_prev.copy_(ball_linvel_now)
 
     def compute_intermediate_values(self):
         # print("has_touch_paddle", self.has_touch_paddle)
@@ -1153,8 +1258,8 @@ class TTEnv(VecEnv):
         body_height = self.cfg.robot.hit_body_height
         vel_max = self.cfg.robot.robot_vel_max
         paddle_y_offset = self.cfg.robot.paddle_y_offset
-        hx = self.cfg.robot.hit_plane_x   # robot stance / hit-plane x (env-local); all the
-                                          # -1.6/-1.65/-1.5/-1.9/-1.87 below derive from this.
+        hx = self.cfg.robot.hit_plane_x   # env-local hit-guidance plane x. For parked-base A1
+                                          # this is the reachable blade x, not the base x.
 
         self.mask_before = (has_bounced == 0).squeeze(-1)
         self.mask_after = (has_bounced == 1).squeeze(-1)
@@ -1204,8 +1309,19 @@ class TTEnv(VecEnv):
         xpa = x + dx_after
         ypa = y + dy_after
 
-        xpb=torch.clamp(xpb, max=hx)
-        xpa=torch.clamp(xpa, max=hx)
+        tx_min, tx_max = getattr(self.cfg.robot, "hit_target_x_range", (-100.0, 100.0))
+        ty_min, ty_max = getattr(self.cfg.robot, "hit_target_y_range", (-100.0, 100.0))
+        tz_min, tz_max = getattr(self.cfg.robot, "hit_target_z_range", (-100.0, 100.0))
+        if tx_min > -99.0 or tx_max < 99.0:
+            xpb = torch.clamp(xpb, min=tx_min, max=tx_max)
+            xpa = torch.clamp(xpa, min=tx_min, max=tx_max)
+        else:
+            xpb = torch.clamp(xpb, max=hx)
+            xpa = torch.clamp(xpa, max=hx)
+        ypb = torch.clamp(ypb, min=ty_min, max=ty_max)
+        ypa = torch.clamp(ypa, min=ty_min, max=ty_max)
+        zpb = torch.clamp(zpb, min=tz_min, max=tz_max)
+        zpa = torch.clamp(zpa, min=tz_min, max=tz_max)
 
         self.pos_pred_before = torch.stack([xpb, ypb, zpb], dim=-1)
         self.pos_pred_after = torch.stack([xpa, ypa, zpa], dim=-1)
@@ -1248,8 +1364,8 @@ class TTEnv(VecEnv):
         # ready target has rel_target_x == -0.1 constant (no restoring force) -> over a long
         # no-ball gap the robot drifts backward chasing it and falls. Anchoring x,y to the
         # trained home (-1.6, 0) gives a restoring force -> stable idle at home.
-        modified_ball_pos[:, 0] = hx # HOME_X (env-local; robot trained base)
-        modified_ball_pos[:, 1] = 0.0 + paddle_y_offset  # HOME_Y + paddle offset (-0.55)
+        modified_ball_pos[:, 0] = hx
+        modified_ball_pos[:, 1] = self.cfg.robot.home_y + paddle_y_offset
         modified_ball_pos[:, 2] = body_height + 0.2     # ready height (0.885)
         self.ball_future_pose = torch.where(
             mask_invalid_expanded,
@@ -1269,7 +1385,7 @@ class TTEnv(VecEnv):
         )
         self.robot_future_pos = torch.where(
             mask_invalid_expanded,      # [N,3] bool
-            self.robot_future_pos.new_tensor([hx - 0.27, 0.0, body_height]).expand_as(self.robot_future_pos),
+            self.robot_future_pos.new_tensor([hx - 0.27, self.cfg.robot.home_y, body_height]).expand_as(self.robot_future_pos),
             # [-0.9, 0.2, body_height] for all envs
             self.robot_future_pos
         )
@@ -1298,13 +1414,29 @@ class TTEnv(VecEnv):
         )
 
         if not self.headless:
-            # self.update_ball_future_visual()
+            self.update_ball_future_visual()
             # self.update_robot_future_pos_visual()
             # self.update_robot_future_vel_visual()
-            pass
+            if not hasattr(self, "_hit_vis_debug_counter"):
+                self._hit_vis_debug_counter = 0
+            self._hit_vis_debug_counter += 1
+            if self._hit_vis_debug_counter == 1 or self._hit_vis_debug_counter % 50 == 0:
+                try:
+                    b0 = self.ball_pos[0].detach().cpu().numpy()
+                    f0 = self.ball_future_pose[0].detach().cpu().numpy()
+                    p0 = self.ball_prediction[0].detach().cpu().numpy()
+                    t0 = float(self.ball_future_t[0, 0].detach().cpu())
+                    valid0 = bool((~self.mask_invalid[0]).detach().cpu())
+                    print(
+                        "[TTVis] env0 ball="
+                        f"{b0} analytic_hit={f0} learned_pred={p0} "
+                        f"t_hit={t0:.3f} valid_hit={valid0}"
+                    )
+                except Exception:
+                    pass
     def init_obs_buffer(self):
+        actor_obs, _ = self.compute_current_observations()
         if self.add_noise:
-            actor_obs, _ = self.compute_current_observations()
             noise_vec = torch.zeros_like(actor_obs[0])
             noise_scales = self.cfg.noise.noise_scales
             noise_vec[:3] = noise_scales.ang_vel * self.obs_scales.ang_vel

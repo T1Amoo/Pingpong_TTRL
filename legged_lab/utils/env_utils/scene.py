@@ -39,10 +39,10 @@ class SceneCfg(InteractiveSceneCfg):
             max_init_terrain_level=config.max_init_terrain_level,
             collision_group=-1,
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                friction_combine_mode="multiply",
+                friction_combine_mode=config.terrain_friction_combine_mode,
                 restitution_combine_mode="multiply",
-                static_friction=1.0,
-                dynamic_friction=1.0,
+                static_friction=config.terrain_static_friction,
+                dynamic_friction=config.terrain_dynamic_friction,
                 # restitution=100.0,
             ),
             visual_material=sim_utils.MdlFileCfg(

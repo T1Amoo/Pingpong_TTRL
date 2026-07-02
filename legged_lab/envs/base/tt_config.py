@@ -53,6 +53,9 @@ class BaseSceneCfg:
     terrain_type: str = MISSING
     terrain_generator: TerrainGeneratorCfg = None
     max_init_terrain_level: int = 5
+    terrain_static_friction: float = 1.0
+    terrain_dynamic_friction: float = 1.0
+    terrain_friction_combine_mode: str = "multiply"
     height_scanner: HeightScannerCfg = HeightScannerCfg()
 
 
@@ -70,11 +73,17 @@ class RobotCfg:
     paddle_body_name: str = "right_hand_link"   # body the paddle is rigidly attached to
     paddle_offset: tuple = (0.0, -0.345, 0.0)   # paddle face center offset in that body's local frame
     hit_body_height: float = 0.69               # target body height for robot_future_pos
+    home_y: float = 0.0                         # fixed robot base home y in table frame
     paddle_y_offset: float = -0.60              # lateral base->paddle offset in ready stance
     robot_vel_max: float = 7.0                  # clamp for robot_future_vel target
     hit_plane_x: float = -1.6                   # robot stance / hit-plane x (env-local). HOME, intercept
                                                 # clamp, give-up/terminal lines & idle anchor all derive
                                                 # from this. G1 overrides to -2.0 (robot >=60cm from table).
+    # Optional reachable clamp for the analytic hit target. Defaults are inert and tasks can
+    # tighten them when a fixed base/arm should not chase unreachable intercepts.
+    hit_target_x_range: tuple = (-100.0, 100.0)
+    hit_target_y_range: tuple = (-100.0, 100.0)
+    hit_target_z_range: tuple = (-100.0, 100.0)
 
 @configclass
 class BallCfg:
@@ -83,6 +92,12 @@ class BallCfg:
     ball_speed_z_range: tuple = (1.6, 1.7)
     ball_pos_y_range: tuple = (-0.2, 0.2)
     contact_threshold: float = 0.06
+    # If enabled, distance alone is not a paddle hit. The paddle must actively swing into
+    # the ball, which prevents a serve trajectory from farming reward on a static blade.
+    require_active_contact: bool = False
+    active_contact_min_paddle_speed: float = 0.0
+    active_contact_min_forward_speed: float = -100.0
+    active_contact_require_own_bounce: bool = False
     ball_max_eposide_length: float = 1.5
     ball_reset_repeat: int = 5
     num_new_serves = 2
@@ -103,6 +118,7 @@ class BallCfg:
     serve_bounce_enable: bool = False
     serve_bounce_x_range: tuple = (-1.25, -0.65)   # depth: mid + deep court (x in robot half [-1.37,0])
     serve_bounce_vz_range: tuple = (1.5, 1.9)      # launch vz -> arc height / bounce timing
+    serve_y_center: float = 0.0                     # lateral center for bounce-target sampling
     serve_y_start: float = 0.05                    # initial lateral half-width (centered)
     serve_y_wide: float = 0.65                     # final lateral half-width (table half-width 0.7625)
     # --- no-ball idle training (0 = off). Every no_ball_period_s the ball is active for

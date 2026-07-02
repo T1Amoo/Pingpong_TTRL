@@ -63,6 +63,15 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
         self._gt_buf_cpu: torch.Tensor = torch.zeros(
             self._traj_maxlen, self.env.num_envs, 3, dtype=torch.float32, device="cpu"
         )
+        self._sample_valid_buf_cpu: torch.Tensor = torch.zeros(
+            self._traj_maxlen, self.env.num_envs, dtype=torch.bool, device="cpu"
+        )
+        self._gt_valid_buf_cpu: torch.Tensor = torch.zeros(
+            self._traj_maxlen, self.env.num_envs, dtype=torch.bool, device="cpu"
+        )
+        self._serve_id_buf_cpu: torch.Tensor = torch.zeros(
+            self._traj_maxlen, self.env.num_envs, dtype=torch.long, device="cpu"
+        )
         self._traj_write_idx: int = 0
         self._traj_len: int = 0  # how many steps recorded (capped at _traj_maxlen)
 
@@ -72,6 +81,8 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
         self._pred_optim = torch.optim.Adam(self._predictor.parameters(), lr=self.pred_lr)
         self._pred_trained: bool = False
         self._last_pred_loss: Optional[float] = None
+        self._last_pred_valid_fraction: Optional[float] = None
+        self.pred_min_valid_samples: int = int(pred_cfg.get("min_valid_samples", 64))
         # debug counters
         self._pred_call_count: int = 0
 
@@ -276,6 +287,8 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
             if pred_loss_val is not None:
                 loss_dict = dict(loss_dict)  # shallow copy for augmentation
                 loss_dict["predictor_mse"] = float(pred_loss_val)
+                if self._last_pred_valid_fraction is not None:
+                    loss_dict["predictor_valid_fraction"] = float(self._last_pred_valid_fraction)
 
             if self.log_dir is not None and not self.disable_logs:
                 self.log(locals())
@@ -326,6 +339,23 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
                 self._traj_len = 0
                 return
             self._traj_buf_cpu[self._traj_write_idx].copy_(ball_pos)
+            sample_valid = torch.isfinite(ball_pos).all(dim=-1) & (ball_pos[:, 2] > 0.1) & (ball_pos[:, 2] < 3.0)
+            try:
+                if hasattr(self.env, "ball_reset_ids"):
+                    reset_ids = self.env.ball_reset_ids.detach().to("cpu").long()
+                    if reset_ids.numel() > 0:
+                        sample_valid[reset_ids] = False
+            except Exception:
+                pass
+            self._sample_valid_buf_cpu[self._traj_write_idx].copy_(sample_valid)
+            try:
+                if hasattr(self.env, "ball_reset_counter"):
+                    serve_ids = self.env.ball_reset_counter.detach().to("cpu").long()
+                else:
+                    serve_ids = torch.zeros(self.env.num_envs, dtype=torch.long)
+                self._serve_id_buf_cpu[self._traj_write_idx].copy_(serve_ids)
+            except Exception:
+                self._serve_id_buf_cpu[self._traj_write_idx].zero_()
             # also record env-provided ground truth future pose as regression target
             # only needed while predictor training is active to save bandwidth
             try:
@@ -333,6 +363,12 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
                     if hasattr(self.env, "ball_future_pose"):
                         gt_pose = self.env.ball_future_pose.detach().to("cpu")  # [N,3]
                         self._gt_buf_cpu[self._traj_write_idx].copy_(gt_pose)
+                        gt_valid = torch.isfinite(gt_pose).all(dim=-1) & (gt_pose[:, 2] > 0.70) & (gt_pose[:, 2] < 1.60)
+                        if hasattr(self.env, "mask_invalid"):
+                            gt_valid &= ~self.env.mask_invalid.detach().to("cpu").bool()
+                        if hasattr(self.env, "ball_future_t"):
+                            gt_valid &= self.env.ball_future_t.detach().to("cpu").squeeze(-1) > 0.0
+                        self._gt_valid_buf_cpu[self._traj_write_idx].copy_(gt_valid)
             except Exception:
                 pass
             self._traj_write_idx = (self._traj_write_idx + 1) % self._traj_maxlen
@@ -389,24 +425,40 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
         idxs = (torch.arange(-L, 0) + self._traj_write_idx) % self._traj_maxlen
         seq = self._traj_buf_cpu[idxs]  # [L, N, 3] on CPU
         gt_seq = self._gt_buf_cpu[idxs]  # [L, N, 3] on CPU
+        sample_valid_seq = self._sample_valid_buf_cpu[idxs]  # [L, N] on CPU
+        gt_valid_seq = self._gt_valid_buf_cpu[idxs]  # [L, N] on CPU
+        serve_id_seq = self._serve_id_buf_cpu[idxs]  # [L, N] on CPU
 
         X_parts: List[torch.Tensor] = []
         Y_parts: List[torch.Tensor] = []
+        selected = 0
+        considered = 0
         # Iterate over time (batched over envs). L is capped by traj_max_len.
         for t in range(H, L):
             hist = seq[t - H : t]  # [H, N, 3]
             X_t_full = hist.permute(1, 0, 2).reshape(self.env.num_envs, -1)  # [N, H*3]
             # Use ground-truth at time t-1 (aligned with history window end)
             Y_t_all = gt_seq[t - 1]  # [N, 3]
-            # Use all envs without reset-based filtering
-            X_parts.append(X_t_full)
-            Y_parts.append(Y_t_all)
+            hist_valid = sample_valid_seq[t - H : t].all(dim=0)
+            target_valid = gt_valid_seq[t - 1]
+            same_serve = (serve_id_seq[t - H : t] == serve_id_seq[t - 1].unsqueeze(0)).all(dim=0)
+            finite = torch.isfinite(X_t_full).all(dim=-1) & torch.isfinite(Y_t_all).all(dim=-1)
+            mask = hist_valid & target_valid & same_serve & finite
+            considered += int(mask.numel())
+            selected += int(mask.sum().item())
+            if mask.any():
+                X_parts.append(X_t_full[mask])
+                Y_parts.append(Y_t_all[mask])
 
         if not X_parts:
+            self._last_pred_valid_fraction = 0.0
             return None
 
         X = torch.cat(X_parts, dim=0).to(self.device)
         Y = torch.cat(Y_parts, dim=0).to(self.device)
+        self._last_pred_valid_fraction = selected / max(1, considered)
+        if X.shape[0] < self.pred_min_valid_samples:
+            return None
         # Optional input augmentation: add Gaussian noise if env uses noise
         try:
             if getattr(self.env, "add_noise", False):

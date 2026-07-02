@@ -1,11 +1,10 @@
-"""Verification: spawn A1 with A1_TT_CFG (free chassis, DAMIAO kp/kd), verify
+"""Verification: spawn A1 with A1_TT_CFG (parked chassis, DAMIAO kp/kd), verify
 wheels≈z0, base upright, paddle>0.4m, no NaN.
 
 Run headless:
     OMNI_KIT_ACCEPT_EULA=YES python -u legged_lab/scripts/verify_a1_tt.py --headless
 """
 import argparse
-import sys
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser()
@@ -45,25 +44,23 @@ for i in range(n_steps):
 
 body_pos = robot.data.body_pos_w[0]
 base_idx   = robot.body_names.index("base_link")
-rw_idx     = robot.body_names.index("link_right_wheel")
-lw_idx     = robot.body_names.index("link_left_wheel")
-paddle_idx = robot.body_names.index("Link_yb_paddle")
+rw_idx     = robot.body_names.index("Link_lun_r")
+lw_idx     = robot.body_names.index("Link_lun_l")
+paddle_idx = robot.body_names.index("Link_r_paddle")
 
 base_z   = body_pos[base_idx,   2].item()
 rw_z     = body_pos[rw_idx,     2].item()
 lw_z     = body_pos[lw_idx,     2].item()
 paddle_z = body_pos[paddle_idx, 2].item()
-base_x   = body_pos[base_idx,   0].item()
-base_y   = body_pos[base_idx,   1].item()
 
 print("=" * 60)
-print("VERIFICATION: A1_TT_CFG free-chassis spawn")
+print("VERIFICATION: A1_TT_CFG parked-chassis spawn")
 print(f"  A1_INIT_Z used   = {A1_INIT_Z}")
 print(f"  A1_INIT_ROT used = {A1_INIT_ROT}")
 print(f"  base_link          z = {base_z:.4f}  m")
-print(f"  link_right_wheel   z = {rw_z:.4f}  m")
-print(f"  link_left_wheel    z = {lw_z:.4f}  m")
-print(f"  Link_yb_paddle     z = {paddle_z:.4f}  m")
+print(f"  Link_lun_r         z = {rw_z:.4f}  m")
+print(f"  Link_lun_l         z = {lw_z:.4f}  m")
+print(f"  Link_r_paddle      z = {paddle_z:.4f}  m")
 print("=" * 60)
 
 # Check NaN

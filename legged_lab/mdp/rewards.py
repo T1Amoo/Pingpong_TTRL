@@ -615,6 +615,32 @@ def reward_contact(env: TTEnv) -> torch.Tensor:
     return env.ball_contact_rew.float()
 
 
+def paddle_face_x_alignment(env: TTEnv, local_axis: str = "y") -> torch.Tensor:
+    """Reward a configured paddle local axis aligned with world x.
+
+    This reward is active only while a playable ball exists; idle/no-ball states should not
+    torque the arm solely for face orientation. The paddle is double-sided, so either +axis or
+    -axis may face the incoming/outgoing ball.
+    """
+    axis_map = {
+        "x": (1.0, 0.0, 0.0),
+        "y": (0.0, 1.0, 0.0),
+        "z": (0.0, 0.0, 1.0),
+        "-x": (-1.0, 0.0, 0.0),
+        "-y": (0.0, -1.0, 0.0),
+        "-z": (0.0, 0.0, -1.0),
+    }
+    axis = axis_map.get(local_axis)
+    if axis is None:
+        raise ValueError(f"Unsupported paddle local_axis={local_axis!r}")
+
+    q = env.robot.data.body_quat_w[:, env._paddle_body_id, :]
+    local = torch.tensor(axis, device=env.device, dtype=q.dtype).unsqueeze(0).expand(q.shape[0], 3)
+    normal_w = math_utils.quat_apply(q, local)
+    facing = torch.clamp(torch.abs(normal_w[:, 0]), max=1.0)
+    return torch.where(env.mask_invalid, torch.zeros_like(facing), facing * facing)
+
+
 def reward_idle_stand(env: TTEnv) -> torch.Tensor:
     """Dense POSITIVE per-step bonus for ACTIVELY standing when there is no playable ball.
 
