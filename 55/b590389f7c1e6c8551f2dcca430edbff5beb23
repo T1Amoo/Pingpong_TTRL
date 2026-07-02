@@ -1,0 +1,107 @@
+legged_lab/scripts/verify_a1_tt.py
+  s_e4ed443bb15b11::t_8b838c2464888f 1,47-49,57,61-63
+legged_lab/scripts/fk_probe.py
+  s_e4ed443bb15b11::t_b13afa645b059e 10,64-76,78
+legged_lab/envs/base/tt_env.py
+  s_e4ed443bb15b11::t_09bb4fbd626ef4 371
+  s_e4ed443bb15b11::t_94d3dd54e06fd5 883,886
+  s_e4ed443bb15b11::t_d81d25a87c5db0 948-949
+  s_e4ed443bb15b11::t_50e254247fd2e1 831-832
+  s_e4ed443bb15b11::t_9d5a3f10b52871 1106-1107,1131,1154
+  s_e4ed443bb15b11::t_adc50d53a2a01a 1151
+  s_e4ed443bb15b11::t_a30e34f85022a1 1261-1262,1367
+  s_e4ed443bb15b11::t_877455f7a95c29 1312-1324
+  s_e4ed443bb15b11::t_1b98c3bd574988 1438
+  s_e4ed443bb15b11::t_120bb357d3acbc 1098,1109-1130,1132-1150
+  s_e4ed443bb15b11::t_8491e111926908 413-417,677
+  s_e4ed443bb15b11::t_b3df2fcc10e3d4 54,73,660,666-671,674-676,678,681,1417,1420-1431,1433-1436
+  s_e4ed443bb15b11::t_289156c3670589 656-659,661-665
+  s_e4ed443bb15b11::t_8cd23b7a73e4c2 679,1432
+  s_e4ed443bb15b11::t_4af01491895292 563-567,582,1368,1388
+  s_e4ed443bb15b11::t_f011f2b957bd43 405-412,418,478-481,483-484,498,570-572,680
+  s_e4ed443bb15b11::t_f91ff26c1afa73 419-429,652-655
+  s_e4ed443bb15b11::t_3f5afc505d7f90 328-329,370
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_e4ed443bb15b11::t_61dea4d0d06587 104-106,116-118,120,122-127
+  s_e4ed443bb15b11::t_3b4131eea62ec1 220
+  s_e4ed443bb15b11::t_384ae73b59d1f8 114-115,119,152-153,166-167,178
+  s_e4ed443bb15b11::t_ccee001d22ad61 192-194
+  s_e4ed443bb15b11::t_6732401f1f29cf 51-53,55,59,64,69,209
+  s_e4ed443bb15b11::t_5eb884eb0e16b7 56,184-185,191
+  s_e4ed443bb15b11::t_18995e1e360758 169-171
+  s_e4ed443bb15b11::t_37cc9f02ef0a23 163-164,173-175
+  s_e4ed443bb15b11::t_38b01a847b4d1d 54
+  s_e4ed443bb15b11::t_48df00b12c18b7 154,181-182
+  s_e4ed443bb15b11::t_94d3dd54e06fd5 162,165,168
+  s_e4ed443bb15b11::t_e8ff93899ce8c1 147-148,150,186-187
+  s_e4ed443bb15b11::t_680b3d6b8f1755 26
+  s_e4ed443bb15b11::t_0df4a241f5edcf 9,18-19,109,121,143-144,158
+  s_e4ed443bb15b11::t_b6680ef4f09a9f 179-180
+  s_e4ed443bb15b11::t_c5ac2c698319de 172,188-190
+legged_lab/mdp/rewards.py
+  s_e4ed443bb15b11::t_6bb9d46d2b7bdd 621
+  s_e4ed443bb15b11::t_86c512a369dc87 618,620,624-639,641-643
+  s_e4ed443bb15b11::t_3304ba7259acf0 619,622-623,640
+legged_lab/scripts/watchdog_train_a1.sh
+  s_e4ed443bb15b11::t_462dec5d7dfb07 31
+legged_lab/envs/base/tt_config.py
+  s_e4ed443bb15b11::t_94d3dd54e06fd5 121
+  s_e4ed443bb15b11::t_98e11c28b329ec 56-58
+  s_e4ed443bb15b11::t_942938529971c5 82-86,95-100
+  s_e4ed443bb15b11::t_ec79e510311e3b 76
+legged_lab/utils/env_utils/scene.py
+  s_e4ed443bb15b11::t_bbde370551ffce 42,44-45
+legged_lab/assets/a1/a1.py
+  s_e4ed443bb15b11::t_183f8f0fd00d3c 57
+  s_e4ed443bb15b11::t_09fe54c11ec4f3 60-61
+  s_e4ed443bb15b11::t_1de9f646326747 63-64
+  s_e4ed443bb15b11::t_4923d63f6cb033 25-28
+  s_e4ed443bb15b11::t_ea1607cc2492b0 7-15,18-22,29,62,65-74,81,85,87,89,91
+  s_e4ed443bb15b11::t_94d3dd54e06fd5 34
+  s_e4ed443bb15b11::t_994cf96425e72f 1,51-53
+rsl_rl/rsl_rl/runners/on_policy_predictor_regression_runner.py
+  s_e4ed443bb15b11::t_3fa9f180b6d100 342-358,366-371
+  s_e4ed443bb15b11::t_57fa18953c599a 290-291
+  s_e4ed443bb15b11::t_1700a9069565ae 66-74,84-85
+  s_e4ed443bb15b11::t_5f0abf5eab63a9 428-430,434-435,442-451,454,459-461
+legged_lab/scripts/diagnose_a1_contact_shortcut.py
+  s_e4ed443bb15b11::t_8ad3f631d1d6b7 1-23,29-155,169-174,180-201
+  s_e4ed443bb15b11::t_4db4f093c6284b 24-28,156-168,175-179
+legged_lab/scripts/inspect_a1.py
+  s_e4ed443bb15b11::t_657e32a04866d7 1,3,5-6,8,10-13,16,18-22,26,29-31,33-34,37-38,41-44,46-55,58-60,62,64-68,70-85,90,93-98,100-102,104-107,113-126,128
+  s_8aa4d77bcf6faf::t_2602f856ea3a5f 108-112
+  s_8aa4d77bcf6faf::t_9c5979c927ce82 25
+legged_lab/assets/a1/X1_URDF_V1_1/urdf/X1_URDF_V1_1.urdf
+  s_e4ed443bb15b11::t_f0dc2b38e751ce 1-741,743-755,757-1751
+  s_e4ed443bb15b11::t_15c56d7ec27050 742,756
+legged_lab/assets/a1/X1_URDF_V1_1/.asset_hash
+  s_e4ed443bb15b11::t_83f0949461c2c4 1
+legged_lab/assets/a1/X1_URDF_V1_1/config.yaml
+  s_e4ed443bb15b11::t_42fbe84db9a1fd 1-23
+legged_lab/assets/a1/X1_URDF_V1_1/urdf/X1_URDF_V1_1.csv
+  s_e4ed443bb15b11::t_34477eac93b6ce 1-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.9",
+  "base_commit_sha": "55b590389f7c1e6c8551f2dcca430edbff5beb23",
+  "prompts": {},
+  "sessions": {
+    "s_8aa4d77bcf6faf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f631d844-f58c-42e4-98f7-67b32f2148c9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    },
+    "s_e4ed443bb15b11": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f20a1-dfe5-7930-956f-01e233be9342",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
