@@ -1,0 +1,30 @@
+legged_lab/assets/a1/X1_URDF_V1_1/urdf/X1_URDF_V1_1.urdf
+  s_c1b9370c03e837::t_4f13355d57bb40 721,742,756,769,825,1236-1293,1339
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_c1b9370c03e837::t_16aa64d1652c78 173-177,180-182,186-188,190
+  s_c1b9370c03e837::t_f8004f87f232cf 31-32
+  s_c1b9370c03e837::t_8eafd7c93c8aa9 59-60
+  s_c1b9370c03e837::t_a70eb4cd310341 209-210
+legged_lab/scripts/watchdog_train_a1.sh
+  s_c1b9370c03e837::t_bd3588a4711baf 31
+legged_lab/assets/a1/X1_URDF_V1_1/.asset_hash
+  s_c1b9370c03e837::t_5c07d7976a2bd4 1
+legged_lab/assets/a1/X1_URDF_V1_1/config.yaml
+  s_c1b9370c03e837::t_c83d22af8bc221 22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.9",
+  "base_commit_sha": "16b64bc4511ab6c03aa92cf6458926ae7e8273b7",
+  "prompts": {},
+  "sessions": {
+    "s_c1b9370c03e837": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dd58ceb9-2afc-4347-983d-4a8a40e3ac38",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
