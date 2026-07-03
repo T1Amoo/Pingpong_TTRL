@@ -1,0 +1,27 @@
+legged_lab/mdp/rewards.py
+  s_c1b9370c03e837::t_e8cee1a245f29d 279-292
+legged_lab/scripts/watchdog_train_a1.sh
+  s_c1b9370c03e837::t_13837b1b5c51c7 31
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_c1b9370c03e837::t_13837b1b5c51c7 219
+  s_c1b9370c03e837::t_b6bbf1d261c26e 70
+  s_c1b9370c03e837::t_cff3f4411805b4 57
+  s_c1b9370c03e837::t_4260c589abd9a4 31-32
+  s_c1b9370c03e837::t_56858978aed3e7 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.9",
+  "base_commit_sha": "abad068ad20c8ebbd42f79f7ba424aa3588f4a0d",
+  "prompts": {},
+  "sessions": {
+    "s_c1b9370c03e837": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dd58ceb9-2afc-4347-983d-4a8a40e3ac38",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
