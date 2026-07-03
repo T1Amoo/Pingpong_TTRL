@@ -276,6 +276,20 @@ def joint_deviation_l1(env: BaseEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg(
     return torch.sum(torch.abs(angle), dim=1)
 
 
+def joint_deviation_l1_idle(env: TTEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Same as joint_deviation_l1 but ACTIVE ONLY when there is no playable ball (mask_invalid).
+
+    v5: the plain joint_deviation term pulled the arm back to the ready pose EVERY step, which
+    fights the forehand swing (hitting requires leaving the ready pose) -> sluggish arm. Gate it
+    to the idle/no-ball phase so it only holds a tidy ready pose between rallies and never
+    penalizes the swing while a ball is incoming.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    angle = asset.data.joint_pos[:, asset_cfg.joint_ids] - asset.data.default_joint_pos[:, asset_cfg.joint_ids]
+    dev = torch.sum(torch.abs(angle), dim=1)
+    return torch.where(env.mask_invalid, dev, torch.zeros_like(dev))
+
+
 def body_orientation_l2(env: BaseEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     body_orientation = math_utils.quat_apply_inverse(

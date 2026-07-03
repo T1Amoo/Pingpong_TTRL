@@ -28,12 +28,12 @@ class A1TableTennisRewardCfg(RewardCfg):
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-1.0)
     # --- arm smoothness / limits ---
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1.25e-7)
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)   # v3: was -0.025; too slow to reach 1st ball, relax to allow faster swing
-    action_l2 = RewTerm(func=mdp.action_l2, weight=-0.001)            # v3: was -0.002
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.003)   # v5: -0.01->-0.003; biggest motion penalty, was suppressing the swing
+    action_l2 = RewTerm(func=mdp.action_l2, weight=-0.0005)            # v5: -0.001->-0.0005
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-2.0)
     joint_pos_target_limits = RewTerm(func=mdp.joint_pos_target_limits, weight=-0.1)   # was -1.0; quadratic+unbounded -> value-fn bomb (critic diverged ~iter1000). Now bounded by clip_actions=10 + soft 0.95; keep as a mild nudge only.
     joint_deviation_right_arm = RewTerm(
-        func=mdp.joint_deviation_l1,
+        func=mdp.joint_deviation_l1_idle,   # v5: idle-only (no-ball); was joint_deviation_l1 every step -> fought the swing
         weight=-0.05,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=A1_ARM_JOINTS)},
     )
@@ -54,7 +54,7 @@ class A1TableTennisRewardCfg(RewardCfg):
     # (contact -> pass_net -> landing -> table_success) + a body-block penalty drive real forehand swings.
     paddle_face_x = RewTerm(
         func=mdp.paddle_face_x_alignment,
-        weight=0.5,   # v4: was 3
+        weight=0.1,   # v5: was 0.5 (v4), 3 (v2). Still the biggest positive at 0.5 -> hover+align optimum. Cut to 0.1.
         params={"local_axis": "y"},
     )
     # v3(#3): penalize the ball approaching non-paddle mid-arm links (Link_r3..r6) -> stop body-blocking,
@@ -67,7 +67,7 @@ class A1TableTennisRewardCfg(RewardCfg):
     reward_contact = RewTerm(func=mdp.reward_contact, weight=40.0)   # v4: was 70; less proximity prize, let outcomes dominate
     reward_future_dis_ee = RewTerm(
         func=mdp.reward_future_ee_target,
-        weight=0.5,   # v4: was 4 (v2 20). Dense positional shaping was the hover bait; cut so real returns dominate.
+        weight=0.1,   # v5: was 0.5 (v4), 4 (v3), 20 (v2). Positioning shaping still fed the hover optimum; cut to 0.1.
         params={"std_ee": 0.5, "threshold": 0.15},
     )
     reward_future_dis_ro = RewTerm(
@@ -216,7 +216,7 @@ class A1TT_EvalEnvCfg(A1TableTennisEnvCfg):
 
 @configclass
 class A1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "a1_tt_v4"
+    experiment_name: str = "a1_tt_v5"
     empirical_normalization = True   # v3: normalize observations for critic stability (v2 diverged, value_loss->1e9)
     logger = "tensorboard"
     save_interval = 100
