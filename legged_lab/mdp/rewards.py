@@ -675,6 +675,23 @@ def penalty_ball_body_block(env: TTEnv, body_regex: str = "Link_r[3-6]", thresho
     return torch.nan_to_num(pen, nan=0.0, posinf=0.0, neginf=0.0)
 
 
+def reward_swing_through(env: TTEnv, near_dist: float = 0.30) -> torch.Tensor:
+    """Dense reward for swinging the paddle FORWARD (+x, toward the net/opponent table) WHILE the
+    ball is close -> an active swing THROUGH the ball, not a passive camp/block.
+
+    v6: v5 play showed the paddle parking at a fixed spot and only jittering the wrist (the ball
+    that happens to pass through gets 'blocked'). This rewards forward paddle speed only when the
+    ball is near the paddle, so the policy learns to drive the blade forward at contact. Combined
+    with restored future_dis_ee (track to the ball) it should track-and-swing rather than camp.
+    +x is the return direction (robot behind the table hits toward the net at world +x).
+    """
+    vx = env.paddle_touch_point_vel[:, 0]                     # forward paddle speed (+x = toward net)
+    near = (env.paddel_ball_distance < near_dist).float()     # only credit when actually near the ball
+    incoming = (env.ball.data.root_lin_vel_w[:, 0] < 0.3).float()  # ball not already leaving
+    rew = torch.clamp(vx, min=0.0) * near * incoming
+    return torch.nan_to_num(rew, nan=0.0, posinf=0.0, neginf=0.0)
+
+
 def reward_idle_stand(env: TTEnv) -> torch.Tensor:
     """Dense POSITIVE per-step bonus for ACTIVELY standing when there is no playable ball.
 

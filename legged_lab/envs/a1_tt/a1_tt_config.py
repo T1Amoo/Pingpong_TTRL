@@ -65,10 +65,18 @@ class A1TableTennisRewardCfg(RewardCfg):
         params={"body_regex": "Link_r[3-6]", "threshold": 0.09},
     )
     reward_contact = RewTerm(func=mdp.reward_contact, weight=40.0)   # v4: was 70; less proximity prize, let outcomes dominate
+    # v6: v5 killed ball-tracking (future_dis_ee 0.1) -> paddle camped + wrist-jittered, never moved to the
+    # ball (play: paddle static <4cm, 28% hit). RESTORE tracking so the paddle goes to the intercept, AND add
+    # a forward-swing reward so it drives THROUGH the ball toward the table instead of passively camping.
     reward_future_dis_ee = RewTerm(
         func=mdp.reward_future_ee_target,
-        weight=0.1,   # v5: was 0.5 (v4), 4 (v3), 20 (v2). Positioning shaping still fed the hover optimum; cut to 0.1.
+        weight=3.0,   # v6: 0.1->3.0. Track the ball's predicted intercept (necessary to hit; v2's 70% hit came from tracking).
         params={"std_ee": 0.5, "threshold": 0.15},
+    )
+    reward_swing_through = RewTerm(
+        func=mdp.reward_swing_through,
+        weight=3.0,   # v6 NEW: forward paddle speed (+x, toward net) while near the ball -> swing through, not camp.
+        params={"near_dist": 0.30},
     )
     reward_future_dis_ro = RewTerm(
         func=mdp.reward_future_body_target,
@@ -216,11 +224,11 @@ class A1TT_EvalEnvCfg(A1TableTennisEnvCfg):
 
 @configclass
 class A1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "a1_tt_v5"
+    experiment_name: str = "a1_tt_v6"
     empirical_normalization = True   # v3: normalize observations for critic stability (v2 diverged, value_loss->1e9)
     logger = "tensorboard"
-    save_interval = 100
-    max_iterations = 30000
+    save_interval = 300      # v6: weekend run -> one ckpt every 300 iters
+    max_iterations = 1000000 # v6: weekend long run
     predictor = {
         "history_len": 5,
         "traj_max_len": 128,
