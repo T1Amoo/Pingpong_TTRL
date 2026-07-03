@@ -48,16 +48,26 @@ class A1TableTennisRewardCfg(RewardCfg):
     # reward_idle_pose is G1-specific (hardcoded 23-joint ready vector); drop for A1.
     reward_idle_stand = RewTerm(func=mdp.reward_idle_stand, weight=0.5)
     # --- ball / hitting core ---
+    # v4: kill the "hover in the ball's path and farm positioning/orientation" exploit seen in play
+    # (v3 hit ~10%, returned 0%). paddle_face + future_dis_ee are dense and DON'T need contact, so a
+    # parked pose farmed ~18 reward without striking. Cut them hard; let the un-fakeable outcome ladder
+    # (contact -> pass_net -> landing -> table_success) + a body-block penalty drive real forehand swings.
     paddle_face_x = RewTerm(
         func=mdp.paddle_face_x_alignment,
-        weight=3.0,
+        weight=0.5,   # v4: was 3
         params={"local_axis": "y"},
     )
-    reward_contact = RewTerm(func=mdp.reward_contact, weight=70.0)
+    # v3(#3): penalize the ball approaching non-paddle mid-arm links (Link_r3..r6) -> stop body-blocking,
+    # force hitting with the paddle blade.
+    penalty_ball_body_block = RewTerm(
+        func=mdp.penalty_ball_body_block,
+        weight=-20.0,
+        params={"body_regex": "Link_r[3-6]", "threshold": 0.09},
+    )
+    reward_contact = RewTerm(func=mdp.reward_contact, weight=40.0)   # v4: was 70; less proximity prize, let outcomes dominate
     reward_future_dis_ee = RewTerm(
         func=mdp.reward_future_ee_target,
-        weight=4.0,   # v3: was 20; dense positional shaping dominated -> park-one-pose exploit. Cut so the
-                      # contact->pass_net->landing->table_success ladder outweighs mere positioning.
+        weight=0.5,   # v4: was 4 (v2 20). Dense positional shaping was the hover bait; cut so real returns dominate.
         params={"std_ee": 0.5, "threshold": 0.15},
     )
     reward_future_dis_ro = RewTerm(
@@ -80,7 +90,7 @@ class A1TableTennisRewardCfg(RewardCfg):
         weight=100.0,
         params={"std_h": 0.4, "z_target": 0.76 + 0.35},
     )
-    reward_table_success = RewTerm(func=mdp.reward_table_success, weight=100.0)
+    reward_table_success = RewTerm(func=mdp.reward_table_success, weight=150.0)   # v4: was 100; the true un-fakeable success terminal, make it the top prize
 
 
 @configclass
@@ -206,7 +216,7 @@ class A1TT_EvalEnvCfg(A1TableTennisEnvCfg):
 
 @configclass
 class A1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "a1_tt_v3"
+    experiment_name: str = "a1_tt_v4"
     empirical_normalization = True   # v3: normalize observations for critic stability (v2 diverged, value_loss->1e9)
     logger = "tensorboard"
     save_interval = 100

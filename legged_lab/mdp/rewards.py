@@ -641,6 +641,26 @@ def paddle_face_x_alignment(env: TTEnv, local_axis: str = "y") -> torch.Tensor:
     return torch.where(env.mask_invalid, torch.zeros_like(facing), facing * facing)
 
 
+def penalty_ball_body_block(env: TTEnv, body_regex: str = "Link_r[3-6]", threshold: float = 0.09) -> torch.Tensor:
+    """Penalize the ball coming close to NON-paddle arm links (forearm/mid-arm).
+
+    Fixes the observed exploit: the arm parks in the ball's path and lets the ball bounce off
+    the forearm instead of striking with the paddle blade. Contact reward is measured only at
+    the paddle touch point, so body-blocking earns nothing there, but nothing PENALIZED it
+    either -> hovering the arm in the path was free. This adds a proximity penalty on mid-arm
+    links (Link_r3..r6; excludes r7 which is adjacent to the paddle, and r0-r2 near the shoulder).
+    A1-only: opt-in by adding this term to the A1 reward cfg (does not touch shared TTEnv).
+    """
+    if not hasattr(env, "_body_block_ids"):
+        ids, _ = env.robot.find_bodies(body_regex)
+        env._body_block_ids = ids
+    ball = env.ball_global_pos.unsqueeze(1)                          # (N,1,3)
+    links = env.robot.data.body_pos_w[:, env._body_block_ids, :]     # (N,k,3)
+    dmin = torch.norm(ball - links, dim=2).min(dim=1).values         # (N,)
+    pen = torch.clamp((threshold - dmin) / threshold, min=0.0, max=1.0)  # 1 when touching -> 0 beyond threshold
+    return torch.nan_to_num(pen, nan=0.0, posinf=0.0, neginf=0.0)
+
+
 def reward_idle_stand(env: TTEnv) -> torch.Tensor:
     """Dense POSITIVE per-step bonus for ACTIVELY standing when there is no playable ball.
 
