@@ -28,8 +28,8 @@ class A1TableTennisRewardCfg(RewardCfg):
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-1.0)
     # --- arm smoothness / limits ---
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1.25e-7)
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.025)
-    action_l2 = RewTerm(func=mdp.action_l2, weight=-0.002)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)   # v3: was -0.025; too slow to reach 1st ball, relax to allow faster swing
+    action_l2 = RewTerm(func=mdp.action_l2, weight=-0.001)            # v3: was -0.002
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-2.0)
     joint_pos_target_limits = RewTerm(func=mdp.joint_pos_target_limits, weight=-0.1)   # was -1.0; quadratic+unbounded -> value-fn bomb (critic diverged ~iter1000). Now bounded by clip_actions=10 + soft 0.95; keep as a mild nudge only.
     joint_deviation_right_arm = RewTerm(
@@ -56,7 +56,8 @@ class A1TableTennisRewardCfg(RewardCfg):
     reward_contact = RewTerm(func=mdp.reward_contact, weight=70.0)
     reward_future_dis_ee = RewTerm(
         func=mdp.reward_future_ee_target,
-        weight=20.0,
+        weight=4.0,   # v3: was 20; dense positional shaping dominated -> park-one-pose exploit. Cut so the
+                      # contact->pass_net->landing->table_success ladder outweighs mere positioning.
         params={"std_ee": 0.5, "threshold": 0.15},
     )
     reward_future_dis_ro = RewTerm(
@@ -169,25 +170,24 @@ class A1TableTennisEnvCfg(TTEnvCfg):
         # Fixed hit/intercept plane, matching the G1 task semantics: the learned predictor may
         # output 3 values, but x is the plane anchor and only y/z should meaningfully vary.
         self.robot.hit_target_x_range = (self.robot.hit_plane_x, self.robot.hit_plane_x)
-        self.robot.hit_target_y_range = (0.08, 0.30)
-        # Latest X1_URDF_V1_1 ready pose probe: zero-action touch z≈1.30 initially,
-        # settling toward ≈1.25 over the first ~120 control steps.
-        self.robot.hit_target_z_range = (1.08, 1.32)
+        # v3: spread the intercept target across the MEASURED forehand-reachable envelope (FK probe:
+        # y in [-0.02,0.87] p5-p95, z in [0.50,1.52] p5-p95, at x=-1.42). Old (0.08-0.30 / 1.08-1.32)
+        # was one small corner -> one parked pose covered every serve. Spread so the arm MUST move each ball.
+        self.robot.hit_target_y_range = (0.0, 0.55)
+        self.robot.hit_target_z_range = (0.95, 1.30)
         self.observations.joint_names = A1_ARM_JOINTS
         self.actions.joint_names = A1_ARM_JOINTS
-        # serve: narrow, easy forehand-only distribution around the corrected blade region.
-        # Lateral target is intentionally offset from the static ready-paddle center; verified by
-        # diagnose_a1_contact_shortcut.py that zero/tiny actions no longer get raw paddle contact.
-        # First bounce is deep and launch-vz is moderate so the post-bounce path is flatter
-        # and reaches the A1 hit plane instead of dying short near the net.
+        # v3 serve: still forehand-reachable (within the FK envelope) but SPREAD, not a single point,
+        # so parking one pose no longer works and the policy has to react/move. Widened lateral (y) and
+        # launch vz (arrival height) to cover the target ranges above.
         self.ball.serve_bounce_enable = True
         self.ball.serve_bounce_x_range = (-1.24, -0.96)
         self.ball.serve_bounce_x_range_hard = (-1.24, -0.96)
-        self.ball.serve_bounce_vz_range = (1.85, 2.25)
-        self.ball.serve_bounce_vz_range_hard = (1.85, 2.25)
-        self.ball.serve_y_center = 0.20
+        self.ball.serve_bounce_vz_range = (1.70, 2.35)
+        self.ball.serve_bounce_vz_range_hard = (1.70, 2.35)
+        self.ball.serve_y_center = 0.27
         self.ball.serve_y_start = 0.06
-        self.ball.serve_y_wide = 0.08
+        self.ball.serve_y_wide = 0.27
         self.ball.require_active_contact = True
         self.ball.active_contact_min_paddle_speed = 0.12
         self.ball.active_contact_min_forward_speed = -0.05
@@ -206,7 +206,8 @@ class A1TT_EvalEnvCfg(A1TableTennisEnvCfg):
 
 @configclass
 class A1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "a1_tt_v2"
+    experiment_name: str = "a1_tt_v3"
+    empirical_normalization = True   # v3: normalize observations for critic stability (v2 diverged, value_loss->1e9)
     logger = "tensorboard"
     save_interval = 100
     max_iterations = 30000

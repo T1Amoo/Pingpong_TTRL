@@ -1241,14 +1241,14 @@
         xyz="0 0 0"
         rpy="0 0 0" />
       <mass
-        value="0.15" />
+        value="0.22" />
       <inertia
-        ixx="0.000232"
+        ixx="0.00034"
         ixy="0"
         ixz="0"
-        iyy="0.000232"
+        iyy="0.00034"
         iyz="0"
-        izz="0.000295" />
+        izz="0.000433" />
     </inertial>
     <visual>
       <origin
