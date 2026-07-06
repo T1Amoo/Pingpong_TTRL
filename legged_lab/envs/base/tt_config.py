@@ -69,6 +69,14 @@ class RobotCfg:
     num_actions: int = 21
     num_joints: int = 21
     effort_limit_scale: float = 1.0
+    # --- proximal effort curriculum (A1: high torque early to escape the exploration trap where
+    # slow proximal joints can't be moved by random actions, then anneal to real torque). Disabled
+    # (steps=0) by default so other robots are unaffected. Units of effort_curriculum_steps = CONTROL
+    # steps (= training_iters * num_steps_per_env=24). Scales the first `num_joints` action joints from
+    # start_scale (at step 0) linearly down to 1.0 (at effort_curriculum_steps), then holds 1.0.
+    effort_curriculum_start_scale: float = 1.0
+    effort_curriculum_steps: int = 0
+    effort_curriculum_num_joints: int = 0
     # --- Table-tennis paddle / hitting geometry (defaults match Booster T1) ---
     paddle_body_name: str = "right_hand_link"   # body the paddle is rigidly attached to
     paddle_offset: tuple = (0.0, -0.345, 0.0)   # paddle face center offset in that body's local frame

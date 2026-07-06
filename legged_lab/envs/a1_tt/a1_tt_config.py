@@ -54,7 +54,8 @@ class A1TableTennisRewardCfg(RewardCfg):
     # (contact -> pass_net -> landing -> table_success) + a body-block penalty drive real forehand swings.
     paddle_face_x = RewTerm(
         func=mdp.paddle_face_x_alignment,
-        weight=0.1,   # v5: was 0.5 (v4), 3 (v2). Still the biggest positive at 0.5 -> hover+align optimum. Cut to 0.1.
+        weight=3.0,   # v7: 0.1->3.0 restored. Strong enough to force the WHOLE arm to keep the blade facing +x,
+                      # instead of the v6 exploit (park + spin wrist_roll to sweep-hit while sacrificing the 0.1 face reward).
         params={"local_axis": "y"},
     )
     # v3(#3): penalize the ball approaching non-paddle mid-arm links (Link_r3..r6) -> stop body-blocking,
@@ -64,13 +65,14 @@ class A1TableTennisRewardCfg(RewardCfg):
         weight=-20.0,
         params={"body_regex": "Link_r[3-6]", "threshold": 0.09},
     )
-    reward_contact = RewTerm(func=mdp.reward_contact, weight=40.0)   # v4: was 70; less proximity prize, let outcomes dominate
+    reward_contact = RewTerm(func=mdp.reward_contact, weight=150.0)   # v7: 40->150 to match G1 (A1 was severely under-rewarding contact)
     # v6: v5 killed ball-tracking (future_dis_ee 0.1) -> paddle camped + wrist-jittered, never moved to the
     # ball (play: paddle static <4cm, 28% hit). RESTORE tracking so the paddle goes to the intercept, AND add
     # a forward-swing reward so it drives THROUGH the ball toward the table instead of passively camping.
     reward_future_dis_ee = RewTerm(
         func=mdp.reward_future_ee_target,
-        weight=3.0,   # v6: 0.1->3.0. Track the ball's predicted intercept (necessary to hit; v2's 70% hit came from tracking).
+        weight=6.0,   # 2026-07-06: 3.0->6.0. Parked base drops G1's body-approach rewards (dis_ro 5 + vel_base 5);
+                      # compensate by strongly rewarding the PADDLE reaching the intercept -> use the arm to go to the ball.
         params={"std_ee": 0.5, "threshold": 0.15},
     )
     reward_swing_through = RewTerm(
@@ -113,6 +115,14 @@ class A1TableTennisEnvCfg(TTEnvCfg):
         # Base default is 100 (~no clip) -> targets ran unbounded past joint limits, joint_pos_target_limits (quadratic)
         # exploded the critic value fn ~iter1000. 10 covers the hitting workspace while capping the runaway (raw hit ~32).
         self.normalization.clip_actions = 10.0
+        self.robot.action_scale = 0.25
+        # Proximal effort curriculum: r1-3 start at 4x torque (28->112Nm) so random exploration can
+        # actually MOVE the slow proximal joints (escape the "frozen proximal / wrist-only twitch" trap),
+        # then anneal to real 28Nm by ~15k iters (360000 control steps = 15000*24), hold after. The final
+        # policy MUST work at real torque -> anneal completes and trains at 1.0x for the rest.
+        self.robot.effort_curriculum_start_scale = 4.0
+        self.robot.effort_curriculum_steps = 360000
+        self.robot.effort_curriculum_num_joints = 3
         self.scene.height_scanner.enable_height_scan = False
         self.scene.height_scanner.prim_body_name = "base_link"
         self.scene.robot = A1_TT_CFG
@@ -224,10 +234,10 @@ class A1TT_EvalEnvCfg(A1TableTennisEnvCfg):
 
 @configclass
 class A1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "a1_tt_v6"
+    experiment_name: str = "a1_tt_v8"
     empirical_normalization = True   # v3: normalize observations for critic stability (v2 diverged, value_loss->1e9)
     logger = "tensorboard"
-    save_interval = 300      # v6: weekend run -> one ckpt every 300 iters
+    save_interval = 100      # 2026-07-06: ckpt every 100 iters (finer, for post-hoc ckpt selection)
     max_iterations = 1000000 # v6: weekend long run
     predictor = {
         "history_len": 5,

@@ -14,11 +14,12 @@ A1_WHEEL_JOINTS = [
     "wxl_3_2", "wxl_3_1", "wxl_4_2", "wxl_4_1",
 ]
 
-# DAMIAO motors (ω_n=2π·10=62.83): kp=armature·ω_n², kd≈2·2·armature·ω_n
-_KP = {joint: (126.33094 if idx < 3 else 7.106115) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}
-_KD = {joint: (8.042478 if idx < 3 else 0.452389) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}
+# DAMIAO motors. Gains hand-tuned 2026-07-06 (was kp=armature·ω_n² formula): proximal r1-3 kp=200/kd=3.5,
+# distal r4-7 kp=90/kd=0.5.
+_KP = {joint: (200.0 if idx < 3 else 90.0) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}
+_KD = {joint: (3.5 if idx < 3 else 0.5) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}
 _ARM = {joint: (0.032 if idx < 3 else 0.0018) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}
-_EFFORT = {joint: (28.0 if idx < 3 else 8.0) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}
+_EFFORT = {joint: (28.0 if idx < 3 else 8.0) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}   # peak (rated is 9/3)
 _VEL = {joint: (8.0 if idx < 3 else 20.0) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}
 
 # Robot FACING (whole-body orientation), from a1_facts.md measured link positions under identity rot:

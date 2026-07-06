@@ -370,6 +370,8 @@ class TTEnv(VecEnv):
         self.paddle_touch_point_vel = torch.zeros(self.num_envs, 3, device=self.device)
         self.ball_linvel_prev = torch.zeros(self.num_envs, 3, device=self.device)
         self.robot.write_joint_effort_limit_to_sim(self.robot.data.joint_effort_limits[:, self.action_joint_ids] * self.cfg.robot.effort_limit_scale, self.action_joint_ids)
+        # base (real) effort limits of the action joints, cached for the proximal effort curriculum
+        self._base_action_effort_limit = (self.robot.data.joint_effort_limits[:, self.action_joint_ids] * self.cfg.robot.effort_limit_scale).clone()
 
         self.init_obs_buffer()
         # --- Quadratic-drag model constant for ball dynamics (scalar k) ---
@@ -947,8 +949,26 @@ class TTEnv(VecEnv):
 
         self.ball_linvel_prev[env_ids] = self.reset_ball_state_buf[env_ids, 7:10]
 
+    def _apply_effort_curriculum(self):
+        """Anneal the first `num_joints` action joints' effort limit from start_scale -> 1.0 over
+        effort_curriculum_steps CONTROL steps, then hold. Lets slow proximal joints be explored early
+        (high torque) then forces the policy to adapt to the real torque. Called once per step() (50Hz)."""
+        steps = int(getattr(self.cfg.robot, "effort_curriculum_steps", 0) or 0)
+        nj = int(getattr(self.cfg.robot, "effort_curriculum_num_joints", 0) or 0)
+        if steps <= 0 or nj <= 0:
+            return
+        cs = self.sim_step_counter // self.cfg.sim.decimation
+        start = float(getattr(self.cfg.robot, "effort_curriculum_start_scale", 1.0))
+        frac = min(1.0, cs / float(steps))
+        scale = start + (1.0 - start) * frac   # start_scale -> 1.0
+        self._effort_curr_scale = scale        # for logging
+        eff = self._base_action_effort_limit.clone()
+        eff[:, :nj] = eff[:, :nj] * scale
+        self.robot.write_joint_effort_limit_to_sim(eff, self.action_joint_ids)
+
     def step(self, actions: torch.Tensor):
 
+        self._apply_effort_curriculum()
         delayed_actions = self.action_buffer.compute(actions)
 
         cliped_actions = torch.clip(delayed_actions, -self.clip_actions, self.clip_actions).to(self.device)
