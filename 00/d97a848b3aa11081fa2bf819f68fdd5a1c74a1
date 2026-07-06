@@ -1,0 +1,42 @@
+docs/superpowers/plans/2026-07-06-h1-vs-g1-arm-speed-report.md
+  s_c1b9370c03e837::t_15bf803cc84607 5-8
+  s_c1b9370c03e837::t_b0c8aa408afb2f 3,13-14,17,19,21,24-26,28,32,34,38-42,45-48,50-53,56,58-59,61-69,71,73-83,85,87,90-102,104,108,110-115,117-125
+  s_c1b9370c03e837::t_4744938d3e4a6b 9-12
+  s_c1b9370c03e837::t_b42b62c8171b59 1-2,4,15-16,18,20,22,27,29-31,35-37,43-44,49,54-55,57,70,72,84,86,89,103,107,109,116
+  s_c1b9370c03e837::t_4aaed9135bb5b0 23,33,60,88,105-106
+legged_lab/scripts/watchdog_train_a1.sh
+  s_c1b9370c03e837::t_8b0e3a249543c5 31
+legged_lab/assets/a1/a1.py
+  s_c1b9370c03e837::t_7403f13e32fe2b 17-20
+  s_c1b9370c03e837::t_278995beafe8e8 22
+legged_lab/envs/base/tt_config.py
+  s_c1b9370c03e837::t_af1824a1180609 72-79
+legged_lab/envs/base/tt_env.py
+  s_c1b9370c03e837::t_4e0cc3853fa136 952-968
+  s_c1b9370c03e837::t_3a9f331ea47d5c 971
+  s_c1b9370c03e837::t_756b2f0e49e759 373-374
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_c1b9370c03e837::t_e74d6f4c4c7238 57-58
+  s_c1b9370c03e837::t_715c8482228673 240
+  s_c1b9370c03e837::t_67fc3f307f4ef8 119-125
+  s_c1b9370c03e837::t_844d95ff18494e 68
+  s_c1b9370c03e837::t_a4706a5748f39d 118
+  s_c1b9370c03e837::t_9e3f232653f7b2 237
+  s_c1b9370c03e837::t_f261a86bb306bd 74-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "00d97a848b3aa11081fa2bf819f68fdd5a1c74a1",
+  "prompts": {},
+  "sessions": {
+    "s_c1b9370c03e837": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dd58ceb9-2afc-4347-983d-4a8a40e3ac38",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
