@@ -54,8 +54,8 @@ class A1TableTennisRewardCfg(RewardCfg):
     # (contact -> pass_net -> landing -> table_success) + a body-block penalty drive real forehand swings.
     paddle_face_x = RewTerm(
         func=mdp.paddle_face_x_alignment,
-        weight=3.0,   # v7: 0.1->3.0 restored. Strong enough to force the WHOLE arm to keep the blade facing +x,
-                      # instead of the v6 exploit (park + spin wrist_roll to sweep-hit while sacrificing the 0.1 face reward).
+        weight=0.5,   # v9: 3.0->0.5. v8's 3.0 (+dis_ee 6) let the policy FARM dense shaping (hover near intercept,
+                      # face +x) to ~2 reward WITHOUT ever contacting -> 0 hits. Cut it so contact must drive reward.
         params={"local_axis": "y"},
     )
     # v3(#3): penalize the ball approaching non-paddle mid-arm links (Link_r3..r6) -> stop body-blocking,
@@ -71,8 +71,8 @@ class A1TableTennisRewardCfg(RewardCfg):
     # a forward-swing reward so it drives THROUGH the ball toward the table instead of passively camping.
     reward_future_dis_ee = RewTerm(
         func=mdp.reward_future_ee_target,
-        weight=6.0,   # 2026-07-06: 3.0->6.0. Parked base drops G1's body-approach rewards (dis_ro 5 + vel_base 5);
-                      # compensate by strongly rewarding the PADDLE reaching the intercept -> use the arm to go to the ball.
+        weight=2.0,   # v9: 6.0->2.0 (back to G1 level). v8's 6.0 made hovering-near-intercept farmable without
+                      # contact -> 0 hits. Keep tracking guidance but let the un-fakeable contact/pass_net/table dominate.
         params={"std_ee": 0.5, "threshold": 0.15},
     )
     reward_swing_through = RewTerm(
@@ -234,7 +234,7 @@ class A1TT_EvalEnvCfg(A1TableTennisEnvCfg):
 
 @configclass
 class A1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "a1_tt_v8"
+    experiment_name: str = "a1_tt_v9"
     empirical_normalization = True   # v3: normalize observations for critic stability (v2 diverged, value_loss->1e9)
     logger = "tensorboard"
     save_interval = 100      # 2026-07-06: ckpt every 100 iters (finer, for post-hoc ckpt selection)
