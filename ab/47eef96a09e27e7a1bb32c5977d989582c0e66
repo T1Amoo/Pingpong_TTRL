@@ -1,0 +1,80 @@
+legged_lab/scripts/diagnose_a1_torque_ckpts.py
+  s_6f18e1ea307e97::t_36f5128ec35798 1-20,22-45,47-138,140,145-314
+  s_6f18e1ea307e97::t_90654556aa325f 21
+  s_6f18e1ea307e97::t_224da7d75b1cdf 139,141-144
+  s_6f18e1ea307e97::t_cd2b3c867d65a1 46
+legged_lab/scripts/record_play.py
+  s_6c710e83880694::t_17a809e81563a9 1-84
+docs/superpowers/plans/2026-07-01-a1-tt-framework.md
+  s_8aa4d77bcf6faf::t_f0139139ce4f7d 445,454,457-460,462,464,466,468,472,474,476,478,482
+  s_8aa4d77bcf6faf::t_dc8bef6343376f 1-4,6-20,22-444,446-453,455-456,461,463,465,467,469-471,473,475,477,479-481,483-504
+  s_8aa4d77bcf6faf::t_803f3d3d54f81c 5
+  s_8aa4d77bcf6faf::t_2c6cd03dcc6ad0 21
+.gitignore
+  s_6f18e1ea307e97::t_265e7ffda63b4b 10-11
+legged_lab/scripts/probe_paddle_origin.py
+  s_8aa4d77bcf6faf::t_f04af61bf53c03 2,5-10
+  s_e4ed443bb15b11::t_81fe070935b9ee 14,20,27,50,71-72,80-81
+  s_8aa4d77bcf6faf::t_d00c72b1c162cd 17,45
+  s_8aa4d77bcf6faf::t_36c5f73421e607 3-4,11-13,15-16,18-19,21,25
+  s_8aa4d77bcf6faf::t_62ad8ddcaf0f47 1,22-24,26,28-44,46-49,51-70,73-79,82-83
+legged_lab/scripts/supervisor_locomotion_to40k.sh
+  s_6c710e83880694::t_802f64a6245e8e 1-42
+export_tt_ckpt.sh
+  s_6c710e83880694::t_6110a42ca73b1b 1-39
+TONIGHT_PLAN_2026-06-23.md
+  s_ee10fa3faf43f2::t_dedea709c9a0b9 1-68
+legged_lab/scripts/record_a1_play_trace.py
+  s_6f18e1ea307e97::t_f6ce52e8d67791 30-33
+  s_6f18e1ea307e97::t_e048ed62f1f9d8 1-29,34-151
+docs/superpowers/specs/2026-07-01-agv-tt-framework-design.md
+  s_8aa4d77bcf6faf::t_383efc9241e286 1-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ab47eef96a09e27e7a1bb32c5977d989582c0e66",
+  "prompts": {},
+  "sessions": {
+    "s_6c710e83880694": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "447c545e-4e7d-4983-a73e-f42a11850540",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    },
+    "s_6f18e1ea307e97": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3aa3-49d2-7493-8613-4085b273cdd4",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    },
+    "s_8aa4d77bcf6faf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f631d844-f58c-42e4-98f7-67b32f2148c9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    },
+    "s_e4ed443bb15b11": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f20a1-dfe5-7930-956f-01e233be9342",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    },
+    "s_ee10fa3faf43f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed0f5a6-6a65-42d3-92c4-84134b849a25",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
