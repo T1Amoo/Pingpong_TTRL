@@ -7,3 +7,5 @@ logs
 run_bash.sh
 wandb
 *_watchdog.log
+train_*.log
+overnight_*.log
