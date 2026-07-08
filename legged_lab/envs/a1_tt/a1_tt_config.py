@@ -66,6 +66,10 @@ class A1TableTennisRewardCfg(RewardCfg):
         params={"body_regex": "Link_r[3-6]", "threshold": 0.09},
     )
     reward_contact = RewTerm(func=mdp.reward_contact, weight=150.0)   # v7: 40->150 to match G1 (A1 was severely under-rewarding contact)
+    reward_sweet_contact = RewTerm(
+        func=mdp.reward_paddle_sweet_contact,
+        weight=35.0,   # v11: first-contact sweet-spot bonus; downstream return rewards are also quality-scaled.
+    )
     # v6: v5 killed ball-tracking (future_dis_ee 0.1) -> paddle camped + wrist-jittered, never moved to the
     # ball (play: paddle static <4cm, 28% hit). RESTORE tracking so the paddle goes to the intercept, AND add
     # a forward-swing reward so it drives THROUGH the ball toward the table instead of passively camping.
@@ -102,6 +106,18 @@ class A1TableTennisRewardCfg(RewardCfg):
     )
     reward_table_success = RewTerm(func=mdp.reward_table_success, weight=150.0)   # v4: was 100; the true un-fakeable success terminal, make it the top prize
 
+    # v10: fine-tune at real motor limits. The v9 policies frequently demand computed torque far
+    # beyond the motor limit and rely on clipping. Penalize that demand without dominating contact.
+    joint_computed_torque_limit = RewTerm(
+        func=mdp.joint_computed_torque_limit_l2,
+        weight=-0.01,
+        params={
+            "threshold": 0.9,
+            "max_ratio": 3.0,
+            "asset_cfg": SceneEntityCfg("robot", joint_names=A1_ARM_JOINTS),
+        },
+    )
+
 
 @configclass
 class A1TableTennisEnvCfg(TTEnvCfg):
@@ -116,13 +132,11 @@ class A1TableTennisEnvCfg(TTEnvCfg):
         # exploded the critic value fn ~iter1000. 10 covers the hitting workspace while capping the runaway (raw hit ~32).
         self.normalization.clip_actions = 10.0
         self.robot.action_scale = 0.25
-        # Proximal effort curriculum: r1-3 start at 4x torque (28->112Nm) so random exploration can
-        # actually MOVE the slow proximal joints (escape the "frozen proximal / wrist-only twitch" trap),
-        # then anneal to real 28Nm by ~15k iters (360000 control steps = 15000*24), hold after. The final
-        # policy MUST work at real torque -> anneal completes and trains at 1.0x for the rest.
-        self.robot.effort_curriculum_start_scale = 4.0
-        self.robot.effort_curriculum_steps = 360000
-        self.robot.effort_curriculum_num_joints = 3
+        # v10: train directly at real motor effort (r1-r3 28Nm, r4-r7 8Nm). Warm-start from v9
+        # model_800 instead of replaying the old 4x proximal exploration curriculum.
+        self.robot.effort_curriculum_start_scale = 1.0
+        self.robot.effort_curriculum_steps = 0
+        self.robot.effort_curriculum_num_joints = 0
         self.scene.height_scanner.enable_height_scan = False
         self.scene.height_scanner.prim_body_name = "base_link"
         self.scene.robot = A1_TT_CFG
@@ -191,35 +205,49 @@ class A1TableTennisEnvCfg(TTEnvCfg):
         self.robot.home_y = 0.76
         # Latest X1_URDF_V1_1 ready pose probe: paddle_touch_point y≈0.10 with home_y=0.76.
         self.robot.paddle_y_offset = -0.66
-        # A1 base stays near x=-1.8, but the forehand blade is ~0.38 m in front of the base.
-        # The hitting guidance plane must therefore live near the reachable blade x, not on
-        # the base x plane.
-        self.robot.hit_plane_x = -1.42
+        # A1 base stays near x=-1.8. v11 moves the intercept plane back from -1.42 to -1.55
+        # so the paddle does not have to fold into the table/body-side serve path.
+        self.robot.hit_plane_x = -1.55
         # Fixed hit/intercept plane, matching the G1 task semantics: the learned predictor may
         # output 3 values, but x is the plane anchor and only y/z should meaningfully vary.
         self.robot.hit_target_x_range = (self.robot.hit_plane_x, self.robot.hit_plane_x)
-        # v3: spread the intercept target across the MEASURED forehand-reachable envelope (FK probe:
-        # y in [-0.02,0.87] p5-p95, z in [0.50,1.52] p5-p95, at x=-1.42). Old (0.08-0.30 / 1.08-1.32)
-        # was one small corner -> one parked pose covered every serve. Spread so the arm MUST move each ball.
+        # v3: spread the intercept target across the measured forehand-reachable envelope. v11 keeps
+        # that broad y/z envelope but anchors it on the new -1.55 hit plane.
         self.robot.hit_target_y_range = (0.0, 0.55)
-        self.robot.hit_target_z_range = (0.95, 1.30)
+        self.robot.hit_target_z_range = (0.90, 1.25)
         self.observations.joint_names = A1_ARM_JOINTS
         self.actions.joint_names = A1_ARM_JOINTS
-        # v3 serve: still forehand-reachable (within the FK envelope) but SPREAD, not a single point,
-        # so parking one pose no longer works and the policy has to react/move. Widened lateral (y) and
-        # launch vz (arrival height) to cover the target ranges above.
+        # v10 serve: keep the bounce forehand-reachable but move it away from the robot body side.
+        # v9 used y ~= 0.21..0.33, which made the arm fold back toward the chassis. Start with a
+        # narrower y ~= 0.08..0.16 real-effort adaptation window and widen only after it stabilizes.
         self.ball.serve_bounce_enable = True
         self.ball.serve_bounce_x_range = (-1.24, -0.96)
         self.ball.serve_bounce_x_range_hard = (-1.24, -0.96)
-        self.ball.serve_bounce_vz_range = (1.70, 2.35)
-        self.ball.serve_bounce_vz_range_hard = (1.70, 2.35)
-        self.ball.serve_y_center = 0.27
-        self.ball.serve_y_start = 0.06
-        self.ball.serve_y_wide = 0.27
+        self.ball.serve_bounce_vz_range = (1.60, 2.10)
+        self.ball.serve_bounce_vz_range_hard = (1.60, 2.10)
+        self.ball.serve_y_center = 0.12
+        self.ball.serve_y_start = 0.04
+        self.ball.serve_y_wide = 0.12
         self.ball.require_active_contact = True
         self.ball.active_contact_min_paddle_speed = 0.12
         self.ball.active_contact_min_forward_speed = -0.05
         self.ball.active_contact_require_own_bounce = False
+        # v12: a hit only counts near the fixed intercept plane. v11 still let the
+        # paddle touch early in front of the -1.55 target; make plane quality part
+        # of the first-contact reward and downstream return rewards.
+        self.ball.active_contact_hit_plane_margin = 0.10
+        self.ball.hit_plane_contact_radius = 0.10
+        self.ball.hit_plane_contact_core_radius = 0.03
+        self.ball.hit_plane_contact_gate_outcomes = True
+        self.ball.hit_plane_contact_outcome_floor = 0.5
+        # v11: latch first valid hit quality in the paddle face plane. Keep a 50% floor on
+        # pass-net / landing / table-success rewards so a successful return still teaches,
+        # but full credit requires a centered hit instead of edge scraping.
+        self.ball.sweet_contact_radius = 0.08
+        self.ball.sweet_contact_core_radius = 0.03
+        self.ball.sweet_contact_face_axis = "y"
+        self.ball.sweet_contact_gate_outcomes = True
+        self.ball.sweet_contact_outcome_floor = 0.5
         self.ball.serve_curriculum_steps = 0   # easy-only for first run
         self.ball.no_ball_period_s = 0.0
 
@@ -230,15 +258,29 @@ class A1TT_EvalEnvCfg(A1TableTennisEnvCfg):
         super().__post_init__()
         self.scene.max_episode_length_s = 99999999999
         self.ball.serve_curriculum_steps = 0
+        # Runtime serve probes for GUI/debug without another config edit.
+        import os as _os
+        _y_center = _os.environ.get("TT_SERVE_Y_CENTER")
+        _y_half = _os.environ.get("TT_SERVE_Y_HALF")
+        _vz_lo = _os.environ.get("TT_SERVE_VZ_LO")
+        _vz_hi = _os.environ.get("TT_SERVE_VZ_HI")
+        if _y_center is not None:
+            self.ball.serve_y_center = float(_y_center)
+        if _y_half is not None:
+            self.ball.serve_y_start = float(_y_half)
+            self.ball.serve_y_wide = float(_y_half)
+        if _vz_lo and _vz_hi:
+            self.ball.serve_bounce_vz_range = (float(_vz_lo), float(_vz_hi))
+            self.ball.serve_bounce_vz_range_hard = (float(_vz_lo), float(_vz_hi))
 
 
 @configclass
 class A1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "a1_tt_v9"
+    experiment_name: str = "a1_tt_v12"
     empirical_normalization = True   # v3: normalize observations for critic stability (v2 diverged, value_loss->1e9)
     logger = "tensorboard"
     save_interval = 100      # 2026-07-06: ckpt every 100 iters (finer, for post-hoc ckpt selection)
-    max_iterations = 1000000 # v6: weekend long run
+    max_iterations = 30000
     predictor = {
         "history_len": 5,
         "traj_max_len": 128,

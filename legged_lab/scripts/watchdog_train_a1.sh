@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Watchdog for a1_tt — A1 AGV ping-pong, local laptop (RTX 4060 8 GB) reduced-env convergence validation.
+# Watchdog for a1_tt — A1 AGV ping-pong overnight training.
 #
-# WHY: Validates the a1_tt task/reward/serve pipeline converges from scratch on local hardware
-#   before cloud scale-out. Chosen NUM_ENVS=128 is the largest power-of-two that fits the 8 GB
-#   GPU (256 crashes during scene construction; 128 peaks at ~5094 MiB leaving ~500 MB headroom).
-#   Full 4096-env cloud run is separate. TARGET=5000 is for local convergence validation only.
+# WHY: Runs a new A1 experiment from a known warm-start checkpoint while keeping the task name
+#   as a1_tt. By default this seeds a1_tt_v12 from a1_tt_v11/model_10000.pt, then trains to 30000.
 #
 # Isaac Sim simulation_app.close() busy-spins on teardown after the final ckpt flush.
 #   We poll for the target checkpoint landing on disk and kill the hung child immediately
@@ -15,10 +13,10 @@
 #   To find trainer:  pgrep -f "[a]1_tt"  then kill <trainer_pid>
 #
 # Usage (local):
-#   TARGET=5000 nohup bash legged_lab/scripts/watchdog_train_a1.sh > /tmp/a1_watchdog.log 2>&1 &
+#   NUM_ENVS=128 nohup bash legged_lab/scripts/watchdog_train_a1.sh > /tmp/a1_watchdog.log 2>&1 &
 #
 # Usage (cloud, override python and envs):
-#   TARGET=5000 NUM_ENVS=4096 TRAIN_PY=/root/miniconda3/envs/pingpong/bin/python \
+#   TARGET=30000 NUM_ENVS=4096 TRAIN_PY=/root/miniconda3/envs/pingpong/bin/python \
 #     OMNI_KIT_ACCEPT_EULA=YES nohup bash legged_lab/scripts/watchdog_train_a1.sh > /dev/null 2>&1 &
 set -u
 
@@ -27,11 +25,15 @@ export OMNI_KIT_ACCEPT_EULA=YES
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 PY=${TRAIN_PY:-/home/woan/.conda/envs/pingpong/bin/python}
-TASK=a1_tt
-EXP=${EXP:-a1_tt_v7}
+TASK=${TASK:-a1_tt}
+EXP=${EXP:-a1_tt_v12}
+SEED_EXP=${SEED_EXP:-a1_tt_v11}
+SEED_ITER=${SEED_ITER:-10000}
+SEED_DIR_NAME=${SEED_DIR_NAME:-seed_v11_10000}
 NUM_ENVS=${NUM_ENVS:-128}
-TARGET=${TARGET:-5000}
+TARGET=${TARGET:-30000}
 LOGROOT="$REPO/logs/$EXP"
+SEED_DIR="$LOGROOT/$SEED_DIR_NAME"
 WLOG="$REPO/train_${EXP}_watchdog.log"
 cd "$REPO"
 
@@ -60,7 +62,28 @@ latest() {
   echo "$best|$bdir|$bfile"
 }
 
-echo "[wd] $(date +%F_%H-%M-%S) start; target=$TARGET envs=$NUM_ENVS task=$TASK exp=$EXP" | tee -a "$WLOG"
+find_seed() {
+  local src="" f
+  shopt -s nullglob
+  for f in "$REPO/logs/$SEED_EXP"/*/model_${SEED_ITER}.pt; do
+    src="$f"
+  done
+  echo "$src"
+}
+
+IFS='|' read -r INIT_N _ _ <<< "$(latest)"
+if [ "$INIT_N" -lt 0 ]; then
+  SRC="$(find_seed)"
+  if [ -z "$SRC" ]; then
+    echo "[wd] FATAL: no seed checkpoint logs/$SEED_EXP/*/model_${SEED_ITER}.pt found" | tee -a "$WLOG"
+    exit 1
+  fi
+  mkdir -p "$SEED_DIR"
+  cp "$SRC" "$SEED_DIR/model_${SEED_ITER}.pt"
+  echo "[wd] $(date +%F_%H-%M-%S) seeded warm-start: $SRC -> $SEED_DIR/model_${SEED_ITER}.pt" | tee -a "$WLOG"
+fi
+
+echo "[wd] $(date +%F_%H-%M-%S) start; target=$TARGET envs=$NUM_ENVS task=$TASK exp=$EXP seed=$SEED_EXP/model_$SEED_ITER" | tee -a "$WLOG"
 
 while true; do
   IFS='|' read -r N DIR FILE <<< "$(latest)"
@@ -70,17 +93,17 @@ while true; do
   fi
   REM=$((TARGET - N))
 
-  if [ "$N" -lt 0 ]; then
-    # fresh start, no checkpoint yet
-    echo "[wd] $(date +%F_%H-%M-%S) fresh start -> $REM iters" | tee -a "$WLOG"
-    "$PY" -u -m legged_lab.scripts.train --task="$TASK" --num_envs="$NUM_ENVS" --headless \
-      --logger=tensorboard --predictor --max_iterations="$REM" >> "$WLOG" 2>&1 &
+  export TT_SIM_STEP_OFFSET=$((N * 240))
+  if [ "$DIR" = "$SEED_DIR_NAME" ] && [ "$N" -eq "$SEED_ITER" ]; then
+    export LOAD_OPTIMIZER=0
+    echo "[wd] $(date +%F_%H-%M-%S) WARM-START $DIR/$FILE (iter $N) -> +$REM; LOAD_OPTIMIZER=0 TT_SIM_STEP_OFFSET=$TT_SIM_STEP_OFFSET" | tee -a "$WLOG"
   else
-    echo "[wd] $(date +%F_%H-%M-%S) resume $DIR/$FILE (iter $N) -> +$REM" | tee -a "$WLOG"
-    "$PY" -u -m legged_lab.scripts.train --task="$TASK" --num_envs="$NUM_ENVS" --headless \
-      --logger=tensorboard --predictor --max_iterations="$REM" \
-      --resume true --load_run "$DIR" --checkpoint "$FILE" >> "$WLOG" 2>&1 &
+    export LOAD_OPTIMIZER=1
+    echo "[wd] $(date +%F_%H-%M-%S) resume $DIR/$FILE (iter $N) -> +$REM; LOAD_OPTIMIZER=1 TT_SIM_STEP_OFFSET=$TT_SIM_STEP_OFFSET" | tee -a "$WLOG"
   fi
+  "$PY" -u -m legged_lab.scripts.train --task="$TASK" --num_envs="$NUM_ENVS" --headless \
+    --logger=tensorboard --predictor --experiment_name="$EXP" --max_iterations="$REM" \
+    --resume true --load_run "$DIR" --checkpoint "$FILE" >> "$WLOG" 2>&1 &
   CHILD=$!
 
   # Poll; once target ckpt is on disk, kill the hung child (Isaac shutdown-hang workaround).

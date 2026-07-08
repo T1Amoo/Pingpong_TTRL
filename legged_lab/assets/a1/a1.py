@@ -19,7 +19,22 @@ A1_WHEEL_JOINTS = [
 _KP = {joint: (200.0 if idx < 3 else 90.0) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}
 _KD = {joint: (3.5 if idx < 3 else 0.5) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}
 _ARM = {joint: (0.032 if idx < 3 else 0.0018) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}
-_EFFORT = {joint: (28.0 if idx < 3 else 8.0) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}   # peak (rated is 9/3)
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+_EFFORT_SCALE = _env_float("A1_TT_EFFORT_SCALE", 1.0)
+_PROX_EFFORT_SCALE = _env_float("A1_TT_PROX_EFFORT_SCALE", _EFFORT_SCALE)
+_DIST_EFFORT_SCALE = _env_float("A1_TT_DIST_EFFORT_SCALE", _EFFORT_SCALE)
+_EFFORT = {
+    joint: (28.0 * _PROX_EFFORT_SCALE if idx < 3 else 8.0 * _DIST_EFFORT_SCALE)
+    for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)
+}   # peak (rated is 9/3); override with A1_TT_EFFORT_SCALE for diagnostics.
 _VEL = {joint: (8.0 if idx < 3 else 20.0) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}
 
 # Robot FACING (whole-body orientation), from a1_facts.md measured link positions under identity rot:

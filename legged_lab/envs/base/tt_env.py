@@ -326,6 +326,9 @@ class TTEnv(VecEnv):
         self.ball_landing_dis_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.ball_contact_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
         self.ball_contact_raw_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
+        self.paddle_sweet_contact_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
+        self.paddle_sweet_contact_latch = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
+        self.paddle_hit_plane_latch = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
         self.active_paddle_hit = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.has_first_bounce = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.has_first_bounce_prev = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
@@ -831,6 +834,9 @@ class TTEnv(VecEnv):
         self.has_touch_paddle_rew[env_ids] = False
         self.ball_contact_rew[env_ids] = 0.0
         self.ball_contact_raw_rew[env_ids] = 0.0
+        self.paddle_sweet_contact_rew[env_ids] = 0.0
+        self.paddle_sweet_contact_latch[env_ids] = 0.0
+        self.paddle_hit_plane_latch[env_ids] = 0.0
         self.active_paddle_hit[env_ids] = False
         self.has_first_bounce[env_ids] = False
         self.has_first_bounce_prev[env_ids] = False
@@ -1120,9 +1126,15 @@ class TTEnv(VecEnv):
 
         distance = torch.norm(self.ball_global_pos - self.paddle_touch_point, dim=1) - 0.02 # corrected for ball radius
         self.paddel_ball_distance = distance
+        debug_hx = float(getattr(self.cfg.robot, "hit_plane_x", -1.42))
+        if os.environ.get("TT_DEBUG_OFFSET") and abs(float(self.ball_global_pos[0,0]) - debug_hx) < 0.08 and float(self.ball_global_pos[0,2]) > 0.6:
+            b = self.ball_global_pos[0].tolist(); tp = self.paddle_touch_point[0].tolist()
+            fut = self.ball_future_pose[0].tolist(); pp = self.paddle_pos[0].tolist()
+            print(f"[OFFSET] ball_now_z={b[2]:.2f} target_z={fut[2]:.2f} paddle_z={pp[2]:.2f} | paddle-ball={pp[2]-b[2]:+.2f} paddle-target={pp[2]-fut[2]:+.2f}", flush=True)
         contact_score = (
             self.cfg.ball.contact_threshold - distance
         ) / self.cfg.ball.contact_threshold
+        sweet_score = self._compute_sweet_contact_score(paddle_quat, contact_score)
         ball_linvel_now = self.ball.data.root_lin_vel_w
         ball_vx_before_step = self.ball_linvel_prev[:, 0]
         self.ball_contact = torch.clamp(contact_score, min=0.0, max=1.0) # determine if in contact region
@@ -1143,24 +1155,29 @@ class TTEnv(VecEnv):
             if not getattr(self.cfg.ball, "active_contact_require_own_bounce", False):
                 own_bounce_ok = torch.ones_like(own_bounce_ok, dtype=torch.bool)
             hx = self.cfg.robot.hit_plane_x
+            plane_margin = float(getattr(self.cfg.ball, "active_contact_hit_plane_margin", 0.28))
+            plane_quality = self._compute_hit_plane_contact_score(ball_local[:, 0])
             contact_candidate = contact_score > 0.0
             active_hit = (
                 contact_candidate
                 & (~self.has_touch_paddle)
                 & own_bounce_ok
                 & (ball_vx_before_step < -0.05)
-                & (ball_local[:, 0] > hx - 0.28)
-                & (ball_local[:, 0] < hx + 0.28)
+                & (torch.abs(ball_local[:, 0] - hx) <= plane_margin)
+                & (plane_quality > 0.0)
                 & (ball_local[:, 2] > 0.75)
                 & (paddle_speed >= min_speed)
                 & (paddle_forward_speed >= min_forward)
             )
-            active_score = self.ball_contact * torch.minimum(speed_score, forward_score)
+            active_score = self.ball_contact * torch.minimum(speed_score, forward_score) * plane_quality
             self.ball_contact_rew = torch.maximum(
                 self.ball_contact_rew,
                 torch.where(active_hit, active_score, torch.zeros_like(active_score)),
             )
             self.active_paddle_hit = active_hit
+            self._record_hit_plane_contact(active_hit, plane_quality)
+            self._record_sweet_contact(active_hit, sweet_score, plane_quality)
+            self._debug_sweet_spot(active_hit, paddle_quat, contact_score, paddle_speed, paddle_forward_speed)
             new_hits = active_hit
         else:
             self.ball_contact_rew = torch.maximum(self.ball_contact_rew, self.ball_contact) # finds reward for closest ball paddle distance
@@ -1169,9 +1186,94 @@ class TTEnv(VecEnv):
             # new_hits = contact_score > 0  # Tensor[N] bool
             new_hits = (contact_score > 0) & (self.ball_contact < self.ball_contact_rew)  # Tensor[N] bool
             self.active_paddle_hit = new_hits
+            neutral_plane_quality = torch.ones_like(sweet_score)
+            self._record_hit_plane_contact(new_hits, neutral_plane_quality)
+            self._record_sweet_contact(new_hits, sweet_score, neutral_plane_quality)
+            self._debug_sweet_spot(new_hits, paddle_quat, contact_score)
         still_false = ~self.has_touch_paddle  # Tensor[N] bool
         self.has_touch_paddle[still_false] = new_hits[still_false] # set has_touch_paddle True for env with ball_contact True
         self.ball_linvel_prev.copy_(ball_linvel_now)
+
+    def _compute_hit_plane_contact_score(self, ball_x_local: torch.Tensor) -> torch.Tensor:
+        radius = float(getattr(self.cfg.ball, "hit_plane_contact_radius", 0.0) or 0.0)
+        if radius <= 0.0:
+            return torch.ones_like(ball_x_local)
+        core = float(getattr(self.cfg.ball, "hit_plane_contact_core_radius", 0.0) or 0.0)
+        core = min(max(core, 0.0), radius)
+        dist = torch.abs(ball_x_local - float(self.cfg.robot.hit_plane_x))
+        denom = max(radius - core, 1e-6)
+        score = torch.clamp((radius - dist) / denom, min=0.0, max=1.0)
+        return torch.where(dist <= core, torch.ones_like(score), score)
+
+    def _compute_sweet_contact_score(self, paddle_quat: torch.Tensor, contact_score: torch.Tensor) -> torch.Tensor:
+        radius = float(getattr(self.cfg.ball, "sweet_contact_radius", 0.0) or 0.0)
+        if radius <= 0.0:
+            return torch.zeros_like(contact_score)
+        core = float(getattr(self.cfg.ball, "sweet_contact_core_radius", 0.0) or 0.0)
+        core = min(max(core, 0.0), radius)
+        face_axis = str(getattr(self.cfg.ball, "sweet_contact_face_axis", "y")).lstrip("-")
+        plane_axes = {"x": (1, 2), "y": (0, 2), "z": (0, 1)}.get(face_axis, (0, 2))
+        ball_rel_w = self.ball_global_pos - self.paddle_touch_point
+        ball_rel_l = math_utils.quat_apply_inverse(paddle_quat, ball_rel_w)
+        plane_dist = torch.linalg.norm(ball_rel_l[:, plane_axes], dim=1)
+        denom = max(radius - core, 1e-6)
+        score = torch.clamp((radius - plane_dist) / denom, min=0.0, max=1.0)
+        score = torch.where(plane_dist <= core, torch.ones_like(score), score)
+        return torch.where(contact_score > 0.0, score, torch.zeros_like(score))
+
+    def _record_hit_plane_contact(self, hit_mask: torch.Tensor, plane_score: torch.Tensor):
+        first_hits = hit_mask & (~self.has_touch_paddle)
+        if not torch.any(first_hits):
+            return
+        self.paddle_hit_plane_latch = torch.where(first_hits, plane_score, self.paddle_hit_plane_latch)
+
+    def _record_sweet_contact(
+        self,
+        hit_mask: torch.Tensor,
+        sweet_score: torch.Tensor,
+        plane_score: torch.Tensor,
+    ):
+        first_hits = hit_mask & (~self.has_touch_paddle)
+        if not torch.any(first_hits):
+            return
+        gated_sweet = sweet_score * plane_score
+        score = torch.where(first_hits, gated_sweet, torch.zeros_like(gated_sweet))
+        self.paddle_sweet_contact_rew = torch.maximum(self.paddle_sweet_contact_rew, score)
+        self.paddle_sweet_contact_latch = torch.where(first_hits, sweet_score, self.paddle_sweet_contact_latch)
+
+    def _debug_sweet_spot(
+        self,
+        hit_mask: torch.Tensor,
+        paddle_quat: torch.Tensor,
+        contact_score: torch.Tensor,
+        paddle_speed: torch.Tensor | None = None,
+        paddle_forward_speed: torch.Tensor | None = None,
+    ):
+        if not os.environ.get("TT_DEBUG_SWEET"):
+            return
+        hit_ids = torch.nonzero(hit_mask, as_tuple=False).flatten()
+        if hit_ids.numel() == 0:
+            return
+        max_print = int(os.environ.get("TT_DEBUG_SWEET_MAX", "4"))
+        for env_id_t in hit_ids[:max_print]:
+            env_id = int(env_id_t.item())
+            ball_rel_w = self.ball_global_pos[env_id : env_id + 1] - self.paddle_touch_point[env_id : env_id + 1]
+            ball_rel_l = math_utils.quat_apply_inverse(paddle_quat[env_id : env_id + 1], ball_rel_w)[0]
+            r_xy = torch.linalg.norm(ball_rel_l[0:2])
+            r_xz = torch.linalg.norm(ball_rel_l[[0, 2]])
+            r_yz = torch.linalg.norm(ball_rel_l[1:3])
+            center_dist = torch.linalg.norm(ball_rel_w[0])
+            speed = float("nan") if paddle_speed is None else float(paddle_speed[env_id])
+            forward = float("nan") if paddle_forward_speed is None else float(paddle_forward_speed[env_id])
+            print(
+                "[SWEET] "
+                f"env={env_id} center_dist={float(center_dist):.4f} "
+                f"score={float(contact_score[env_id]):.3f} "
+                f"local=({float(ball_rel_l[0]):+.4f},{float(ball_rel_l[1]):+.4f},{float(ball_rel_l[2]):+.4f}) "
+                f"r_xy={float(r_xy):.4f} r_xz={float(r_xz):.4f} r_yz={float(r_yz):.4f} "
+                f"speed={speed:.3f} forward={forward:.3f}",
+                flush=True,
+            )
 
     def compute_intermediate_values(self):
         # print("has_touch_paddle", self.has_touch_paddle)
@@ -1182,6 +1284,7 @@ class TTEnv(VecEnv):
         self.ball_angvel = self.ball.data.root_ang_vel_w
         self.robot_linvel= self.robot.data.root_lin_vel_w
         self.ball_contact_rew = self.ball_contact_rew * (self.has_touch_paddle * ~self.has_touch_paddle_rew) # Mask if previously already gained reward
+        self.paddle_sweet_contact_rew = self.paddle_sweet_contact_rew * (self.has_touch_paddle * ~self.has_touch_paddle_rew)
         self.ball_landing_dis_rew = self.has_touch_paddle & ~self.has_touch_paddle_rew # Set True if has_touch_paddle_rew is True, compute landing dis reward once, set False if previously True
 
         # --- Compute Contact with table ---

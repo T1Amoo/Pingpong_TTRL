@@ -72,6 +72,21 @@ def energy(env: BaseEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) ->
     return reward
 
 
+def joint_computed_torque_limit_l2(
+    env: BaseEnv,
+    threshold: float = 0.9,
+    max_ratio: float = 3.0,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize commanded PD torque demand above a fraction of the simulated effort limit."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    joint_ids = asset_cfg.joint_ids
+    computed = torch.abs(asset.data.computed_torque[:, joint_ids])
+    limits = torch.clamp(torch.abs(asset.data.joint_effort_limits[:, joint_ids]), min=1e-6)
+    ratio = torch.clamp(computed / limits, max=max_ratio)
+    return torch.sum(torch.square(torch.clamp(ratio - threshold, min=0.0)), dim=1)
+
+
 def joint_acc_l2(env: BaseEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     return torch.sum(torch.square(asset.data.joint_acc[:, asset_cfg.joint_ids]), dim=1)
@@ -629,6 +644,45 @@ def reward_contact(env: TTEnv) -> torch.Tensor:
     return env.ball_contact_rew.float()
 
 
+def reward_paddle_sweet_contact(env: TTEnv) -> torch.Tensor:
+    reward = getattr(env, "paddle_sweet_contact_rew", None)
+    if reward is None:
+        return torch.zeros(env.num_envs, device=env.device)
+    return reward.float()
+
+
+def _sweet_contact_outcome_scale(env: TTEnv) -> torch.Tensor | float:
+    if not getattr(env.cfg.ball, "sweet_contact_gate_outcomes", False):
+        return 1.0
+    quality = getattr(env, "paddle_sweet_contact_latch", None)
+    if quality is None:
+        return 1.0
+    floor = float(getattr(env.cfg.ball, "sweet_contact_outcome_floor", 0.5))
+    floor = min(max(floor, 0.0), 1.0)
+    quality = torch.clamp(quality.float(), min=0.0, max=1.0)
+    return floor + (1.0 - floor) * quality
+
+
+def _hit_plane_contact_outcome_scale(env: TTEnv) -> torch.Tensor | float:
+    if not getattr(env.cfg.ball, "hit_plane_contact_gate_outcomes", False):
+        return 1.0
+    quality = getattr(env, "paddle_hit_plane_latch", None)
+    if quality is None:
+        return 1.0
+    floor = float(getattr(env.cfg.ball, "hit_plane_contact_outcome_floor", 0.5))
+    floor = min(max(floor, 0.0), 1.0)
+    quality = torch.clamp(quality.float(), min=0.0, max=1.0)
+    return floor + (1.0 - floor) * quality
+
+
+def _contact_quality_outcome_scale(env: TTEnv) -> torch.Tensor | float:
+    sweet = _sweet_contact_outcome_scale(env)
+    plane = _hit_plane_contact_outcome_scale(env)
+    if isinstance(sweet, float) and isinstance(plane, float):
+        return sweet * plane
+    return sweet * plane
+
+
 def paddle_face_x_alignment(env: TTEnv, local_axis: str = "y") -> torch.Tensor:
     """Reward a configured paddle local axis aligned with world x.
 
@@ -771,7 +825,7 @@ def reward_idle_pose(env: TTEnv, k: float = 1.0) -> torch.Tensor:
 # (4) reward when the ball first bounces on opponent side.
 def reward_table_success(env: TTEnv) -> torch.Tensor:
     rew_table_success = (env.has_touch_paddle.float() * env.has_touch_opponent_table_just_now.float())
-    return rew_table_success
+    return rew_table_success * _contact_quality_outcome_scale(env)
 
 # # (5) Encourage forward ball position.
 # def reward_ball_pos(env: TTEnv) -> torch.Tensor:
@@ -915,7 +969,10 @@ def reward_future_landing_dis(
     # reward = torch.where(env.touched_paddel_no_bounce_table, reward, torch.zeros_like(reward)) # continuous
     mask = env.ball_landing_dis_rew
     reward = torch.where(mask, reward, torch.zeros_like(reward)) # sparse
-    return reward
+    scale = _contact_quality_outcome_scale(env)
+    if isinstance(scale, float):
+        return reward * scale
+    return torch.where(reward > 0.0, reward * scale, reward)
 
 def reward_future_pass_net(
     env: TTEnv,
@@ -953,7 +1010,7 @@ def reward_future_pass_net(
     # Apply provided sparse mask to trigger the reward once after hitting
     mask = env.ball_landing_dis_rew
     reward = torch.where(mask, reward, torch.zeros_like(reward))  # sparse
-    return reward
+    return reward * _contact_quality_outcome_scale(env)
 
 def robot_px_l2(env: BaseEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]

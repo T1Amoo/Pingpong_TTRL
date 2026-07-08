@@ -100,12 +100,28 @@ class BallCfg:
     ball_speed_z_range: tuple = (1.6, 1.7)
     ball_pos_y_range: tuple = (-0.2, 0.2)
     contact_threshold: float = 0.06
+    # Sweet-spot shaping is opt-in per task. It latches the first valid paddle hit's
+    # in-plane center quality and can scale downstream return rewards without making
+    # "hover near paddle center" a standalone dense objective.
+    sweet_contact_radius: float = 0.0
+    sweet_contact_core_radius: float = 0.0
+    sweet_contact_face_axis: str = "y"
+    sweet_contact_gate_outcomes: bool = False
+    sweet_contact_outcome_floor: float = 1.0
     # If enabled, distance alone is not a paddle hit. The paddle must actively swing into
     # the ball, which prevents a serve trajectory from farming reward on a static blade.
     require_active_contact: bool = False
     active_contact_min_paddle_speed: float = 0.0
     active_contact_min_forward_speed: float = -100.0
     active_contact_require_own_bounce: bool = False
+    # Optional first-contact hit-plane quality. The hard margin gates whether a
+    # paddle touch is a valid hit; the radius/core latch a [0,1] quality that can
+    # scale contact and downstream return rewards.
+    active_contact_hit_plane_margin: float = 0.28
+    hit_plane_contact_radius: float = 0.0
+    hit_plane_contact_core_radius: float = 0.0
+    hit_plane_contact_gate_outcomes: bool = False
+    hit_plane_contact_outcome_floor: float = 1.0
     ball_max_eposide_length: float = 1.5
     ball_reset_repeat: int = 5
     num_new_serves = 2
