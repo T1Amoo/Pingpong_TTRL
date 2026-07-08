@@ -1,0 +1,55 @@
+legged_lab/envs/base/tt_config.py
+  s_6f18e1ea307e97::t_e87930e931289b 117-124
+  s_6f18e1ea307e97::t_ff446f7c4e8b74 103-110
+legged_lab/mdp/rewards.py
+  s_6f18e1ea307e97::t_c3a1e67e69fdff 648-651,973-975
+  s_6f18e1ea307e97::t_e87930e931289b 666-685,828,972,1013
+  s_6f18e1ea307e97::t_639ad45a0ac411 647,652-665
+  s_6f18e1ea307e97::t_f413e20cb844f7 75-89
+legged_lab/scripts/watchdog_train_a1.sh
+  s_6f18e1ea307e97::t_98cc845f37ed5e 5,29-32
+  s_6f18e1ea307e97::t_e757853e79d9e8 2,4,16,19,28,34,36,65-86,96-99,101-102,104-106
+legged_lab/assets/a1/a1.py
+  s_6f18e1ea307e97::t_0a65020f6065b0 22-37
+legged_lab/envs/__init__.py
+  s_6f18e1ea307e97::t_321d94edc02907 55
+legged_lab/envs/base/tt_env.py
+  s_6f18e1ea307e97::t_b4dede64a80aca 1129-1130
+  s_6f18e1ea307e97::t_e87930e931289b 331,839,1158-1159,1166-1167,1172,1178-1179,1189-1191,1197-1207,1224-1235,1239-1240
+  s_c1b9370c03e837::t_1ee2c296712ec5 1131-1133
+  s_6f18e1ea307e97::t_e7a45ccb7a640d 1180,1192,1244-1276
+  s_6f18e1ea307e97::t_d1c4d53a234820 1242
+  s_6f18e1ea307e97::t_b10b59d2ec3519 329-330,837-838,1137,1208-1223,1236-1238,1241,1243,1287
+  s_6f18e1ea307e97::t_a0e636d8edcd79 1277
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_6f18e1ea307e97::t_492c7f1a584d55 69-72,208-210,217,243-250,283
+  s_6f18e1ea307e97::t_4d3d84b0722844 109-120,261-274
+  s_6f18e1ea307e97::t_19c58826f508a0 135-139,220-222,226-230
+  s_6f18e1ea307e97::t_ee4966a778a2fe 214-215
+  s_6f18e1ea307e97::t_b164c0d9727a43 279
+  s_6f18e1ea307e97::t_e87930e931289b 235-242
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4f6f76790f9248514a08d129d6fc4ab55dc031f8",
+  "prompts": {},
+  "sessions": {
+    "s_6f18e1ea307e97": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3aa3-49d2-7493-8613-4085b273cdd4",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    },
+    "s_c1b9370c03e837": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dd58ceb9-2afc-4347-983d-4a8a40e3ac38",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
