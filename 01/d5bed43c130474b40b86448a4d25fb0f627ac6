@@ -1,0 +1,48 @@
+legged_lab/envs/__init__.py
+  s_f5faecf91e141a::t_e8480cc9479cb6 42-43
+  s_f5faecf91e141a::t_a94355b610ba92 57
+legged_lab/assets/a1/a1.py
+  s_6f18e1ea307e97::t_97704dbf51b6eb 57-63,83-85
+legged_lab/envs/base/tt_config.py
+  s_f5faecf91e141a::t_f36496f5f42eff 80-84
+legged_lab/envs/base/tt_env.py
+  s_f5faecf91e141a::t_9c1f28a06d1819 288-304
+  s_f5faecf91e141a::t_429f58dff7365b 805-808
+  s_f5faecf91e141a::t_64159f1285da13 809
+  s_f5faecf91e141a::t_b0948ea81edca9 1027-1032,1035-1036,1039-1041,1044-1045,1050-1057,1065
+  s_f5faecf91e141a::t_4607bd025f1995 253-254,1033-1034,1037-1038,1042-1043,1046-1049
+  s_f5faecf91e141a::t_c0b8d0befcf1d6 398,455-487,620,623,902,1573,1681-1685
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_6f18e1ea307e97::t_0fe9d07b869864 225-228,232-233,254,322
+  s_f5faecf91e141a::t_93079bf32cf538 340
+  s_f5faecf91e141a::t_fdf37c64632c27 132-138,275-276
+  s_f5faecf91e141a::t_954c698107ede8 20-28,131,273-274,277-297,336-339,341-343
+legged_lab/mdp/rewards.py
+  s_f5faecf91e141a::t_9e153d9bee6c08 111-116
+legged_lab/scripts/watchdog_train_a1_real.sh
+  s_f5faecf91e141a::t_a681ea1a623c57 1-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "01d5bed43c130474b40b86448a4d25fb0f627ac6",
+  "prompts": {},
+  "sessions": {
+    "s_6f18e1ea307e97": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3aa3-49d2-7493-8613-4085b273cdd4",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    },
+    "s_f5faecf91e141a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f45c3-6919-7620-90ce-3640ddaa6bdd",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
