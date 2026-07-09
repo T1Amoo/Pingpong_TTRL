@@ -54,6 +54,13 @@ A1_INIT_Y = 0.76
 # See docs/superpowers/plans/a1_facts.md ## BASE_Z_SETTLED.
 A1_INIT_Z = 0.0282
 
+# Real robot calibration, 2026-07-08: the maximum usable r1 joint centerline height is 1.15 m.
+# The URDF chain gives r1_z ~= base_z + sj_origin_z + r0_origin_z + sj, where
+# sj_origin_z=1.2107 and r0_origin_z=0.025. Older sim settings implicitly allowed sj=0,
+# i.e. r1_z ~= 1.264 m, which is outside the current hardware envelope.
+A1_R1_CENTER_HEIGHT_M = 1.15
+A1_LIFT_SJ_FOR_R1_CENTER = A1_R1_CENTER_HEIGHT_M - (A1_INIT_Z + 1.2107 + 0.025)
+
 A1_TT_CFG = ArticulationCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
     spawn=sim_utils.UsdFileCfg(
@@ -73,9 +80,9 @@ A1_TT_CFG = ArticulationCfg(
         pos=(-1.8, A1_INIT_Y, A1_INIT_Z),
         rot=A1_INIT_ROT,
         joint_pos={
-            # Keep the lift at the inspected ready value. With X1_URDF_V1_1 the training
-            # paddle_touch_point starts near z≈1.30 m and settles toward ≈1.25 m under zero action.
-            "sj": -0.28,   # range [-0.85, 0]; kept at design default
+            # Match the real maximum r1 centerline height (1.15 m), not the URDF's sj=0
+            # maximum (about 1.264 m).
+            "sj": A1_LIFT_SJ_FOR_R1_CENTER,   # range [-0.85, 0]; about -0.114
             # Forehand ready pose supplied from visual inspection. The paddle is double-sided,
             # so the task reward accepts either local +Y or -Y as the hitting face.
             "r1": 0.569, "r2": -0.692, "r3": 0.717,

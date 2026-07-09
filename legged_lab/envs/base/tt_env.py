@@ -250,6 +250,8 @@ class TTEnv(VecEnv):
         self.action_buffer.compute(
             torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         )
+        self.action_target_slew_excess_l2 = torch.zeros(self.num_envs, device=self.device)
+        self.action_target_slew_clip_frac = torch.zeros(self.num_envs, device=self.device)
         if self.cfg.domain_rand.action_delay.enable:
             time_lags = torch.randint(
                 low=self.cfg.domain_rand.action_delay.params["min_delay"],
@@ -283,6 +285,23 @@ class TTEnv(VecEnv):
         self.obs_joint_ids, self.obs_joint_names = self.robot.find_joints(
             self.cfg.observations.joint_names, preserve_order=self.cfg.observations.preserve_order
         )
+        self._action_target_rate_limit_enable = bool(
+            getattr(self.cfg.robot, "action_target_rate_limit_enable", False)
+        )
+        self._action_target_max_delta = None
+        if self._action_target_rate_limit_enable:
+            target_delta = tuple(getattr(self.cfg.robot, "action_target_max_delta_per_tick", ()) or ())
+            if len(target_delta) != self.num_actions:
+                raise ValueError(
+                    "robot.action_target_max_delta_per_tick must have one value per action "
+                    f"joint ({self.num_actions}), got {len(target_delta)}"
+                )
+            self._action_target_max_delta = torch.tensor(
+                target_delta,
+                device=self.device,
+                dtype=self.robot.data.default_joint_pos.dtype,
+            ).unsqueeze(0)
+        self._last_processed_actions = self.robot.data.default_joint_pos[:, self.action_joint_ids].clone()
 
         _paddle_ids, _ = self.robot.find_bodies(self.cfg.robot.paddle_body_name)
         assert len(_paddle_ids) == 1, f"paddle_body_name resolved to {len(_paddle_ids)} bodies"
@@ -376,6 +395,7 @@ class TTEnv(VecEnv):
         # base (real) effort limits of the action joints, cached for the proximal effort curriculum
         self._base_action_effort_limit = (self.robot.data.joint_effort_limits[:, self.action_joint_ids] * self.cfg.robot.effort_limit_scale).clone()
 
+        self._reset_prediction_buffers()
         self.init_obs_buffer()
         # --- Quadratic-drag model constant for ball dynamics (scalar k) ---
         # k = 0.5 * rho * Cd * A / m
@@ -431,6 +451,39 @@ class TTEnv(VecEnv):
         projected = pred.clone()
         projected[:, 0] = torch.clamp(projected[:, 0], min=float(tx_min), max=float(tx_max))
         return projected
+
+    def _prediction_sentinel(self, env_ids=None, dtype=None) -> torch.Tensor:
+        """Fixed home hit target used when no learned/analytic live target is available."""
+        if dtype is None:
+            dtype = self.ball_prediction.dtype
+        base = torch.tensor(
+            [
+                self.cfg.robot.hit_plane_x,
+                self.cfg.robot.home_y + self.cfg.robot.paddle_y_offset,
+                self.cfg.robot.hit_body_height + 0.2,
+            ],
+            device=self.device,
+            dtype=dtype,
+        ).unsqueeze(0)
+        count = self.num_envs if env_ids is None else len(env_ids)
+        return base.expand(count, -1).clone()
+
+    def _reset_prediction_buffers(self, env_ids=None) -> None:
+        """Prime future/predictor targets with the same sentinel used by sim2sim."""
+        sentinel = self._prediction_sentinel(env_ids=env_ids, dtype=self.ball_prediction.dtype)
+        if env_ids is None:
+            self.ball_future_pose.copy_(sentinel)
+            self.ball_prediction.copy_(sentinel)
+            self.ball_future_pose_vis.copy_(sentinel + self.scene.env_origins)
+            self.ball_prediction_vis.copy_(sentinel + self.scene.env_origins)
+            self.ball_future_t.zero_()
+            return
+
+        self.ball_future_pose[env_ids] = sentinel
+        self.ball_prediction[env_ids] = sentinel
+        self.ball_future_pose_vis[env_ids] = sentinel + self.scene.env_origins[env_ids]
+        self.ball_prediction_vis[env_ids] = sentinel + self.scene.env_origins[env_ids]
+        self.ball_future_t[env_ids] = 0.0
 
     def update_robot_future_pos_visual(self):
         if self.headless:
@@ -564,17 +617,10 @@ class TTEnv(VecEnv):
         # the predictor MLP (a long no-ball input -> garbage prediction -> divergence).
         mexp = self.mask_invalid.unsqueeze(-1)  # [N,1]; set this step in compute_intermediate_values
         # (a) prediction is in ball_future_pose's frame (robot-table): sentinel == modified_ball_pos
-        pred_sentinel = torch.tensor(
-            [
-                self.cfg.robot.hit_plane_x,
-                self.cfg.robot.home_y + self.cfg.robot.paddle_y_offset,
-                self.cfg.robot.hit_body_height + 0.2,
-            ],
-            device=self.device, dtype=self.ball_prediction.dtype,
-        ).unsqueeze(0)  # [1,3]
+        pred_sentinel = self._prediction_sentinel(dtype=self.ball_prediction.dtype)
         pred_ok = self._ball_prediction_plausible(self.ball_prediction).unsqueeze(-1)
         ball_pred_safe = torch.where(pred_ok, self.ball_prediction, self.ball_future_pose)
-        ball_pred_g = torch.where(mexp, pred_sentinel.expand_as(self.ball_prediction), ball_pred_safe)
+        ball_pred_g = torch.where(mexp, pred_sentinel, ball_pred_safe)
         # (b) perception ball slot [0:3] is in (ball - env_origins) frame: convert the same
         #     home point -> world (table + sentinel_rel) -> perception (- env_origins).
         percep_ball_sentinel = (self.table.data.root_link_pos_w + pred_sentinel) - self.scene.env_origins
@@ -756,6 +802,11 @@ class TTEnv(VecEnv):
 
         self.scene.write_data_to_sim()
         self.sim.forward()
+        self.ball_pos = self.ball.data.root_pos_w - self.scene.env_origins
+        self.robot_pos = self.robot.data.root_link_pos_w - self.table.data.root_link_pos_w
+        self.current_perception = torch.cat([self.ball_pos, self.robot_pos], dim=-1)
+        self.delayed_perception[env_ids] = self.current_perception[env_ids]
+        self._reset_action_target_limiter(env_ids)
 
     def _tt_no_ball_now(self):
         """Whether to suppress the ball THIS control step (ball teleported far + mask_invalid).
@@ -848,6 +899,7 @@ class TTEnv(VecEnv):
         self.left_after_bounce[env_ids] = False
         self.reward_vel_prev[env_ids] = 0.0
         self.ball_episode_length_buf[env_ids] = 0
+        self._reset_prediction_buffers(env_ids)
         generate_new = (self.ball_reset_counter[env_ids] % self.cfg.ball.ball_reset_repeat) == 0
         reuse_old = ~generate_new
         # Bug A fix: a no-ball window parks the ball underground (z=-50), so ball_on_floor (z<0.1)
@@ -972,6 +1024,37 @@ class TTEnv(VecEnv):
         eff[:, :nj] = eff[:, :nj] * scale
         self.robot.write_joint_effort_limit_to_sim(eff, self.action_joint_ids)
 
+    def _reset_action_target_limiter(self, env_ids=None):
+        if not hasattr(self, "_last_processed_actions"):
+            return
+        current_joint_pos = self.robot.data.joint_pos[:, self.action_joint_ids]
+        if env_ids is None:
+            self._last_processed_actions.copy_(current_joint_pos)
+            self.action_target_slew_excess_l2.zero_()
+            self.action_target_slew_clip_frac.zero_()
+        else:
+            self._last_processed_actions[env_ids] = current_joint_pos[env_ids]
+            self.action_target_slew_excess_l2[env_ids] = 0.0
+            self.action_target_slew_clip_frac[env_ids] = 0.0
+
+    def _apply_action_target_rate_limit(self, processed_actions: torch.Tensor) -> torch.Tensor:
+        if self._action_target_max_delta is None:
+            self.action_target_slew_excess_l2.zero_()
+            self.action_target_slew_clip_frac.zero_()
+            return processed_actions
+        delta = processed_actions - self._last_processed_actions
+        excess = torch.clamp(torch.abs(delta) - self._action_target_max_delta, min=0.0)
+        excess_norm = excess / torch.clamp(self._action_target_max_delta, min=1e-6)
+        self.action_target_slew_excess_l2.copy_(torch.sum(torch.square(excess_norm), dim=1))
+        self.action_target_slew_clip_frac.copy_(torch.mean((excess > 0.0).float(), dim=1))
+        limited_delta = torch.minimum(
+            torch.maximum(delta, -self._action_target_max_delta),
+            self._action_target_max_delta,
+        )
+        limited_actions = self._last_processed_actions + limited_delta
+        self._last_processed_actions.copy_(limited_actions)
+        return limited_actions
+
     def step(self, actions: torch.Tensor):
 
         self._apply_effort_curriculum()
@@ -979,6 +1062,7 @@ class TTEnv(VecEnv):
 
         cliped_actions = torch.clip(delayed_actions, -self.clip_actions, self.clip_actions).to(self.device)
         processed_actions = cliped_actions * self.action_scale + self.robot.data.default_joint_pos[:, self.action_joint_ids]
+        processed_actions = self._apply_action_target_rate_limit(processed_actions)
         self.processed_actions = processed_actions   # commanded joint target (for joint_pos_target_limits reward)
 
         for _ in range(self.cfg.sim.decimation):
@@ -1482,14 +1566,11 @@ class TTEnv(VecEnv):
         # Expand to match shape (N, 3)
         mask_invalid_expanded = self.mask_invalid.unsqueeze(-1).expand_as(self.ball_future_pose)
         # Zero out those poses
-        modified_ball_pos = torch.clone(self.robot_pos)
         # FIXED HOME sentinel (env-local), NOT self-referential robot_pos. A robot-relative
         # ready target has rel_target_x == -0.1 constant (no restoring force) -> over a long
         # no-ball gap the robot drifts backward chasing it and falls. Anchoring x,y to the
         # trained home (-1.6, 0) gives a restoring force -> stable idle at home.
-        modified_ball_pos[:, 0] = hx
-        modified_ball_pos[:, 1] = self.cfg.robot.home_y + paddle_y_offset
-        modified_ball_pos[:, 2] = body_height + 0.2     # ready height (0.885)
+        modified_ball_pos = self._prediction_sentinel(dtype=self.ball_future_pose.dtype)
         self.ball_future_pose = torch.where(
             mask_invalid_expanded,
             modified_ball_pos,
@@ -1597,7 +1678,11 @@ class TTEnv(VecEnv):
         self.critic_obs_buffer = CircularBuffer(
             max_len=self.cfg.robot.critic_obs_history_length, batch_size=self.num_envs, device=self.device
         )
-        self.delayed_perception = actor_obs[..., -self.num_perception:]
+        self.ball_pos = self.ball.data.root_pos_w - self.scene.env_origins
+        self.robot_pos = self.robot.data.root_link_pos_w - self.table.data.root_link_pos_w
+        self.current_perception = torch.cat([self.ball_pos, self.robot_pos], dim=-1)
+        self.perception_buffer.reset()
+        self.delayed_perception = self.perception_buffer.compute(self.current_perception)
 
     def update_terrain_levels(self, env_ids):
         distance = torch.norm(self.robot.data.root_pos_w[env_ids, :2] - self.scene.env_origins[env_ids, :2], dim=1)

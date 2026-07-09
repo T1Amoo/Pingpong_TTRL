@@ -108,6 +108,12 @@ def action_l2(env: BaseEnv) -> torch.Tensor:
     return torch.sum(torch.square(env.action_buffer._circular_buffer.buffer[:, -1, :]), dim=1)
 
 
+def action_target_slew_limit_l2(env: BaseEnv) -> torch.Tensor:
+    if not hasattr(env, "action_target_slew_excess_l2"):
+        return torch.zeros(env.num_envs, device=env.device)
+    return env.action_target_slew_excess_l2
+
+
 def joint_pos_target_limits(env) -> torch.Tensor:
     """Penalize the COMMANDED joint target (processed_actions = scale*action + default) for
     exceeding the SOFT joint limits. The built-in joint_pos_limits penalizes the ACTUAL angle

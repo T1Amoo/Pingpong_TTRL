@@ -77,6 +77,11 @@ class RobotCfg:
     effort_curriculum_start_scale: float = 1.0
     effort_curriculum_steps: int = 0
     effort_curriculum_num_joints: int = 0
+    # Optional deploy-style command limiter. This clamps the per-control-step change of
+    # processed q_des after action_scale/default-pose conversion, before it is written to
+    # the actuator. Units are rad/control-step in action joint order.
+    action_target_rate_limit_enable: bool = False
+    action_target_max_delta_per_tick: tuple = ()
     # --- Table-tennis paddle / hitting geometry (defaults match Booster T1) ---
     paddle_body_name: str = "right_hand_link"   # body the paddle is rigidly attached to
     paddle_offset: tuple = (0.0, -0.345, 0.0)   # paddle face center offset in that body's local frame

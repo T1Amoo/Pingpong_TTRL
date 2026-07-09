@@ -17,6 +17,15 @@ from legged_lab.envs.base.tt_env_config import (  # noqa:F401
 
 A1_ARM_JOINTS = list(A1_RIGHT_ARM_JOINTS)
 A1_GROUND_CONTACT_BODIES = ["Link_lun_(r|l)", "Link_wxl_.*"]
+A1_DEPLOY_QDES_MAX_DELTA_PER_TICK = (
+    0.020,  # r1
+    0.024,  # r2
+    0.036,  # r3
+    0.032,  # r4
+    0.080,  # r5
+    0.064,  # r6
+    0.160,  # r7
+)
 
 
 @configclass
@@ -120,6 +129,14 @@ class A1TableTennisRewardCfg(RewardCfg):
 
 
 @configclass
+class A1TableTennisDeployRewardCfg(A1TableTennisRewardCfg):
+    action_target_slew_limit = RewTerm(
+        func=mdp.action_target_slew_limit_l2,
+        weight=-0.005,
+    )
+
+
+@configclass
 class A1TableTennisEnvCfg(TTEnvCfg):
     reward = A1TableTennisRewardCfg()
 
@@ -205,14 +222,15 @@ class A1TableTennisEnvCfg(TTEnvCfg):
         self.robot.home_y = 0.76
         # Latest X1_URDF_V1_1 ready pose probe: paddle_touch_point y≈0.10 with home_y=0.76.
         self.robot.paddle_y_offset = -0.66
-        # A1 base stays near x=-1.8. v11 moves the intercept plane back from -1.42 to -1.55
-        # so the paddle does not have to fold into the table/body-side serve path.
-        self.robot.hit_plane_x = -1.55
+        # A1 base stays near x=-1.8. v13 moves the intercept plane back from -1.55 to -1.60:
+        # play/sim2real showed the arm could graze the table when asked to hit too far forward.
+        # Prefer fixing the target geometry before adding a sparse table-collision penalty.
+        self.robot.hit_plane_x = -1.60
         # Fixed hit/intercept plane, matching the G1 task semantics: the learned predictor may
         # output 3 values, but x is the plane anchor and only y/z should meaningfully vary.
         self.robot.hit_target_x_range = (self.robot.hit_plane_x, self.robot.hit_plane_x)
-        # v3: spread the intercept target across the measured forehand-reachable envelope. v11 keeps
-        # that broad y/z envelope but anchors it on the new -1.55 hit plane.
+        # v3: spread the intercept target across the measured forehand-reachable envelope. v13 keeps
+        # that broad y/z envelope but anchors it on the new -1.60 hit plane.
         self.robot.hit_target_y_range = (0.0, 0.55)
         self.robot.hit_target_z_range = (0.90, 1.25)
         self.observations.joint_names = A1_ARM_JOINTS
@@ -233,7 +251,7 @@ class A1TableTennisEnvCfg(TTEnvCfg):
         self.ball.active_contact_min_forward_speed = -0.05
         self.ball.active_contact_require_own_bounce = False
         # v12: a hit only counts near the fixed intercept plane. v11 still let the
-        # paddle touch early in front of the -1.55 target; make plane quality part
+        # paddle touch early in front of the fixed target; make plane quality part
         # of the first-contact reward and downstream return rewards.
         self.ball.active_contact_hit_plane_margin = 0.10
         self.ball.hit_plane_contact_radius = 0.10
@@ -250,6 +268,31 @@ class A1TableTennisEnvCfg(TTEnvCfg):
         self.ball.sweet_contact_outcome_floor = 0.5
         self.ball.serve_curriculum_steps = 0   # easy-only for first run
         self.ball.no_ball_period_s = 0.0
+
+
+@configclass
+class A1TableTennisDeployEnvCfg(A1TableTennisEnvCfg):
+    reward = A1TableTennisDeployRewardCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+        # Tonight's sim2real-gap run: train the policy through the same q_des slew
+        # limiter used for deployment instead of letting Isaac execute unreachable jumps.
+        self.robot.action_target_rate_limit_enable = True
+        self.robot.action_target_max_delta_per_tick = A1_DEPLOY_QDES_MAX_DELTA_PER_TICK
+        # Keep training hit-first. Prior idle/no-ball curricula hurt receiving stability;
+        # invalid/no-ball still uses the sentinel observation path, but we do not sample a
+        # dedicated no-ball phase in tonight's scratch run.
+        self.ball.no_ball_period_s = 0.0
+        self.ball.ball_active_s = 0.0
+        self.ball.no_ball_curriculum_steps = 0
+        self.ball.idle_reward_ramp_steps = 0
+        self.ball.curriculum_phase1_steps = 0
+        # Stay at the real effort envelope from the first iteration. Do not revive the
+        # older proximal over-torque curriculum for this deploy-alignment run.
+        self.robot.effort_curriculum_start_scale = 1.0
+        self.robot.effort_curriculum_steps = 0
+        self.robot.effort_curriculum_num_joints = 0
 
 
 @configclass
@@ -276,7 +319,7 @@ class A1TT_EvalEnvCfg(A1TableTennisEnvCfg):
 
 @configclass
 class A1TableTennisAgentCfg(TTAgentCfg):
-    experiment_name: str = "a1_tt_v12"
+    experiment_name: str = "a1_tt_v13"
     empirical_normalization = True   # v3: normalize observations for critic stability (v2 diverged, value_loss->1e9)
     logger = "tensorboard"
     save_interval = 100      # 2026-07-06: ckpt every 100 iters (finer, for post-hoc ckpt selection)
@@ -290,3 +333,11 @@ class A1TableTennisAgentCfg(TTAgentCfg):
         "batch_size": 1024,
         "train_until_iters": 200,
     }
+
+
+@configclass
+class A1TableTennisDeployAgentCfg(A1TableTennisAgentCfg):
+    experiment_name: str = "a1_tt_real_v1"
+    run_name = "scratch_qdes_slew"
+    resume = False
+    max_iterations = 30000
