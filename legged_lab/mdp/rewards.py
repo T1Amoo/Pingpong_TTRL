@@ -87,6 +87,51 @@ def joint_computed_torque_limit_l2(
     return torch.sum(torch.square(torch.clamp(ratio - threshold, min=0.0)), dim=1)
 
 
+def _joint_param_tensor(value: float | Tuple[float, ...], ref: torch.Tensor) -> torch.Tensor:
+    if isinstance(value, (tuple, list)):
+        tensor = torch.as_tensor(value, dtype=ref.dtype, device=ref.device)
+        if tensor.numel() != ref.shape[1]:
+            raise ValueError(f"Expected {ref.shape[1]} joint parameters, got {tensor.numel()}")
+        return tensor.reshape(1, -1)
+    return torch.full((1, ref.shape[1]), float(value), dtype=ref.dtype, device=ref.device)
+
+
+def motor_speed_margin_l2(
+    env: BaseEnv,
+    soft_ratio: float = 0.85,
+    no_load_speed: float | Tuple[float, ...] = 1.0,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize joint speeds near the motor no-load speed."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    joint_vel = torch.abs(asset.data.joint_vel[:, asset_cfg.joint_ids])
+    no_load = torch.clamp(_joint_param_tensor(no_load_speed, joint_vel), min=1.0e-6)
+    speed_ratio = joint_vel / no_load
+    margin_width = max(1.0 - soft_ratio, 1.0e-6)
+    speed_excess = torch.clamp(speed_ratio - soft_ratio, min=0.0)
+    return torch.sum(torch.square(speed_excess / margin_width), dim=1)
+
+
+def speed_torque_limit_violation_l2(
+    env: BaseEnv,
+    peak_torque: float | Tuple[float, ...],
+    no_load_speed: float | Tuple[float, ...],
+    min_torque_fraction: float = 0.0,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize applied torque above a linear motor speed-torque envelope."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    joint_vel = torch.abs(asset.data.joint_vel[:, asset_cfg.joint_ids])
+    applied_torque = torch.abs(asset.data.applied_torque[:, asset_cfg.joint_ids])
+    peak = torch.clamp(_joint_param_tensor(peak_torque, joint_vel), min=1.0e-6)
+    no_load = torch.clamp(_joint_param_tensor(no_load_speed, joint_vel), min=1.0e-6)
+    speed_ratio = torch.clamp(joint_vel / no_load, min=0.0, max=1.0)
+    torque_fraction = torch.clamp(1.0 - speed_ratio, min=min_torque_fraction)
+    available_torque = peak * torque_fraction
+    torque_excess = torch.clamp(applied_torque - available_torque, min=0.0)
+    return torch.sum(torch.square(torque_excess / peak), dim=1)
+
+
 def joint_acc_l2(env: BaseEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     return torch.sum(torch.square(asset.data.joint_acc[:, asset_cfg.joint_ids]), dim=1)

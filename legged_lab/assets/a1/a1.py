@@ -3,7 +3,7 @@ import copy
 import os
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
-from isaaclab.actuators import ImplicitActuatorCfg
+from isaaclab.actuators import DelayedPDActuatorCfg, ImplicitActuatorCfg
 
 A1_USD_PATH = os.path.join(os.path.dirname(__file__), "X1_URDF_V1_1", "X1_URDF_V1_1.usd")
 
@@ -50,6 +50,15 @@ _OPENARM_LIKE_VEL = {
     joint: (2.175 if idx < 4 else 2.61)
     for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)
 }
+
+# DM-Dog-style weekend actuator probe. This is not the old OpenArm implicit run:
+# keep the public Damiao/OpenArm motor envelope as the initial numeric prior, but
+# put the policy behind delayed explicit PD so it cannot lean on an ideal implicit
+# joint servo. These values should be replaced by system-ID curves next week.
+_DAMIAO_DELAYED_KP = {joint: 80.0 for joint in A1_RIGHT_ARM_JOINTS}
+_DAMIAO_DELAYED_KD = {joint: 4.0 for joint in A1_RIGHT_ARM_JOINTS}
+_DAMIAO_DELAYED_EFFORT = dict(_OPENARM_LIKE_EFFORT)
+_DAMIAO_DELAYED_VEL = dict(_OPENARM_LIKE_VEL)
 
 # Robot FACING (whole-body orientation), from a1_facts.md measured link positions under identity rot:
 # the chassis is built spread along Y — original drive wheels on ±y (±0.146), arms on ±y (±0.24),
@@ -137,4 +146,16 @@ A1_TT_OPENARM_CFG.actuators["right_arm"] = ImplicitActuatorCfg(
     velocity_limit_sim=_OPENARM_LIKE_VEL,
     stiffness=_OPENARM_LIKE_KP,
     damping=_OPENARM_LIKE_KD,
+)
+
+A1_TT_DAMIAO_DELAYED_CFG = copy.deepcopy(A1_TT_CFG)
+A1_TT_DAMIAO_DELAYED_CFG.actuators["right_arm"] = DelayedPDActuatorCfg(
+    joint_names_expr=A1_RIGHT_ARM_JOINTS,
+    effort_limit=_DAMIAO_DELAYED_EFFORT,
+    velocity_limit=_DAMIAO_DELAYED_VEL,
+    stiffness=_DAMIAO_DELAYED_KP,
+    damping=_DAMIAO_DELAYED_KD,
+    armature=0.01,
+    min_delay=1,
+    max_delay=3,
 )

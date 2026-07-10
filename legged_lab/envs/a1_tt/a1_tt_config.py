@@ -6,7 +6,12 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers.scene_entity_cfg import SceneEntityCfg
 from isaaclab.utils import configclass
 import legged_lab.mdp as mdp
-from legged_lab.assets.a1.a1 import A1_RIGHT_ARM_JOINTS, A1_TT_CFG, A1_TT_OPENARM_CFG
+from legged_lab.assets.a1.a1 import (
+    A1_RIGHT_ARM_JOINTS,
+    A1_TT_CFG,
+    A1_TT_DAMIAO_DELAYED_CFG,
+    A1_TT_OPENARM_CFG,
+)
 from legged_lab.assets.table_tennis.table import TABLE_CFG
 from legged_lab.assets.table_tennis.ball import BALL_CFG
 from legged_lab.envs.base.tt_env_config import (  # noqa:F401
@@ -25,6 +30,24 @@ A1_DEPLOY_QDES_MAX_DELTA_PER_TICK = (
     0.080,  # r5
     0.064,  # r6
     0.160,  # r7
+)
+A1_DAMIAO_PEAK_TORQUE_NM = (
+    27.0,  # r1
+    27.0,  # r2
+    27.0,  # r3
+    27.0,  # r4
+    7.0,   # r5
+    7.0,   # r6
+    7.0,   # r7
+)
+A1_DAMIAO_NO_LOAD_SPEED_RAD_S = (
+    2.175,  # r1
+    2.175,  # r2
+    2.175,  # r3
+    2.175,  # r4
+    2.61,   # r5
+    2.61,   # r6
+    2.61,   # r7
 )
 
 
@@ -133,6 +156,29 @@ class A1TableTennisDeployRewardCfg(A1TableTennisRewardCfg):
     action_target_slew_limit = RewTerm(
         func=mdp.action_target_slew_limit_l2,
         weight=-0.005,
+    )
+
+
+@configclass
+class A1TableTennisDamiaoRewardCfg(A1TableTennisRewardCfg):
+    motor_speed_margin = RewTerm(
+        func=mdp.motor_speed_margin_l2,
+        weight=-0.25,
+        params={
+            "soft_ratio": 0.85,
+            "no_load_speed": A1_DAMIAO_NO_LOAD_SPEED_RAD_S,
+            "asset_cfg": SceneEntityCfg("robot", joint_names=A1_ARM_JOINTS),
+        },
+    )
+    speed_torque_limit_violation = RewTerm(
+        func=mdp.speed_torque_limit_violation_l2,
+        weight=-4.0,
+        params={
+            "peak_torque": A1_DAMIAO_PEAK_TORQUE_NM,
+            "no_load_speed": A1_DAMIAO_NO_LOAD_SPEED_RAD_S,
+            "min_torque_fraction": 0.0,
+            "asset_cfg": SceneEntityCfg("robot", joint_names=A1_ARM_JOINTS),
+        },
     )
 
 
@@ -314,6 +360,27 @@ class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
 
 
 @configclass
+class A1TableTennisDamiaoEnvCfg(A1TableTennisEnvCfg):
+    reward = A1TableTennisDamiaoRewardCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.robot = A1_TT_DAMIAO_DELAYED_CFG
+        # Route-A weekend run: model actuator dynamics in sim instead of forcing
+        # deployment-side q_des slew clipping into the training loop.
+        self.robot.action_target_rate_limit_enable = False
+        self.robot.action_target_max_delta_per_tick = ()
+        self.ball.no_ball_period_s = 0.0
+        self.ball.ball_active_s = 0.0
+        self.ball.no_ball_curriculum_steps = 0
+        self.ball.idle_reward_ramp_steps = 0
+        self.ball.curriculum_phase1_steps = 0
+        self.robot.effort_curriculum_start_scale = 1.0
+        self.robot.effort_curriculum_steps = 0
+        self.robot.effort_curriculum_num_joints = 0
+
+
+@configclass
 class A1TT_EvalEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -365,5 +432,13 @@ class A1TableTennisDeployAgentCfg(A1TableTennisAgentCfg):
 class A1TableTennisOpenArmAgentCfg(A1TableTennisAgentCfg):
     experiment_name: str = "a1_tt_openarm_v1"
     run_name = "scratch_openarm_implicit"
+    resume = False
+    max_iterations = 100000
+
+
+@configclass
+class A1TableTennisDamiaoAgentCfg(A1TableTennisAgentCfg):
+    experiment_name: str = "a1_tt_damiao_v1"
+    run_name = "scratch_delayed_pd_torque_speed"
     resume = False
     max_iterations = 100000
