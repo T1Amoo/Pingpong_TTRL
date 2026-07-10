@@ -6,7 +6,7 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers.scene_entity_cfg import SceneEntityCfg
 from isaaclab.utils import configclass
 import legged_lab.mdp as mdp
-from legged_lab.assets.a1.a1 import A1_RIGHT_ARM_JOINTS, A1_TT_CFG
+from legged_lab.assets.a1.a1 import A1_RIGHT_ARM_JOINTS, A1_TT_CFG, A1_TT_OPENARM_CFG
 from legged_lab.assets.table_tennis.table import TABLE_CFG
 from legged_lab.assets.table_tennis.ball import BALL_CFG
 from legged_lab.envs.base.tt_env_config import (  # noqa:F401
@@ -296,6 +296,24 @@ class A1TableTennisDeployEnvCfg(A1TableTennisEnvCfg):
 
 
 @configclass
+class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.robot = A1_TT_OPENARM_CFG
+        self.robot.action_target_rate_limit_enable = False
+        self.robot.action_target_max_delta_per_tick = ()
+        # Match the hit-first real/deploy flow, but without q_des pre-limit/filter.
+        self.ball.no_ball_period_s = 0.0
+        self.ball.ball_active_s = 0.0
+        self.ball.no_ball_curriculum_steps = 0
+        self.ball.idle_reward_ramp_steps = 0
+        self.ball.curriculum_phase1_steps = 0
+        self.robot.effort_curriculum_start_scale = 1.0
+        self.robot.effort_curriculum_steps = 0
+        self.robot.effort_curriculum_num_joints = 0
+
+
+@configclass
 class A1TT_EvalEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -341,3 +359,11 @@ class A1TableTennisDeployAgentCfg(A1TableTennisAgentCfg):
     run_name = "scratch_qdes_slew"
     resume = False
     max_iterations = 30000
+
+
+@configclass
+class A1TableTennisOpenArmAgentCfg(A1TableTennisAgentCfg):
+    experiment_name: str = "a1_tt_openarm_v1"
+    run_name = "scratch_openarm_implicit"
+    resume = False
+    max_iterations = 100000
