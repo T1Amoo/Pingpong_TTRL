@@ -1,0 +1,29 @@
+legged_lab/mdp/rewards.py
+  s_f5faecf91e141a::t_d40d7a9dfe78fa 90-134
+legged_lab/assets/a1/a1.py
+  s_f5faecf91e141a::t_70aa5b2233ac45 6,54-62,150-160
+  s_f5faecf91e141a::t_e2ac85d81ce134 161
+legged_lab/envs/__init__.py
+  s_f5faecf91e141a::t_735f2ff014e5b4 44-45,62
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_f5faecf91e141a::t_a4f06a2a2431b2 9-14,34-51,162-184,362-382,437-442
+  s_f5faecf91e141a::t_12618f82370653 443-444
+legged_lab/scripts/watchdog_train_a1_damiao.sh
+  s_f5faecf91e141a::t_c2b269280eac15 1-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "41253ef7e9911389faaa23d523cf7953fca47608",
+  "prompts": {},
+  "sessions": {
+    "s_f5faecf91e141a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f45c3-6919-7620-90ce-3640ddaa6bdd",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
