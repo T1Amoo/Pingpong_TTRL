@@ -302,6 +302,7 @@ class TTEnv(VecEnv):
                 dtype=self.robot.data.default_joint_pos.dtype,
             ).unsqueeze(0)
         self._last_processed_actions = self.robot.data.default_joint_pos[:, self.action_joint_ids].clone()
+        self._init_action_response_model()
 
         _paddle_ids, _ = self.robot.find_bodies(self.cfg.robot.paddle_body_name)
         assert len(_paddle_ids) == 1, f"paddle_body_name resolved to {len(_paddle_ids)} bodies"
@@ -807,6 +808,7 @@ class TTEnv(VecEnv):
         self.current_perception = torch.cat([self.ball_pos, self.robot_pos], dim=-1)
         self.delayed_perception[env_ids] = self.current_perception[env_ids]
         self._reset_action_target_limiter(env_ids)
+        self._reset_action_response_model(env_ids)
 
     def _tt_no_ball_now(self):
         """Whether to suppress the ball THIS control step (ball teleported far + mask_invalid).
@@ -1055,6 +1057,101 @@ class TTEnv(VecEnv):
         self._last_processed_actions.copy_(limited_actions)
         return limited_actions
 
+    def _init_action_response_model(self):
+        self._action_response_model_enable = bool(
+            getattr(self.cfg.robot, "action_response_model_enable", False)
+        )
+        self.action_response_targets = self._last_processed_actions.clone()
+        if not self._action_response_model_enable:
+            self._action_response_delay_buffer = None
+            return
+
+        def _param_tensor(name: str) -> torch.Tensor:
+            values = tuple(getattr(self.cfg.robot, name, ()) or ())
+            if len(values) != self.num_actions:
+                raise ValueError(f"robot.{name} must have {self.num_actions} values, got {len(values)}")
+            return torch.tensor(
+                values,
+                device=self.device,
+                dtype=self.robot.data.default_joint_pos.dtype,
+            ).unsqueeze(0)
+
+        self._action_response_fn_hz = _param_tensor("action_response_fn_hz")
+        self._action_response_zeta = _param_tensor("action_response_zeta")
+        self._action_response_delay_s = _param_tensor("action_response_delay_s")
+        self._action_response_gain = _param_tensor("action_response_gain")
+        self._action_response_bias = _param_tensor("action_response_bias_rad")
+        self._action_response_u_mean = _param_tensor("action_response_u_mean")
+
+        self._action_response_omega = 2.0 * torch.tensor(
+            np.pi,
+            device=self.device,
+            dtype=self.robot.data.default_joint_pos.dtype,
+        ) * torch.clamp(self._action_response_fn_hz, min=1.0e-6)
+        delay_steps = torch.round(self._action_response_delay_s / self.physics_dt).to(dtype=torch.long)
+        self._action_response_delay_steps = torch.clamp(delay_steps.squeeze(0), min=0)
+        self._action_response_delay_buffer_len = int(torch.max(self._action_response_delay_steps).item()) + 1
+        self._action_response_delay_index = 0
+        self._action_response_x_rel = torch.zeros_like(self._last_processed_actions)
+        self._action_response_v_rel = torch.zeros_like(self._last_processed_actions)
+        self._action_response_delay_buffer = torch.zeros(
+            self._action_response_delay_buffer_len,
+            self.num_envs,
+            self.num_actions,
+            device=self.device,
+            dtype=self.robot.data.default_joint_pos.dtype,
+        )
+        self._reset_action_response_model()
+
+    def _reset_action_response_model(self, env_ids=None):
+        if not getattr(self, "_action_response_model_enable", False):
+            return
+        current_joint_pos = self.robot.data.joint_pos[:, self.action_joint_ids]
+        gain = torch.clamp(self._action_response_gain, min=1.0e-6)
+        x_rel = (current_joint_pos - self._action_response_u_mean - self._action_response_bias) / gain
+        steady_raw_command = self._action_response_u_mean + x_rel
+        if env_ids is None:
+            self._action_response_x_rel.copy_(x_rel)
+            self._action_response_v_rel.zero_()
+            self._action_response_delay_buffer.copy_(steady_raw_command.unsqueeze(0))
+            self.action_response_targets.copy_(current_joint_pos)
+        else:
+            self._action_response_x_rel[env_ids] = x_rel[env_ids]
+            self._action_response_v_rel[env_ids] = 0.0
+            self._action_response_delay_buffer[:, env_ids, :] = steady_raw_command[env_ids].unsqueeze(0)
+            self.action_response_targets[env_ids] = current_joint_pos[env_ids]
+
+    def _delayed_action_response_command(self, raw_command: torch.Tensor) -> torch.Tensor:
+        write_idx = self._action_response_delay_index
+        self._action_response_delay_buffer[write_idx].copy_(raw_command)
+        delayed_columns = []
+        for action_id, delay_step in enumerate(self._action_response_delay_steps.tolist()):
+            read_idx = (write_idx - int(delay_step)) % self._action_response_delay_buffer_len
+            delayed_columns.append(self._action_response_delay_buffer[read_idx, :, action_id])
+        self._action_response_delay_index = (write_idx + 1) % self._action_response_delay_buffer_len
+        return torch.stack(delayed_columns, dim=1)
+
+    def _apply_action_response_model(self, raw_command: torch.Tensor, dt: float) -> torch.Tensor:
+        if not getattr(self, "_action_response_model_enable", False):
+            self.action_response_targets = raw_command
+            return raw_command
+
+        delayed_command = self._delayed_action_response_command(raw_command)
+        u_rel = delayed_command - self._action_response_u_mean
+        accel = (
+            torch.square(self._action_response_omega) * (u_rel - self._action_response_x_rel)
+            - 2.0 * self._action_response_zeta * self._action_response_omega * self._action_response_v_rel
+        )
+        self._action_response_v_rel.add_(accel * dt)
+        self._action_response_x_rel.add_(self._action_response_v_rel * dt)
+        response = (
+            self._action_response_u_mean
+            + self._action_response_bias
+            + self._action_response_gain * self._action_response_x_rel
+        )
+        self.action_response_targets = response
+        return response
+
     def step(self, actions: torch.Tensor):
 
         self._apply_effort_curriculum()
@@ -1067,7 +1164,8 @@ class TTEnv(VecEnv):
 
         for _ in range(self.cfg.sim.decimation):
             self.sim_step_counter += 1
-            self.robot.set_joint_position_target(processed_actions, self.action_joint_ids)
+            action_response_targets = self._apply_action_response_model(processed_actions, self.physics_dt)
+            self.robot.set_joint_position_target(action_response_targets, self.action_joint_ids)
             # ! Aerodynamics: Step : BEGIN
             # ! Step before self.scene.write_data_to_sim(), update per decimation step
             self.aero.apply_to_rigid_object(self.ball)

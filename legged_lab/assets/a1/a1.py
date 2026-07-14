@@ -60,6 +60,21 @@ _DAMIAO_DELAYED_KD = {joint: 4.0 for joint in A1_RIGHT_ARM_JOINTS}
 _DAMIAO_DELAYED_EFFORT = dict(_OPENARM_LIKE_EFFORT)
 _DAMIAO_DELAYED_VEL = dict(_OPENARM_LIKE_VEL)
 
+# System-ID deployment gains, measured on the right arm 2026-07-14 at the FixStand pose.
+_REAL_FITTED_NODE_KP = {joint: (300.0 if idx < 3 else 120.0) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}
+_REAL_FITTED_NODE_KD = {joint: (3.5 if idx < 3 else 1.0) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}
+
+# The fitted motor response itself is applied in TTEnv. This solver-side implicit
+# actuator is intentionally much harder than the identified motor loop, so it
+# tracks the response target without adding another explicit torque-PD dynamic.
+_REAL_FITTED_TRACKING_KP = {
+    joint: (30000.0 if joint == "r2" else 20000.0)
+    for joint in A1_RIGHT_ARM_JOINTS
+}
+_REAL_FITTED_TRACKING_KD = {joint: 100.0 for joint in A1_RIGHT_ARM_JOINTS}
+_REAL_FITTED_TRACKING_EFFORT = {joint: 1.0e9 for joint in A1_RIGHT_ARM_JOINTS}
+_REAL_FITTED_TRACKING_VEL = {joint: 1.0e9 for joint in A1_RIGHT_ARM_JOINTS}
+
 # Robot FACING (whole-body orientation), from a1_facts.md measured link positions under identity rot:
 # the chassis is built spread along Y — original drive wheels on ±y (±0.146), arms on ±y (±0.24),
 # torso/head clustered at x≈+0.04 — so the body's FRONT is +x. We add passive front/rear
@@ -158,4 +173,13 @@ A1_TT_DAMIAO_DELAYED_CFG.actuators["right_arm"] = DelayedPDActuatorCfg(
     armature=0.01,
     min_delay=1,
     max_delay=3,
+)
+
+A1_TT_REAL_FITTED_CFG = copy.deepcopy(A1_TT_CFG)
+A1_TT_REAL_FITTED_CFG.actuators["right_arm"] = ImplicitActuatorCfg(
+    joint_names_expr=A1_RIGHT_ARM_JOINTS,
+    effort_limit_sim=_REAL_FITTED_TRACKING_EFFORT,
+    velocity_limit_sim=_REAL_FITTED_TRACKING_VEL,
+    stiffness=_REAL_FITTED_TRACKING_KP,
+    damping=_REAL_FITTED_TRACKING_KD,
 )

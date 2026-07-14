@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Watchdog for a1_tt_real - A1 table-tennis real-aligned scratch training.
 #
-# This run intentionally starts from scratch: no v12/v13 warm-start, no dedicated no-ball
-# curriculum, and q_des slew limiting enabled inside the task so Isaac training, sim2sim,
-# and sim2real use the same command envelope.
+# This run intentionally starts from scratch: no v12/v13 warm-start and no dedicated
+# no-ball curriculum. a1_tt_real_v1 uses the seven-joint identified second-order
+# arm response model, then tracks the filtered target with a high-bandwidth implicit actuator.
 #
 # Usage (local):
 #   NUM_ENVS=128 nohup bash legged_lab/scripts/watchdog_train_a1_real.sh > /tmp/a1_real_watchdog.log 2>&1 &
 #
 # Usage (cloud):
-#   TARGET=30000 NUM_ENVS=4096 TRAIN_PY=/root/miniconda3/envs/pingpong/bin/python \
+#   TARGET=100000 NUM_ENVS=4096 TRAIN_PY=/root/miniconda3/envs/pingpong/bin/python \
 #     OMNI_KIT_ACCEPT_EULA=YES nohup bash legged_lab/scripts/watchdog_train_a1_real.sh >/dev/null 2>&1 &
 set -u
 
@@ -21,7 +21,7 @@ PY=${TRAIN_PY:-/home/woan/.conda/envs/pingpong/bin/python}
 TASK=${TASK:-a1_tt_real}
 EXP=${EXP:-a1_tt_real_v1}
 NUM_ENVS=${NUM_ENVS:-128}
-TARGET=${TARGET:-30000}
+TARGET=${TARGET:-100000}
 LOGROOT="$REPO/logs/$EXP"
 WLOG="$REPO/train_${EXP}_watchdog.log"
 cd "$REPO"
@@ -51,7 +51,7 @@ latest() {
   echo "$best|$bdir|$bfile"
 }
 
-echo "[wd] $(date +%F_%H-%M-%S) start; target=$TARGET envs=$NUM_ENVS task=$TASK exp=$EXP (scratch, real qdes slew)" | tee -a "$WLOG"
+echo "[wd] $(date +%F_%H-%M-%S) start; target=$TARGET envs=$NUM_ENVS task=$TASK exp=$EXP (scratch, identified second-order arm response)" | tee -a "$WLOG"
 while true; do
   IFS='|' read -r N DIR FILE <<< "$(latest)"
   if [ "$N" -ge "$((TARGET-1))" ]; then

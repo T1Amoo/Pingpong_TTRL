@@ -82,6 +82,17 @@ class RobotCfg:
     # the actuator. Units are rad/control-step in action joint order.
     action_target_rate_limit_enable: bool = False
     action_target_max_delta_per_tick: tuple = ()
+    # Optional identified motor response model. This filters the processed q_des at
+    # physics rate before the target is sent to the actuator, so an ideal high-bandwidth
+    # actuator can execute the measured closed-loop motor response instead of acting as
+    # the response model itself.
+    action_response_model_enable: bool = False
+    action_response_fn_hz: tuple = ()
+    action_response_zeta: tuple = ()
+    action_response_delay_s: tuple = ()
+    action_response_gain: tuple = ()
+    action_response_bias_rad: tuple = ()
+    action_response_u_mean: tuple = ()
     # --- Table-tennis paddle / hitting geometry (defaults match Booster T1) ---
     paddle_body_name: str = "right_hand_link"   # body the paddle is rigidly attached to
     paddle_offset: tuple = (0.0, -0.345, 0.0)   # paddle face center offset in that body's local frame

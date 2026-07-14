@@ -11,6 +11,7 @@ from legged_lab.assets.a1.a1 import (
     A1_TT_CFG,
     A1_TT_DAMIAO_DELAYED_CFG,
     A1_TT_OPENARM_CFG,
+    A1_TT_REAL_FITTED_CFG,
 )
 from legged_lab.assets.table_tennis.table import TABLE_CFG
 from legged_lab.assets.table_tennis.ball import BALL_CFG
@@ -48,6 +49,62 @@ A1_DAMIAO_NO_LOAD_SPEED_RAD_S = (
     2.61,   # r5
     2.61,   # r6
     2.61,   # r7
+)
+A1_REAL_FITTED_NODE_KP = (300.0, 300.0, 300.0, 120.0, 120.0, 120.0, 120.0)
+A1_REAL_FITTED_NODE_KD = (3.5, 3.5, 3.5, 1.0, 1.0, 1.0, 1.0)
+A1_REAL_FITTED_U_MEAN = (
+    0.5683523841788314,
+    -0.6892612481040505,
+    0.7196804487882763,
+    1.1293556605846493,
+    -1.2407980020381792,
+    0.030473524919208673,
+    0.7714033875755423,
+)
+A1_REAL_FITTED_FN_HZ = (
+    4.974636627849852,
+    3.4161507054849762,
+    4.967641307013087,
+    4.341336283530257,
+    15.30971682198707,
+    8.223759975617558,
+    18.61140865177779,
+)
+A1_REAL_FITTED_ZETA = (
+    0.4941346530768593,
+    0.3701409158816248,
+    0.47587293666159597,
+    0.22981041868709606,
+    0.7941795710126007,
+    0.565832498155223,
+    1.3208910165925782,
+)
+A1_REAL_FITTED_DELAY_S = (
+    0.001999999999997056,
+    0.005352908841469569,
+    0.008116843219232367,
+    0.018006420135349824,
+    0.017563104629677986,
+    0.013993930820317215,
+    0.014997124673895237,
+)
+A1_REAL_FITTED_GAIN = (
+    0.9898595325716487,
+    0.9609492557382776,
+    1.0032869565726132,
+    1.0027218616565117,
+    0.9998451719960618,
+    1.0020846023179375,
+    1.0005302866606762,
+)
+A1_REAL_FITTED_BIAS_RAD = (
+    -0.015168034936686725,
+    0.018117660993894003,
+    -0.001476035439111456,
+    -0.03152619331089834,
+    -0.0003882480267090038,
+    0.0010492923888134296,
+    -0.00023117043260922898,
 )
 
 
@@ -322,10 +379,20 @@ class A1TableTennisDeployEnvCfg(A1TableTennisEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        # Tonight's sim2real-gap run: train the policy through the same q_des slew
-        # limiter used for deployment instead of letting Isaac execute unreachable jumps.
-        self.robot.action_target_rate_limit_enable = True
-        self.robot.action_target_max_delta_per_tick = A1_DEPLOY_QDES_MAX_DELTA_PER_TICK
+        # a1_tt_real_v1: train through the measured real-arm closed-loop response.
+        # The policy emits raw q_des; TTEnv filters it with the seven-joint
+        # second-order system-ID model, and a high-bandwidth implicit actuator
+        # tracks that filtered target. No deploy q_des slew clamp is used here.
+        self.scene.robot = A1_TT_REAL_FITTED_CFG
+        self.robot.action_target_rate_limit_enable = False
+        self.robot.action_target_max_delta_per_tick = ()
+        self.robot.action_response_model_enable = True
+        self.robot.action_response_u_mean = A1_REAL_FITTED_U_MEAN
+        self.robot.action_response_fn_hz = A1_REAL_FITTED_FN_HZ
+        self.robot.action_response_zeta = A1_REAL_FITTED_ZETA
+        self.robot.action_response_delay_s = A1_REAL_FITTED_DELAY_S
+        self.robot.action_response_gain = A1_REAL_FITTED_GAIN
+        self.robot.action_response_bias_rad = A1_REAL_FITTED_BIAS_RAD
         # Keep training hit-first. Prior idle/no-ball curricula hurt receiving stability;
         # invalid/no-ball still uses the sentinel observation path, but we do not sample a
         # dedicated no-ball phase in tonight's scratch run.
@@ -423,9 +490,9 @@ class A1TableTennisAgentCfg(TTAgentCfg):
 @configclass
 class A1TableTennisDeployAgentCfg(A1TableTennisAgentCfg):
     experiment_name: str = "a1_tt_real_v1"
-    run_name = "scratch_qdes_slew"
+    run_name = "scratch_identified_second_order"
     resume = False
-    max_iterations = 30000
+    max_iterations = 100000
 
 
 @configclass
