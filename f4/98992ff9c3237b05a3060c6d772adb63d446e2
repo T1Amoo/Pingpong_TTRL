@@ -1,0 +1,37 @@
+legged_lab/envs/base/tt_env.py
+  s_f5faecf91e141a::t_1454af0ddb2b22 305,811,1060-1154,1167-1168
+legged_lab/scripts/verify_a1_real_fitted_idealpd.py
+  s_f5faecf91e141a::t_72d00c4a822d94 47-50,264-273,282-285,288-291
+  s_f5faecf91e141a::t_4311a2d49b1701 37-42,63,281,286-287,292,301-302,306-307
+  s_f5faecf91e141a::t_40c606338790d3 1-28,51-62,64-139,146-148,168-263,274-280,309-321,328-360
+  s_f5faecf91e141a::t_ae717a6af05dd5 29-30,43-46,140-145,293-300,303-305,308,322-323
+  s_f5faecf91e141a::t_77e55a20b6c4f1 31-36,149-167,324-327
+legged_lab/scripts/watchdog_train_a1_real.sh
+  s_f5faecf91e141a::t_7f6c52844f7be5 4-5,12,24,54
+  s_f5faecf91e141a::t_f82314d0061321 6
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_f5faecf91e141a::t_d8f2a1578eca34 384
+  s_f5faecf91e141a::t_62b1072476b601 14,53-108,382-383,385-395,493,495
+legged_lab/envs/base/tt_config.py
+  s_f5faecf91e141a::t_edc42d94649d96 85-95
+legged_lab/assets/a1/a1.py
+  s_f5faecf91e141a::t_990dd5d0d831d3 63,67-77,179,181-184
+  s_f5faecf91e141a::t_6f1bec6f336b1a 64-66,177-178,180
+  s_f5faecf91e141a::t_ada0309cf2b8e0 185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "f498992ff9c3237b05a3060c6d772adb63d446e2",
+  "prompts": {},
+  "sessions": {
+    "s_f5faecf91e141a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f45c3-6919-7620-90ce-3640ddaa6bdd",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
