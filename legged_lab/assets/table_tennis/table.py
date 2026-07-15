@@ -14,8 +14,10 @@ TABLE_CFG = RigidObjectCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=f"{ISAAC_ASSET_DIR}/table_tennis/table/pp_table_ver2.usd",
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
-            kinematic_enabled=False,
-            disable_gravity=False,
+            # The table is an immovable world fixture. Keeping it dynamic lets
+            # high-contact policies push the table and corrupt the ball frame.
+            kinematic_enabled=True,
+            disable_gravity=True,
             enable_gyroscopic_forces=True,
             solver_position_iteration_count=8,
             solver_velocity_iteration_count=0,

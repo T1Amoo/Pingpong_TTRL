@@ -108,12 +108,12 @@ A1_REAL_FITTED_BIAS_RAD = (
 )
 A1_REAL_DEPLOY_MAX_DELTA_PER_TRAIN_TICK = (
     # Conservative exploration envelope at TTEnv's 50 Hz policy step:
-    # r1-r4 <= 2.5 rad/s, r5-r7 <= 5.0 rad/s. This is intentionally below the
+    # r1-r3 <= 2.5 rad/s, r4-r7 <= 5.0 rad/s. This is intentionally below the
     # unloaded 100 Hz arm-node max_delta_per_cycle envelope to leave load margin.
     0.05,  # r1
     0.05,  # r2
     0.05,  # r3
-    0.05,  # r4
+    0.10,  # r4
     0.10,  # r5
     0.10,  # r6
     0.10,  # r7
@@ -129,10 +129,10 @@ class A1TableTennisRewardCfg(RewardCfg):
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-1.0)
     # --- arm smoothness / limits ---
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1.25e-7)
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.003)   # v5: -0.01->-0.003; biggest motion penalty, was suppressing the swing
-    action_l2 = RewTerm(func=mdp.action_l2, weight=-0.0005)            # v5: -0.001->-0.0005
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)    # v12: raise from -0.003 to reduce bang-bang action targets.
+    action_l2 = RewTerm(func=mdp.action_l2, weight=-0.001)             # v12: raise from -0.0005; still below G1's -0.002.
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-2.0)
-    joint_pos_target_limits = RewTerm(func=mdp.joint_pos_target_limits, weight=-0.1)   # was -1.0; quadratic+unbounded -> value-fn bomb (critic diverged ~iter1000). Now bounded by clip_actions=10 + soft 0.95; keep as a mild nudge only.
+    joint_pos_target_limits = RewTerm(func=mdp.joint_pos_target_limits, weight=-0.5)   # v12: raise from -0.1; still below G1's -1.0 after earlier critic instability.
     joint_deviation_right_arm = RewTerm(
         func=mdp.joint_deviation_l1_idle,   # v5: idle-only (no-ball); was joint_deviation_l1 every step -> fought the swing
         weight=-0.05,
@@ -229,7 +229,7 @@ class A1TableTennisRewardCfg(RewardCfg):
 class A1TableTennisDeployRewardCfg(A1TableTennisRewardCfg):
     action_target_slew_limit = RewTerm(
         func=mdp.action_target_slew_limit_l2,
-        weight=-0.005,
+        weight=-0.02,
     )
 
 
@@ -396,7 +396,7 @@ class A1TableTennisDeployEnvCfg(A1TableTennisEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        # a1_tt_real_v2: train through the measured real-arm closed-loop response,
+        # a1_tt_real_v3: train through the measured real-arm closed-loop response,
         # but first apply the same per-cycle q_des slew clamp used by deployment.
         # The second-order model should see only commands the real arm node would
         # allow through its raw_q -> cmd_q limiter.
@@ -506,7 +506,7 @@ class A1TableTennisAgentCfg(TTAgentCfg):
 
 @configclass
 class A1TableTennisDeployAgentCfg(A1TableTennisAgentCfg):
-    experiment_name: str = "a1_tt_real_v1"
+    experiment_name: str = "a1_tt_real_v3"
     run_name = "scratch_identified_second_order"
     resume = False
     max_iterations = 100000

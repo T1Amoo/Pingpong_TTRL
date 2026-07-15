@@ -117,6 +117,11 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
                 if not hasattr(self, "_tt_logged_init"):
                     self.writer.add_scalar("Train/TT_success_rate", 0.0, 0)
                     self.writer.add_scalar("Train/TT_hit_rate", 0.0, 0)
+                    self.writer.add_scalar("Train/TT_success_rate_sampled", 0.0, 0)
+                    self.writer.add_scalar("Train/TT_hit_rate_sampled", 0.0, 0)
+                    self.writer.add_scalar("Train/TT_action_noise_l2_mean", 0.0, 0)
+                    self.writer.add_scalar("Train/TT_hit_action_noise_l2_mean", 0.0, 0)
+                    self.writer.add_scalar("Train/TT_success_action_noise_l2_mean", 0.0, 0)
                     self._tt_logged_init = True
             except Exception:
                 pass
@@ -156,6 +161,12 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
         self._tt_succ_total: int = 0
         self._tt_hit_total: int = 0
         self._tt_serve_total: int = 0
+        self._tt_action_noise_l2_sum: float = 0.0
+        self._tt_action_noise_count: int = 0
+        self._tt_hit_action_noise_l2_sum: float = 0.0
+        self._tt_hit_action_noise_count: int = 0
+        self._tt_success_action_noise_l2_sum: float = 0.0
+        self._tt_success_action_noise_count: int = 0
         try:
             self._tt_serve_success_flag = torch.zeros(self.env.num_envs, dtype=torch.bool, device=self.env.device)
             self._tt_serve_hit_flag = torch.zeros(self.env.num_envs, dtype=torch.bool, device=self.env.device)
@@ -189,6 +200,16 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
                     else:
                         privileged_obs = obs
 
+                    action_noise_l2 = None
+                    try:
+                        action_mean = self.alg.transition.action_mean
+                        action_noise = (actions - action_mean).detach()
+                        action_noise_l2 = torch.linalg.vector_norm(action_noise, dim=-1)
+                        self._tt_action_noise_l2_sum += float(action_noise_l2.sum().item())
+                        self._tt_action_noise_count += int(action_noise_l2.numel())
+                    except Exception:
+                        action_noise_l2 = None
+
                     # Aux: record ball positions and run predictor inference
                     try:
                         # if self.current_learning_iteration < self.pred_train_until_iters:
@@ -206,12 +227,20 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
                         ):
                             event_mask = (self.env.has_touch_opponent_table_just_now & self.env.has_touch_paddle)
                             self._tt_serve_success_flag |= event_mask.to(self._tt_serve_success_flag.device)
+                            if action_noise_l2 is not None and bool(event_mask.any().item()):
+                                success_noise = action_noise_l2.to(event_mask.device)[event_mask]
+                                self._tt_success_action_noise_l2_sum += float(success_noise.sum().item())
+                                self._tt_success_action_noise_count += int(success_noise.numel())
                         if (
                             hasattr(self.env, "ball_contact_rew")
                             and self._tt_serve_hit_flag is not None
                         ):
                             hit_mask = (self.env.ball_contact_rew > 0.0)
                             self._tt_serve_hit_flag |= hit_mask.to(self._tt_serve_hit_flag.device)
+                            if action_noise_l2 is not None and bool(hit_mask.any().item()):
+                                hit_noise = action_noise_l2.to(hit_mask.device)[hit_mask]
+                                self._tt_hit_action_noise_l2_sum += float(hit_noise.sum().item())
+                                self._tt_hit_action_noise_count += int(hit_noise.numel())
 
                         # On serve boundary, aggregate and reset flags
                         if hasattr(self.env, "ball_reset_ids") and self.env.ball_reset_ids is not None:
@@ -297,15 +326,37 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
                     serve_total = self._tt_serve_total
                     succ_rate = (self._tt_succ_total / serve_total) if serve_total > 0 else 0.0
                     hit_rate = (self._tt_hit_total / serve_total) if serve_total > 0 else 0.0
+                    action_noise_l2_mean = self._tt_action_noise_l2_sum / max(1, self._tt_action_noise_count)
+                    hit_action_noise_l2_mean = (
+                        self._tt_hit_action_noise_l2_sum / max(1, self._tt_hit_action_noise_count)
+                    )
+                    success_action_noise_l2_mean = (
+                        self._tt_success_action_noise_l2_sum / max(1, self._tt_success_action_noise_count)
+                    )
                     try:
                         self.writer.add_scalar("Train/TT_success_rate", succ_rate, it)
                         self.writer.add_scalar("Train/TT_hit_rate", hit_rate, it)
+                        self.writer.add_scalar("Train/TT_success_rate_sampled", succ_rate, it)
+                        self.writer.add_scalar("Train/TT_hit_rate_sampled", hit_rate, it)
+                        self.writer.add_scalar("Train/TT_action_noise_l2_mean", action_noise_l2_mean, it)
+                        self.writer.add_scalar("Train/TT_hit_action_noise_l2_mean", hit_action_noise_l2_mean, it)
+                        self.writer.add_scalar(
+                            "Train/TT_success_action_noise_l2_mean",
+                            success_action_noise_l2_mean,
+                            it,
+                        )
                     except Exception:
                         pass
                     # reset counters for next window
                     self._tt_succ_total = 0
                     self._tt_hit_total = 0
                     self._tt_serve_total = 0
+                    self._tt_action_noise_l2_sum = 0.0
+                    self._tt_action_noise_count = 0
+                    self._tt_hit_action_noise_l2_sum = 0.0
+                    self._tt_hit_action_noise_count = 0
+                    self._tt_success_action_noise_l2_sum = 0.0
+                    self._tt_success_action_noise_count = 0
                 if it % self.save_interval == 0:
                     self.save(os.path.join(self.log_dir, f"model_{it}.pt"))
 
