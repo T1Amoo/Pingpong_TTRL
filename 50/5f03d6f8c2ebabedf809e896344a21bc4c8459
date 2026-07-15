@@ -1,0 +1,28 @@
+legged_lab/scripts/watchdog_train_a1_real.sh
+  s_157fc71933de1f::t_e698b62b98dd8e 5,22
+legged_lab/assets/table_tennis/table.py
+  s_157fc71933de1f::t_d0d770eba129c8 17-20,36
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_157fc71933de1f::t_fa09a078ca175f 132-133,135,232
+  s_157fc71933de1f::t_10d6753c85d48a 399,509
+  s_157fc71933de1f::t_0f450dc5e6fd8a 111,116
+rsl_rl/rsl_rl/runners/on_policy_predictor_regression_runner.py
+  s_157fc71933de1f::t_71a6552a0b723d 120-124,164-169,203-212,231-233,241-243,329-335,339-347,354-359
+  s_157fc71933de1f::t_eb1a1ebad4fed4 230,240
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "505f03d6f8c2ebabedf809e896344a21bc4c8459",
+  "prompts": {},
+  "sessions": {
+    "s_157fc71933de1f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f601d-106e-7702-a694-6d6deef26a04",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
