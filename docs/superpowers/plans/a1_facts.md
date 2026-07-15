@@ -252,6 +252,23 @@ BASE_Z_SETTLED = 0.0282  # base_link world z after settling on wheels
 Note: Wheel centers at 0.0629 m (= base_link 0.0282 + wheel offset 0.035 + slight ground contact
 compression ~0.007 m).
 
+**Real r1 centerline calibration — 2026-07-08:** current hardware maximum usable `r1` joint
+centerline height is **1.15 m** above floor. For `X1_URDF_V1_1`, the approximate chain is:
+
+```python
+r1_z ~= base_link_z + sj_origin_z + r0_origin_z + sj
+     ~= 0.0282 + 1.2107 + 0.025 + sj
+```
+
+So the training lift value for the real envelope is:
+
+```python
+sj = 1.15 - (0.0282 + 1.2107 + 0.025) = -0.1139
+```
+
+Do not use the URDF `sj=0` maximum for sim2real training; it implies `r1_z ~= 1.264 m`,
+which is outside the current measured hardware envelope.
+
 **Paddle ready height — IMPORTANT (controller correction):** paddle settles at **0.909 m** AFTER
 stepping physics ~2 s, vs 0.444 m read in Task 1 (identity rot, pose read BEFORE stepping). The
 +90° z-rotation does NOT change height — that earlier explanation was wrong. Real cause: with the
