@@ -9,7 +9,7 @@
 #   NUM_ENVS=128 nohup bash legged_lab/scripts/watchdog_train_a1_real.sh > /tmp/a1_real_watchdog.log 2>&1 &
 #
 # Usage (cloud):
-#   TARGET=100000 NUM_ENVS=4096 TRAIN_PY=/root/miniconda3/envs/pingpong/bin/python \
+#   TARGET=100000 NUM_ENVS=1024 TRAIN_PY=/root/miniconda3/envs/pingpong/bin/python \
 #     OMNI_KIT_ACCEPT_EULA=YES nohup bash legged_lab/scripts/watchdog_train_a1_real.sh >/dev/null 2>&1 &
 set -u
 
