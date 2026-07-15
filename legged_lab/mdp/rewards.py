@@ -197,6 +197,14 @@ def is_terminated(env: BaseEnv) -> torch.Tensor:
     return env.reset_buf * ~env.time_out_buf
 
 
+def arm_table_collision(env: BaseEnv) -> torch.Tensor:
+    """Penalize A1 right-arm/paddle intrusion into the table safety volume."""
+    collision = getattr(env, "arm_table_collision", None)
+    if collision is None:
+        return torch.zeros(env.num_envs, device=env.device)
+    return collision.float()
+
+
 def feet_air_time_positive_biped(env: TTEnv, threshold: float, vel_ref: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     air_time = contact_sensor.data.current_air_time[:, sensor_cfg.body_ids]

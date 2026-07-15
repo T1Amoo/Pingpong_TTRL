@@ -144,6 +144,10 @@ class A1TableTennisRewardCfg(RewardCfg):
         weight=-20.0,
         params={"min_distance": 0.15, "std": 0.07},
     )
+    penalty_arm_table_collision = RewTerm(
+        func=mdp.arm_table_collision,
+        weight=-100.0,
+    )
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-100.0)
     # --- ready-pose regularization when no playable ball ---
     # reward_idle_pose is G1-specific (hardcoded 23-joint ready vector); drop for A1.
@@ -396,7 +400,7 @@ class A1TableTennisDeployEnvCfg(A1TableTennisEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        # a1_tt_real_v3: train through the measured real-arm closed-loop response,
+        # a1_tt_real_v4: train through the measured real-arm closed-loop response,
         # but first apply the same per-cycle q_des slew clamp used by deployment.
         # The second-order model should see only commands the real arm node would
         # allow through its raw_q -> cmd_q limiter.
@@ -506,7 +510,7 @@ class A1TableTennisAgentCfg(TTAgentCfg):
 
 @configclass
 class A1TableTennisDeployAgentCfg(A1TableTennisAgentCfg):
-    experiment_name: str = "a1_tt_real_v3"
+    experiment_name: str = "a1_tt_real_v4"
     run_name = "scratch_identified_second_order"
     resume = False
     max_iterations = 100000

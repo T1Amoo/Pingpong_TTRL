@@ -2,7 +2,7 @@
 # Watchdog for a1_tt_real - A1 table-tennis real-aligned scratch training.
 #
 # This run intentionally starts from scratch: no v12/v13 warm-start and no dedicated
-# no-ball curriculum. a1_tt_real_v3 uses the seven-joint identified second-order
+# no-ball curriculum. a1_tt_real_v4 uses the seven-joint identified second-order
 # arm response model, then tracks the filtered target with a high-bandwidth implicit actuator.
 #
 # Usage (local):
@@ -19,7 +19,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 PY=${TRAIN_PY:-/home/woan/.conda/envs/pingpong/bin/python}
 TASK=${TASK:-a1_tt_real}
-EXP=${EXP:-a1_tt_real_v3}
+EXP=${EXP:-a1_tt_real_v4}
 NUM_ENVS=${NUM_ENVS:-128}
 TARGET=${TARGET:-100000}
 LOGROOT="$REPO/logs/$EXP"
