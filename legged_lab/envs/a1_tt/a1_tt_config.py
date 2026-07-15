@@ -2,6 +2,8 @@
 # All rights reserved.
 # Licensed under BSD-3-Clause.
 
+import os
+
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers.scene_entity_cfg import SceneEntityCfg
 from isaaclab.utils import configclass
@@ -118,6 +120,84 @@ A1_REAL_DEPLOY_MAX_DELTA_PER_TRAIN_TICK = (
     0.10,  # r6
     0.10,  # r7
 )
+
+
+def _env_float(name: str):
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return None
+    return float(value)
+
+
+def _env_int(name: str):
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return None
+    return int(value)
+
+
+def _env_str(name: str):
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return None
+    return value
+
+
+def _override_attr(obj, attr: str, env_name: str, cast):
+    value = cast(env_name)
+    if value is not None:
+        setattr(obj, attr, value)
+        print(f"[A1TTCfg] {env_name}: {attr}={value}")
+
+
+def _override_reward_weight(reward_cfg, term_name: str, env_name: str):
+    value = _env_float(env_name)
+    if value is not None:
+        getattr(reward_cfg, term_name).weight = value
+        print(f"[A1TTCfg] {env_name}: {term_name}.weight={value}")
+
+
+def _apply_deploy_reward_overrides(reward_cfg):
+    # Environment-variable knobs for short 4096-env ablations. Values are dumped
+    # into env.yaml because they mutate the actual config object before training.
+    for env_name, term_name in (
+        ("TT_REWARD_PADDLE_FACE_X", "paddle_face_x"),
+        ("TT_REWARD_FUTURE_DIS_EE", "reward_future_dis_ee"),
+        ("TT_REWARD_SWING_THROUGH", "reward_swing_through"),
+        ("TT_REWARD_CONTACT", "reward_contact"),
+        ("TT_REWARD_SWEET_CONTACT", "reward_sweet_contact"),
+        ("TT_REWARD_PASS_NET", "reward_future_pass_net"),
+        ("TT_REWARD_LANDING_DIS", "reward_future_landing_dis"),
+        ("TT_REWARD_TABLE_SUCCESS", "reward_table_success"),
+        ("TT_REWARD_PADDLE_ABOVE_TARGET", "penalty_paddle_above_target"),
+        ("TT_REWARD_ACTION_RATE_L2", "action_rate_l2"),
+        ("TT_REWARD_ACTION_L2", "action_l2"),
+        ("TT_REWARD_JOINT_POS_TARGET_LIMITS", "joint_pos_target_limits"),
+        ("TT_REWARD_ACTION_TARGET_SLEW_LIMIT", "action_target_slew_limit"),
+        ("TT_REWARD_TORQUE_LIMIT", "joint_computed_torque_limit"),
+    ):
+        if hasattr(reward_cfg, term_name):
+            _override_reward_weight(reward_cfg, term_name, env_name)
+
+
+def _apply_agent_overrides(agent_cfg):
+    _override_attr(agent_cfg.policy, "init_noise_std", "TT_PPO_INIT_NOISE_STD", _env_float)
+    _override_attr(agent_cfg.algorithm, "learning_rate", "TT_PPO_LEARNING_RATE", _env_float)
+    _override_attr(agent_cfg.algorithm, "entropy_coef", "TT_PPO_ENTROPY_COEF", _env_float)
+    _override_attr(agent_cfg.algorithm, "desired_kl", "TT_PPO_DESIRED_KL", _env_float)
+    _override_attr(agent_cfg.algorithm, "num_learning_epochs", "TT_PPO_NUM_EPOCHS", _env_int)
+    _override_attr(agent_cfg.algorithm, "num_mini_batches", "TT_PPO_NUM_MINI_BATCHES", _env_int)
+    _override_attr(agent_cfg, "num_steps_per_env", "TT_PPO_NUM_STEPS_PER_ENV", _env_int)
+
+    schedule = _env_str("TT_PPO_SCHEDULE")
+    if schedule is not None:
+        agent_cfg.algorithm.schedule = schedule
+        print(f"[A1TTCfg] TT_PPO_SCHEDULE: schedule={schedule}")
+
+    run_name = _env_str("TT_RUN_NAME")
+    if run_name is not None:
+        agent_cfg.run_name = run_name
+        print(f"[A1TTCfg] TT_RUN_NAME: run_name={run_name}")
 
 
 @configclass
@@ -431,6 +511,7 @@ class A1TableTennisDeployEnvCfg(A1TableTennisEnvCfg):
         self.robot.effort_curriculum_start_scale = 1.0
         self.robot.effort_curriculum_steps = 0
         self.robot.effort_curriculum_num_joints = 0
+        _apply_deploy_reward_overrides(self.reward)
 
 
 @configclass
@@ -518,6 +599,10 @@ class A1TableTennisDeployAgentCfg(A1TableTennisAgentCfg):
     run_name = "scratch_identified_second_order"
     resume = False
     max_iterations = 100000
+
+    def __post_init__(self):
+        super().__post_init__()
+        _apply_agent_overrides(self)
 
 
 @configclass
