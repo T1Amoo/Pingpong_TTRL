@@ -146,7 +146,11 @@ class A1TableTennisRewardCfg(RewardCfg):
     )
     penalty_arm_table_collision = RewTerm(
         func=mdp.arm_table_collision,
-        weight=-100.0,
+        weight=-40.0,
+    )
+    penalty_arm_table_stuck_contact = RewTerm(
+        func=mdp.arm_table_stuck_contact,
+        weight=-20.0,
     )
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-100.0)
     # --- ready-pose regularization when no playable ball ---

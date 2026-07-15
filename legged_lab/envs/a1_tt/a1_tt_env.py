@@ -4,8 +4,15 @@ from legged_lab.envs.base.tt_env import TTEnv
 
 
 class A1TTEnv(TTEnv):
+    ARM_TABLE_STUCK_TERMINATE_STEPS = 10
+
+    def reset(self, env_ids):
+        super().reset(env_ids)
+        if hasattr(self, "arm_table_stuck_steps") and len(env_ids) > 0:
+            self.arm_table_stuck_steps[env_ids] = 0
+
     def _compute_arm_table_collision(self):
-        """Detect low right-arm/paddle intrusion into the table volume.
+        """Detect right-arm/paddle intrusion near the tabletop.
 
         This is intentionally geometry-based instead of contact-sensor based:
         the contact sensor cannot distinguish table contact from a legal ball hit.
@@ -24,18 +31,38 @@ class A1TTEnv(TTEnv):
         y = body_pos_t[..., 1]
         z = body_pos_t[..., 2]
 
-        margin_xy = 0.08
-        in_table_xy = (
-            (x > (-1.37 - margin_xy))
-            & (x < (1.37 + margin_xy))
-            & (torch.abs(y) < (0.7625 + margin_xy))
+        warning_margin_xy = 0.08
+        warning_xy = (
+            (x > (-1.37 - warning_margin_xy))
+            & (x < (1.37 + warning_margin_xy))
+            & (torch.abs(y) < (0.7625 + warning_margin_xy))
         )
-        # Only the low tabletop/edge band is forbidden. High swing-through above
-        # the table remains legal; actual target z is around 0.9-1.25 m.
-        in_low_table_band = (z > 0.55) & (z < 0.95)
-        body_collision = in_table_xy & in_low_table_band
-        self.arm_table_collision = torch.any(body_collision, dim=1)
-        self.arm_table_collision_count = body_collision.float().sum(dim=1)
+        # Tabletop height is 0.76 m. Keep the warning band tight around the
+        # tabletop; normal hit targets are around 0.9-1.25 m and must remain legal.
+        warning_z = (z > 0.55) & (z < 0.80)
+        warning = warning_xy & warning_z
+
+        terminal_xy = (
+            (x > -1.37)
+            & (x < 1.37)
+            & (torch.abs(y) < 0.7625)
+        )
+        # Terminate only for deeper intrusion into the actual table footprint.
+        terminal_z = (z > 0.55) & (z < 0.78)
+        stuck = terminal_xy & terminal_z
+
+        self.arm_table_collision = torch.any(warning, dim=1)
+        self.arm_table_collision_count = warning.float().sum(dim=1)
+        self.arm_table_stuck_contact = torch.any(stuck, dim=1)
+        self.arm_table_stuck_contact_count = stuck.float().sum(dim=1)
+        if not hasattr(self, "arm_table_stuck_steps"):
+            self.arm_table_stuck_steps = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+        self.arm_table_stuck_steps = torch.where(
+            self.arm_table_stuck_contact,
+            self.arm_table_stuck_steps + 1,
+            torch.zeros_like(self.arm_table_stuck_steps),
+        )
+        self.arm_table_termination = self.arm_table_stuck_steps >= self.ARM_TABLE_STUCK_TERMINATE_STEPS
         return self.arm_table_collision
 
     def check_reset(self):
@@ -43,10 +70,10 @@ class A1TTEnv(TTEnv):
         # ->0 when tipped 90°. >-0.5 means tilted more than ~60° (flipped/failed).
         # Free heavy chassis rarely flips; this is a safety net.
         tilted = self.robot.data.projected_gravity_b[:, 2] > -0.5
-        arm_table_collision = self._compute_arm_table_collision()
+        self._compute_arm_table_collision()
         reset_buf = (
             tilted |
-            arm_table_collision |
+            self.arm_table_termination |
             (self.robot_pos[..., 0] < -3.6) |
             (self.robot_pos[..., 0] > -1.35) |
             (self.robot_pos[..., 1] < -1.1) |
