@@ -1,0 +1,20 @@
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_157fc71933de1f::t_7ae8d73557d372 5-6,125-202,514,603-605
+  s_157fc71933de1f::t_df45115207ce65 606
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "65acf3b32e79a52598ec0afee96b0163f769f571",
+  "prompts": {},
+  "sessions": {
+    "s_157fc71933de1f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f601d-106e-7702-a694-6d6deef26a04",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
