@@ -2,7 +2,7 @@
 # Watchdog for a1_tt — A1 AGV ping-pong overnight training.
 #
 # WHY: Runs a new A1 experiment from a known warm-start checkpoint while keeping the task name
-#   as a1_tt. By default this seeds a1_tt_v12 from a1_tt_v11/model_10000.pt, then trains to 30000.
+#   as a1_tt. By default this seeds a1_tt_v13 from a1_tt_v12/model_13500.pt, then trains to 30000.
 #
 # Isaac Sim simulation_app.close() busy-spins on teardown after the final ckpt flush.
 #   We poll for the target checkpoint landing on disk and kill the hung child immediately
@@ -26,10 +26,10 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 PY=${TRAIN_PY:-/home/woan/.conda/envs/pingpong/bin/python}
 TASK=${TASK:-a1_tt}
-EXP=${EXP:-a1_tt_v12}
-SEED_EXP=${SEED_EXP:-a1_tt_v11}
-SEED_ITER=${SEED_ITER:-10000}
-SEED_DIR_NAME=${SEED_DIR_NAME:-seed_v11_10000}
+EXP=${EXP:-a1_tt_v13}
+SEED_EXP=${SEED_EXP:-a1_tt_v12}
+SEED_ITER=${SEED_ITER:-13500}
+SEED_DIR_NAME=${SEED_DIR_NAME:-seed_v12_13500}
 NUM_ENVS=${NUM_ENVS:-128}
 TARGET=${TARGET:-30000}
 LOGROOT="$REPO/logs/$EXP"

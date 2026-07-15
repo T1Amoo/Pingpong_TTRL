@@ -127,6 +127,16 @@ def play():
         runner._predictor.to("cpu").eval()
         ts_predictor = torch.jit.script(runner._predictor)
         ts_predictor.save(os.path.join(export_model_dir, "predictor.pt"))
+        pred_history_len = int(getattr(runner, "pred_history_len", 5))
+        dummy_pred_input = torch.zeros(1, 3 * pred_history_len, dtype=torch.float32)
+        torch.onnx.export(
+            runner._predictor,
+            dummy_pred_input,
+            os.path.join(export_model_dir, "predictor.onnx"),
+            input_names=["ball_history"],
+            output_names=["pred"],
+            opset_version=17,
+        )
         # Restore original device for runtime
         runner._predictor.to(orig_device)
     # Export policy in both JIT and ONNX formats

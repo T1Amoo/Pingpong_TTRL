@@ -34,6 +34,11 @@ parser.add_argument(
     action="store_true",
     help="Disable proximal effort curriculum and use base action effort limits.",
 )
+parser.add_argument(
+    "--sample_actions",
+    action="store_true",
+    help="Sample from the policy action distribution instead of using the deterministic inference mean.",
+)
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
@@ -104,7 +109,7 @@ def _reset_predictor_history(runner):
             delattr(runner, name)
 
 
-def _collect_rollout(env, runner, policy, checkpoint: str, steps: int, near_dist: float) -> dict:
+def _collect_rollout(env, runner, policy, checkpoint: str, steps: int, near_dist: float, sample_actions: bool) -> dict:
     device = env.device
     all_ids = torch.arange(env.num_envs, device=device)
     env.reset(all_ids)
@@ -137,7 +142,11 @@ def _collect_rollout(env, runner, policy, checkpoint: str, steps: int, near_dist
 
     for _ in range(steps):
         with torch.no_grad():
-            actions = policy(obs)
+            if sample_actions:
+                actor_obs = runner.obs_normalizer(obs.to(runner.device))
+                actions = runner.alg.policy.act(actor_obs).detach()
+            else:
+                actions = policy(obs)
         action_abs.append(actions.detach().abs().cpu())
         obs, _, _, _ = env.step(actions)
         if args_cli.predictor:
@@ -194,6 +203,7 @@ def _collect_rollout(env, runner, policy, checkpoint: str, steps: int, near_dist
         "effort_scale_max": effort_scale_max,
         "action_abs_global_max": _as_float(action_data.max()) if action_data.numel() else 0.0,
         "action_abs_global_p95": _percentile(action_data.flatten(), 0.95) if action_data.numel() else 0.0,
+        "sample_actions": sample_actions,
         "action_clip_frac": [_as_float(x) for x in action_clip_frac],
         "applied_over_sim": {k: _bucket_stats(v, joint_names) for k, v in applied_ratio_sim.items()},
         "applied_over_real": {k: _bucket_stats(v, joint_names) for k, v in applied_ratio_real.items()},
@@ -240,7 +250,15 @@ def main():
         runner.load(resume_path, load_optimizer=False)
         _reset_predictor_history(runner)
         policy = runner.get_inference_policy(device=env.device)
-        result = _collect_rollout(env, runner, policy, checkpoint, args_cli.steps, args_cli.near_dist)
+        result = _collect_rollout(
+            env,
+            runner,
+            policy,
+            checkpoint,
+            args_cli.steps,
+            args_cli.near_dist,
+            args_cli.sample_actions,
+        )
         results.append(result)
         hit = result["hit_rate"]
         succ = result["success_rate"]

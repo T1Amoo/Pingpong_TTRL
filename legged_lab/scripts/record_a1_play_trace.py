@@ -50,6 +50,16 @@ def _row(prefix: str, values) -> dict[str, float]:
     return {f"{prefix}{i + 1}": float(v) for i, v in enumerate(arr)}
 
 
+def _env0(value, device, *, dtype=None):
+    if value is None:
+        value = torch.zeros((), device=device, dtype=dtype or torch.float32)
+    if isinstance(value, torch.Tensor):
+        if value.ndim == 0:
+            return value
+        return value[0]
+    return value
+
+
 def main() -> None:
     env_cfg, agent_cfg = task_registry.get_cfgs(args.task)
     if args.experiment_name is not None:
@@ -97,9 +107,20 @@ def main() -> None:
             ball_pos = getattr(env, "ball_pos", torch.zeros((1, 3), device=env.device))[0]
             ball_pred = getattr(env, "ball_prediction", torch.zeros((1, 3), device=env.device))[0]
             ball_future = getattr(env, "ball_future_pose", torch.zeros((1, 3), device=env.device))[0]
-            paddle_dist = getattr(env, "paddel_ball_distance", torch.zeros(1, device=env.device))[0]
-            mask_invalid = getattr(env, "mask_invalid", torch.zeros(1, dtype=torch.bool, device=env.device))[0]
-            has_touch = getattr(env, "has_touch_paddle", torch.zeros(1, dtype=torch.bool, device=env.device))[0]
+            paddle_pos = getattr(env, "paddle_pos", torch.zeros((1, 3), device=env.device))[0]
+            paddle_touch = getattr(env, "paddle_touch_point", torch.zeros((1, 3), device=env.device))[0]
+            paddle_touch_local = paddle_touch - env.scene.env_origins[0]
+            paddle_vel = getattr(env, "paddle_touch_point_vel", torch.zeros((1, 3), device=env.device))[0]
+            paddle_dist = _env0(getattr(env, "paddel_ball_distance", None), env.device)
+            mask_invalid = _env0(getattr(env, "mask_invalid", None), env.device, dtype=torch.bool)
+            mask_before = _env0(getattr(env, "mask_before", None), env.device, dtype=torch.bool)
+            mask_after = _env0(getattr(env, "mask_after", None), env.device, dtype=torch.bool)
+            has_touch = _env0(getattr(env, "has_touch_paddle", None), env.device, dtype=torch.bool)
+            active_hit = _env0(getattr(env, "active_paddle_hit", None), env.device, dtype=torch.bool)
+            first_bounce = _env0(getattr(env, "has_touch_own_table_prev", None), env.device, dtype=torch.bool)
+            ball_contact = _env0(getattr(env, "ball_contact", None), env.device)
+            ball_contact_rew = _env0(getattr(env, "ball_contact_rew", None), env.device)
+            ball_contact_raw = _env0(getattr(env, "ball_contact_raw_rew", None), env.device)
             reset_ids = getattr(env, "ball_reset_ids", torch.empty(0, dtype=torch.long, device=env.device))
 
             row = {
@@ -107,9 +128,16 @@ def main() -> None:
                 "source": "isaac_play",
                 "obs_max_abs": float(np.max(np.abs(obs_in))),
                 "mask_invalid": float(bool(mask_invalid)),
+                "mask_before": float(bool(mask_before)),
+                "mask_after": float(bool(mask_after)),
+                "has_first_bounce_prev": float(bool(first_bounce)),
                 "has_touch_paddle": float(bool(has_touch)),
+                "active_paddle_hit": float(bool(active_hit)),
                 "ball_reset": float(reset_ids.numel() > 0),
                 "paddle_ball_dist": float(_cpu_np(paddle_dist)),
+                "ball_contact": float(_cpu_np(ball_contact)),
+                "ball_contact_rew": float(_cpu_np(ball_contact_rew)),
+                "ball_contact_raw_rew": float(_cpu_np(ball_contact_raw)),
             }
             row.update(_row("action_", _cpu_np(action[0])))
             row.update(_row("q_", _cpu_np(q)))
@@ -123,6 +151,9 @@ def main() -> None:
             row.update(_row("ball_", _cpu_np(ball_pos)))
             row.update(_row("ball_pred_", _cpu_np(ball_pred)))
             row.update(_row("ball_future_", _cpu_np(ball_future)))
+            row.update(_row("paddle_", _cpu_np(paddle_pos)))
+            row.update(_row("paddle_touch_", _cpu_np(paddle_touch_local)))
+            row.update(_row("paddle_vel_", _cpu_np(paddle_vel)))
             rows.append(row)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
