@@ -798,6 +798,7 @@ class TTEnv(VecEnv):
         self.episode_length_buf[env_ids] = 0
         self.ball_reset_counter[env_ids] = 0
 
+        self._reset_table(env_ids)
         # Reset ball state
         self.reset_ball(env_ids)
 
@@ -809,6 +810,16 @@ class TTEnv(VecEnv):
         self.delayed_perception[env_ids] = self.current_perception[env_ids]
         self._reset_action_target_limiter(env_ids)
         self._reset_action_response_model(env_ids)
+
+    def _reset_table(self, env_ids):
+        """Restore table pose and velocity on full environment resets."""
+        if len(env_ids) == 0:
+            return
+
+        table_state = self.table.data.default_root_state.clone()[env_ids]
+        table_state[:, :3] += self.scene.env_origins[env_ids]
+        self.table.write_root_pose_to_sim(table_state[:, :7], env_ids)
+        self.table.write_root_velocity_to_sim(table_state[:, 7:], env_ids)
 
     def _tt_no_ball_now(self):
         """Whether to suppress the ball THIS control step (ball teleported far + mask_invalid).

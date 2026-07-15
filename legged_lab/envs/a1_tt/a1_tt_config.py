@@ -106,6 +106,18 @@ A1_REAL_FITTED_BIAS_RAD = (
     0.0010492923888134296,
     -0.00023117043260922898,
 )
+A1_REAL_DEPLOY_MAX_DELTA_PER_TRAIN_TICK = (
+    # Conservative exploration envelope at TTEnv's 50 Hz policy step:
+    # r1-r4 <= 2.5 rad/s, r5-r7 <= 5.0 rad/s. This is intentionally below the
+    # unloaded 100 Hz arm-node max_delta_per_cycle envelope to leave load margin.
+    0.05,  # r1
+    0.05,  # r2
+    0.05,  # r3
+    0.05,  # r4
+    0.10,  # r5
+    0.10,  # r6
+    0.10,  # r7
+)
 
 
 @configclass
@@ -166,12 +178,17 @@ class A1TableTennisRewardCfg(RewardCfg):
         func=mdp.reward_future_ee_target,
         weight=2.0,   # v9: 6.0->2.0 (back to G1 level). v8's 6.0 made hovering-near-intercept farmable without
                       # contact -> 0 hits. Keep tracking guidance but let the un-fakeable contact/pass_net/table dominate.
-        params={"std_ee": 0.5, "threshold": 0.15},
+        params={"std_ee": 0.5, "threshold": 0.08, "z_weight": 2.5},
+    )
+    penalty_paddle_above_target = RewTerm(
+        func=mdp.penalty_paddle_above_future_target,
+        weight=-2.0,
+        params={"margin": 0.12, "max_error": 0.50},
     )
     reward_swing_through = RewTerm(
         func=mdp.reward_swing_through,
-        weight=3.0,   # v6 NEW: forward paddle speed (+x, toward net) while near the ball -> swing through, not camp.
-        params={"near_dist": 0.30},
+        weight=1.0,   # only reward forward swing once the blade is near the target y/z; avoids high-overhead farming.
+        params={"near_dist": 0.30, "target_yz_gate": 0.18},
     )
     reward_future_dis_ro = RewTerm(
         func=mdp.reward_future_body_target,
@@ -379,13 +396,13 @@ class A1TableTennisDeployEnvCfg(A1TableTennisEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        # a1_tt_real_v1: train through the measured real-arm closed-loop response.
-        # The policy emits raw q_des; TTEnv filters it with the seven-joint
-        # second-order system-ID model, and a high-bandwidth implicit actuator
-        # tracks that filtered target. No deploy q_des slew clamp is used here.
+        # a1_tt_real_v2: train through the measured real-arm closed-loop response,
+        # but first apply the same per-cycle q_des slew clamp used by deployment.
+        # The second-order model should see only commands the real arm node would
+        # allow through its raw_q -> cmd_q limiter.
         self.scene.robot = A1_TT_REAL_FITTED_CFG
-        self.robot.action_target_rate_limit_enable = False
-        self.robot.action_target_max_delta_per_tick = ()
+        self.robot.action_target_rate_limit_enable = True
+        self.robot.action_target_max_delta_per_tick = A1_REAL_DEPLOY_MAX_DELTA_PER_TRAIN_TICK
         self.robot.action_response_model_enable = True
         self.robot.action_response_u_mean = A1_REAL_FITTED_U_MEAN
         self.robot.action_response_fn_hz = A1_REAL_FITTED_FN_HZ

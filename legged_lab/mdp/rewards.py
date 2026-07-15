@@ -780,7 +780,11 @@ def penalty_ball_body_block(env: TTEnv, body_regex: str = "Link_r[3-6]", thresho
     return torch.nan_to_num(pen, nan=0.0, posinf=0.0, neginf=0.0)
 
 
-def reward_swing_through(env: TTEnv, near_dist: float = 0.30) -> torch.Tensor:
+def reward_swing_through(
+    env: TTEnv,
+    near_dist: float = 0.30,
+    target_yz_gate: float = 0.0,
+) -> torch.Tensor:
     """Dense reward for swinging the paddle FORWARD (+x, toward the net/opponent table) WHILE the
     ball is close -> an active swing THROUGH the ball, not a passive camp/block.
 
@@ -792,9 +796,24 @@ def reward_swing_through(env: TTEnv, near_dist: float = 0.30) -> torch.Tensor:
     """
     vx = env.paddle_touch_point_vel[:, 0]                     # forward paddle speed (+x = toward net)
     near = (env.paddel_ball_distance < near_dist).float()     # only credit when actually near the ball
+    if target_yz_gate > 0.0:
+        target_yz_dist = torch.linalg.norm(env.ball_future_pose[:, 1:3] - env.paddle_pos[:, 1:3], dim=1)
+        near = near * (target_yz_dist < target_yz_gate).float()
     incoming = (env.ball.data.root_lin_vel_w[:, 0] < 0.3).float()  # ball not already leaving
-    rew = torch.clamp(vx, min=0.0) * near * incoming
+    rew = torch.clamp(vx, min=0.0) * near * incoming * (~env.mask_invalid).float()
     return torch.nan_to_num(rew, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def penalty_paddle_above_future_target(
+    env: TTEnv,
+    margin: float = 0.12,
+    max_error: float = 0.50,
+) -> torch.Tensor:
+    """Penalize parking the paddle above the predicted hit target while a playable ball exists."""
+    dz_high = torch.clamp(env.paddle_pos[:, 2] - env.ball_future_pose[:, 2] - margin, min=0.0)
+    scaled = torch.clamp(dz_high / max(max_error, 1.0e-6), min=0.0, max=1.0)
+    penalty = torch.square(scaled)
+    return torch.where(env.mask_invalid, torch.zeros_like(penalty), penalty)
 
 
 def reward_idle_stand(env: TTEnv) -> torch.Tensor:
@@ -924,6 +943,7 @@ def reward_future_ee_target(
     env: TTEnv,
     std_ee: float = 0.4,
     threshold: float = 0.01,
+    z_weight: float = 1.0,
 ) -> torch.Tensor:
 
     # dist_ee_before = torch.linalg.norm(env.pos_pred_before - env.paddle_pos, dim=1)
@@ -940,7 +960,11 @@ def reward_future_ee_target(
     # reward_ee = torch.where(env.mask_before, rew_ee_before, reward_ee)
     # reward_ee = torch.where(env.mask_after, rew_ee_after, reward_ee)
 
-    dist_ee = torch.linalg.norm(env.ball_future_pose - env.paddle_pos, dim=1)
+    diff = env.ball_future_pose - env.paddle_pos
+    if z_weight != 1.0:
+        diff = diff.clone()
+        diff[:, 2] = diff[:, 2] * z_weight
+    dist_ee = torch.linalg.norm(diff, dim=1)
     denom_ee = std_ee * std_ee + 1e-12
     reward_ee = torch.exp(-torch.clamp(dist_ee, min=threshold) / denom_ee)
     # mask_invalid_ee = (ball_pos[:, 0] < -1.6) | (vx > 0) | (z < 0.7) 
