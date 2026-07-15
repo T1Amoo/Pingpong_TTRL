@@ -1,0 +1,26 @@
+legged_lab/envs/a1_tt/a1_tt_env.py
+  s_157fc71933de1f::t_96c3395d981ee5 15-16
+  s_157fc71933de1f::t_2fb7137f992784 7-14,17-40,46,49
+legged_lab/mdp/rewards.py
+  s_157fc71933de1f::t_7b7fbf804076c1 200-207
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_157fc71933de1f::t_e7738e8c492ada 147-150,403,513
+legged_lab/scripts/watchdog_train_a1_real.sh
+  s_157fc71933de1f::t_91acbe8f744af9 5,22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "6dbea3f34cdef9d3042c15b8336d6f7c4aca9660",
+  "prompts": {},
+  "sessions": {
+    "s_157fc71933de1f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f601d-106e-7702-a694-6d6deef26a04",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
