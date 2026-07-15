@@ -1,0 +1,27 @@
+legged_lab/envs/base/tt_env.py
+  s_157fc71933de1f::t_869cf4a996837b 801,814-822
+  s_157fc71933de1f::t_9040fa175813f3 823
+legged_lab/mdp/rewards.py
+  s_157fc71933de1f::t_6e3e866d95693e 783-787,799-801,803,807-818,946,963-967
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_157fc71933de1f::t_8330cd22c10ba6 120,399-402,404
+  s_157fc71933de1f::t_2579e5ea6865d7 181-186,190-191
+  s_157fc71933de1f::t_ebeaa75bece14c 109,405
+  s_157fc71933de1f::t_884709cf27eefb 110-119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "b79ec30f26496ad7b486fe2c83e4d7f07ccdbb00",
+  "prompts": {},
+  "sessions": {
+    "s_157fc71933de1f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f601d-106e-7702-a694-6d6deef26a04",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
