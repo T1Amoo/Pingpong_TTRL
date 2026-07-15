@@ -511,6 +511,17 @@ class A1TableTennisDeployEnvCfg(A1TableTennisEnvCfg):
         self.robot.effort_curriculum_start_scale = 1.0
         self.robot.effort_curriculum_steps = 0
         self.robot.effort_curriculum_num_joints = 0
+        # v4 4096 stable run: keep non-contact shaping as guidance only and make
+        # the un-fakeable outcome ladder dominate the gradient.
+        self.reward.paddle_face_x.weight = 0.25
+        self.reward.reward_future_dis_ee.weight = 1.0
+        self.reward.reward_swing_through.weight = 0.25
+        self.reward.reward_contact.weight = 300.0
+        self.reward.reward_sweet_contact.weight = 70.0
+        self.reward.reward_future_pass_net.weight = 150.0
+        self.reward.reward_future_landing_dis.weight = 90.0
+        self.reward.reward_table_success.weight = 300.0
+        self.reward.penalty_paddle_above_target.weight = -5.0
         _apply_deploy_reward_overrides(self.reward)
 
 
@@ -596,12 +607,20 @@ class A1TableTennisAgentCfg(TTAgentCfg):
 @configclass
 class A1TableTennisDeployAgentCfg(A1TableTennisAgentCfg):
     experiment_name: str = "a1_tt_real_v4"
-    run_name = "scratch_identified_second_order"
+    run_name = "scratch_4096_mb64_sparseboost"
     resume = False
     max_iterations = 100000
 
     def __post_init__(self):
         super().__post_init__()
+        # 4096 envs need small PPO mini-batches so sparse contact samples are not
+        # averaged away. Fixed LR avoids early KL scheduling collapse; the entropy
+        # is high enough to find contact but below the unstable 0.03 probe.
+        self.algorithm.learning_rate = 7.0e-4
+        self.algorithm.entropy_coef = 0.015
+        self.algorithm.desired_kl = 0.05
+        self.algorithm.num_mini_batches = 64
+        self.algorithm.schedule = "fixed"
         _apply_agent_overrides(self)
 
 
