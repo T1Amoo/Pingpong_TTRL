@@ -5,11 +5,69 @@ from legged_lab.envs.base.tt_env import TTEnv
 
 class A1TTEnv(TTEnv):
     ARM_TABLE_STUCK_TERMINATE_STEPS = 10
+    FIXED_LIFT_JOINT_NAMES = ("sj",)
 
     def reset(self, env_ids):
         super().reset(env_ids)
+        self._reset_fixed_lift_joints(env_ids)
         if hasattr(self, "arm_table_stuck_steps") and len(env_ids) > 0:
             self.arm_table_stuck_steps[env_ids] = 0
+
+    def _resolve_fixed_lift_joints(self):
+        if hasattr(self, "_fixed_lift_joint_ids"):
+            return
+        joint_ids = []
+        joint_names = []
+        for name in self.FIXED_LIFT_JOINT_NAMES:
+            if name in self.robot.joint_names:
+                joint_ids.append(self.robot.joint_names.index(name))
+                joint_names.append(name)
+        if 0 < len(joint_ids) != len(self.FIXED_LIFT_JOINT_NAMES):
+            raise RuntimeError(
+                "A1 fixed lift joint guard could not resolve "
+                f"{self.FIXED_LIFT_JOINT_NAMES}; got {joint_names}."
+            )
+        self._fixed_lift_joint_ids = joint_ids
+        self._fixed_lift_joint_names = joint_names
+
+    def _fixed_lift_default_state(self, env_ids=None):
+        self._resolve_fixed_lift_joints()
+        joint_ids = self._fixed_lift_joint_ids
+        if env_ids is None:
+            joint_pos = self.robot.data.default_joint_pos[:, joint_ids].clone()
+            joint_vel = self.robot.data.default_joint_vel[:, joint_ids].clone()
+        else:
+            joint_pos = self.robot.data.default_joint_pos[env_ids][:, joint_ids].clone()
+            joint_vel = self.robot.data.default_joint_vel[env_ids][:, joint_ids].clone()
+        return joint_pos, joint_vel
+
+    def _hold_fixed_lift_targets(self, env_ids=None):
+        self._resolve_fixed_lift_joints()
+        if len(self._fixed_lift_joint_ids) == 0:
+            return
+        joint_pos, joint_vel = self._fixed_lift_default_state(env_ids)
+        self.robot.set_joint_position_target(joint_pos, self._fixed_lift_joint_ids, env_ids=env_ids)
+        self.robot.set_joint_velocity_target(joint_vel, self._fixed_lift_joint_ids, env_ids=env_ids)
+
+    def _reset_fixed_lift_joints(self, env_ids):
+        if len(env_ids) == 0:
+            return
+        self._resolve_fixed_lift_joints()
+        if len(self._fixed_lift_joint_ids) == 0:
+            return
+        joint_pos, joint_vel = self._fixed_lift_default_state(env_ids)
+        self.robot.write_joint_state_to_sim(
+            joint_pos,
+            joint_vel,
+            joint_ids=self._fixed_lift_joint_ids,
+            env_ids=env_ids,
+        )
+        self._hold_fixed_lift_targets(env_ids)
+        self.scene.write_data_to_sim()
+        self.sim.forward()
+
+    def _apply_non_policy_joint_targets(self) -> None:
+        self._hold_fixed_lift_targets()
 
     def _compute_arm_table_collision(self):
         """Detect right-arm/paddle intrusion near the tabletop.

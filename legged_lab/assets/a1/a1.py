@@ -5,7 +5,9 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
 from isaaclab.actuators import DelayedPDActuatorCfg, ImplicitActuatorCfg
 
-A1_USD_PATH = os.path.join(os.path.dirname(__file__), "X1_URDF_V1_1", "X1_URDF_V1_1.usd")
+A1_USD_PATH_ORIGINAL = os.path.join(os.path.dirname(__file__), "X1_URDF_V1_1", "X1_URDF_V1_1.usd")
+A1_USD_PATH_SJ_FIXED = os.path.join(os.path.dirname(__file__), "X1_URDF_V1_1", "X1_URDF_V1_1_sj_fixed.usd")
+A1_USD_PATH = A1_USD_PATH_SJ_FIXED
 
 A1_RIGHT_ARM_JOINTS = [f"r{i}" for i in range(1, 8)]
 A1_LEFT_ARM_JOINTS = [f"l{i}" for i in range(1, 8)]
@@ -118,9 +120,8 @@ A1_TT_CFG = ArticulationCfg(
         pos=(-1.8, A1_INIT_Y, A1_INIT_Z),
         rot=A1_INIT_ROT,
         joint_pos={
-            # Match the real maximum r1 centerline height (1.15 m), not the URDF's sj=0
-            # maximum (about 1.264 m).
-            "sj": A1_LIFT_SJ_FOR_R1_CENTER,   # range [-0.85, 0]; about -0.114
+            # The fixed-sj USD bakes the real r1 centerline height (1.15 m) into
+            # the Link_sj origin, so sj is no longer an articulated DOF here.
             # Forehand ready pose supplied from visual inspection. The paddle is double-sided,
             # so the task reward accepts either local +Y or -Y as the hitting face.
             "r1": 0.569, "r2": -0.692, "r3": 0.717,
@@ -145,8 +146,6 @@ A1_TT_CFG = ArticulationCfg(
         ),
         "left_arm": ImplicitActuatorCfg(joint_names_expr=A1_LEFT_ARM_JOINTS,
             effort_limit_sim=200.0, velocity_limit_sim=0.1, stiffness=10000.0, damping=1000.0),
-        "lift": ImplicitActuatorCfg(joint_names_expr=["sj"],
-            effort_limit_sim=1000.0, velocity_limit_sim=0.0, stiffness=5000.0, damping=500.0),
         "head": ImplicitActuatorCfg(joint_names_expr=["t01", "t02"],
             effort_limit_sim=10.0, velocity_limit_sim=0.1, stiffness=10000.0, damping=1000.0),
         "wheels": ImplicitActuatorCfg(joint_names_expr=A1_WHEEL_JOINTS,

@@ -25,6 +25,11 @@ from legged_lab.envs.base.tt_env_config import (  # noqa:F401
 
 A1_ARM_JOINTS = list(A1_RIGHT_ARM_JOINTS)
 A1_GROUND_CONTACT_BODIES = ["Link_lun_(r|l)", "Link_wxl_.*"]
+A1_TT_RAW_STEPS_PER_ITER = 240  # num_steps_per_env(24) * sim.decimation(10)
+A1_REAL_V5_EASY_ITERS = 5000
+A1_REAL_V5_RAMP_ITERS = 5000
+A1_REAL_V5_SERVE_CURRICULUM_START = A1_REAL_V5_EASY_ITERS * A1_TT_RAW_STEPS_PER_ITER
+A1_REAL_V5_SERVE_CURRICULUM_STEPS = A1_REAL_V5_RAMP_ITERS * A1_TT_RAW_STEPS_PER_ITER
 A1_DEPLOY_QDES_MAX_DELTA_PER_TICK = (
     0.020,  # r1
     0.024,  # r2
@@ -169,7 +174,6 @@ def _apply_deploy_reward_overrides(reward_cfg):
         ("TT_REWARD_PASS_NET", "reward_future_pass_net"),
         ("TT_REWARD_LANDING_DIS", "reward_future_landing_dis"),
         ("TT_REWARD_TABLE_SUCCESS", "reward_table_success"),
-        ("TT_REWARD_PADDLE_ABOVE_TARGET", "penalty_paddle_above_target"),
         ("TT_REWARD_ACTION_RATE_L2", "action_rate_l2"),
         ("TT_REWARD_ACTION_L2", "action_l2"),
         ("TT_REWARD_JOINT_POS_TARGET_LIMITS", "joint_pos_target_limits"),
@@ -267,11 +271,6 @@ class A1TableTennisRewardCfg(RewardCfg):
         weight=2.0,   # v9: 6.0->2.0 (back to G1 level). v8's 6.0 made hovering-near-intercept farmable without
                       # contact -> 0 hits. Keep tracking guidance but let the un-fakeable contact/pass_net/table dominate.
         params={"std_ee": 0.5, "threshold": 0.08, "z_weight": 2.5},
-    )
-    penalty_paddle_above_target = RewTerm(
-        func=mdp.penalty_paddle_above_future_target,
-        weight=-2.0,
-        params={"margin": 0.12, "max_error": 0.50},
     )
     reward_swing_through = RewTerm(
         func=mdp.reward_swing_through,
@@ -443,14 +442,17 @@ class A1TableTennisEnvCfg(TTEnvCfg):
         self.robot.hit_target_z_range = (0.90, 1.25)
         self.observations.joint_names = A1_ARM_JOINTS
         self.actions.joint_names = A1_ARM_JOINTS
-        # v10 serve: keep the bounce forehand-reachable but move it away from the robot body side.
-        # v9 used y ~= 0.21..0.33, which made the arm fold back toward the chassis. Start with a
-        # narrower y ~= 0.08..0.16 real-effort adaptation window and widen only after it stabilizes.
+        # v5 serve curriculum, following the successful G1 fixed-iteration pattern:
+        #   0..5k:    current easy serve, y ~= 0.08..0.16, z at x=-1.60 ~= 0.96..1.14.
+        #   5k..10k:  ramp to hard, expanding mostly z/speed and only a little y.
+        #   10k..30k: consolidate at hard.
+        # Keep the hard distribution forehand-reachable: y ~= 0.00..0.24 and estimated
+        # z at the fixed hit plane stays inside the target band, ~= 0.92..1.20.
         self.ball.serve_bounce_enable = True
         self.ball.serve_bounce_x_range = (-1.24, -0.96)
-        self.ball.serve_bounce_x_range_hard = (-1.24, -0.96)
+        self.ball.serve_bounce_x_range_hard = (-1.30, -0.92)
         self.ball.serve_bounce_vz_range = (1.60, 2.10)
-        self.ball.serve_bounce_vz_range_hard = (1.60, 2.10)
+        self.ball.serve_bounce_vz_range_hard = (1.45, 2.35)
         self.ball.serve_y_center = 0.12
         self.ball.serve_y_start = 0.04
         self.ball.serve_y_wide = 0.12
@@ -474,7 +476,9 @@ class A1TableTennisEnvCfg(TTEnvCfg):
         self.ball.sweet_contact_face_axis = "y"
         self.ball.sweet_contact_gate_outcomes = True
         self.ball.sweet_contact_outcome_floor = 0.5
-        self.ball.serve_curriculum_steps = 0   # easy-only for first run
+        self.ball.serve_curriculum_perf_gated = False
+        self.ball.serve_curriculum_phase_start = A1_REAL_V5_SERVE_CURRICULUM_START
+        self.ball.serve_curriculum_steps = A1_REAL_V5_SERVE_CURRICULUM_STEPS
         self.ball.no_ball_period_s = 0.0
 
 
@@ -521,7 +525,6 @@ class A1TableTennisDeployEnvCfg(A1TableTennisEnvCfg):
         self.reward.reward_future_pass_net.weight = 150.0
         self.reward.reward_future_landing_dis.weight = 90.0
         self.reward.reward_table_success.weight = 300.0
-        self.reward.penalty_paddle_above_target.weight = -5.0
         _apply_deploy_reward_overrides(self.reward)
 
 
@@ -606,10 +609,10 @@ class A1TableTennisAgentCfg(TTAgentCfg):
 
 @configclass
 class A1TableTennisDeployAgentCfg(A1TableTennisAgentCfg):
-    experiment_name: str = "a1_tt_real_v4"
-    run_name = "scratch_4096_mb64_sparseboost"
+    experiment_name: str = "a1_tt_real_v5"
+    run_name = "scratch_sjfixed_5k_easy_5k_ramp_20k_hold"
     resume = False
-    max_iterations = 100000
+    max_iterations = 30000
 
     def __post_init__(self):
         super().__post_init__()

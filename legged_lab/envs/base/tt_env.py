@@ -1163,6 +1163,10 @@ class TTEnv(VecEnv):
         self.action_response_targets = response
         return response
 
+    def _apply_non_policy_joint_targets(self) -> None:
+        """Subclass hook for passive joints that must be held outside the policy action set."""
+        return
+
     def step(self, actions: torch.Tensor):
 
         self._apply_effort_curriculum()
@@ -1177,6 +1181,7 @@ class TTEnv(VecEnv):
             self.sim_step_counter += 1
             action_response_targets = self._apply_action_response_model(processed_actions, self.physics_dt)
             self.robot.set_joint_position_target(action_response_targets, self.action_joint_ids)
+            self._apply_non_policy_joint_targets()
             # ! Aerodynamics: Step : BEGIN
             # ! Step before self.scene.write_data_to_sim(), update per decimation step
             self.aero.apply_to_rigid_object(self.ball)
