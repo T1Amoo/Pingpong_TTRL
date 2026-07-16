@@ -1,0 +1,32 @@
+legged_lab/assets/a1/X1_URDF_V1_1/urdf/X1_URDF_V1_1_sj_fixed.urdf
+  s_157fc71933de1f::t_6d9b18d350aca6 1-1744
+legged_lab/scripts/watchdog_train_a1_real.sh
+  s_157fc71933de1f::t_533d731621ab5d 5-6,12,22,24,54
+legged_lab/envs/a1_tt/a1_tt_env.py
+  s_157fc71933de1f::t_25ae67bbcbf5ec 8,12,16-18,26-44,48-53,57-70
+  s_157fc71933de1f::t_078fa222f981b8 25,45-47,54-56
+  s_157fc71933de1f::t_29de3ce69b431b 19-24
+  s_157fc71933de1f::t_668c2ea428a810 71
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_157fc71933de1f::t_1c5e3626c37035 28-32,445-450,453,455,479-481,612-613,615
+legged_lab/envs/base/tt_env.py
+  s_157fc71933de1f::t_403e648c9ed929 1166-1169,1184
+legged_lab/assets/a1/a1.py
+  s_157fc71933de1f::t_31625bf8baa8fd 8-10,123-124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "8071ad52d7426189dc9f78ec9a26f59b2ac336d2",
+  "prompts": {},
+  "sessions": {
+    "s_157fc71933de1f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f601d-106e-7702-a694-6d6deef26a04",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
