@@ -796,6 +796,18 @@ def penalty_ball_body_block(env: TTEnv, body_regex: str = "Link_r[3-6]", thresho
     return torch.nan_to_num(pen, nan=0.0, posinf=0.0, neginf=0.0)
 
 
+def penalty_paddle_above_future_target(
+    env: TTEnv,
+    margin: float = 0.12,
+    max_error: float = 0.50,
+) -> torch.Tensor:
+    """Penalize parking the paddle above the predicted hit target while a playable ball exists."""
+    dz_high = torch.clamp(env.paddle_pos[:, 2] - env.ball_future_pose[:, 2] - margin, min=0.0)
+    scaled = torch.clamp(dz_high / max(max_error, 1.0e-6), min=0.0, max=1.0)
+    penalty = torch.square(scaled)
+    return torch.where(env.mask_invalid, torch.zeros_like(penalty), penalty)
+
+
 def reward_swing_through(
     env: TTEnv,
     near_dist: float = 0.30,

@@ -272,6 +272,11 @@ class A1TableTennisRewardCfg(RewardCfg):
                       # contact -> 0 hits. Keep tracking guidance but let the un-fakeable contact/pass_net/table dominate.
         params={"std_ee": 0.5, "threshold": 0.08, "z_weight": 2.5},
     )
+    penalty_paddle_above_target = RewTerm(
+        func=mdp.penalty_paddle_above_future_target,
+        weight=-2.0,
+        params={"margin": 0.12, "max_error": 0.50},
+    )
     reward_swing_through = RewTerm(
         func=mdp.reward_swing_through,
         weight=1.0,   # only reward forward swing once the blade is near the target y/z; avoids high-overhead farming.
@@ -525,6 +530,7 @@ class A1TableTennisDeployEnvCfg(A1TableTennisEnvCfg):
         self.reward.reward_future_pass_net.weight = 150.0
         self.reward.reward_future_landing_dis.weight = 90.0
         self.reward.reward_table_success.weight = 300.0
+        self.reward.penalty_paddle_above_target.weight = -5.0
         _apply_deploy_reward_overrides(self.reward)
 
 
@@ -609,21 +615,20 @@ class A1TableTennisAgentCfg(TTAgentCfg):
 
 @configclass
 class A1TableTennisDeployAgentCfg(A1TableTennisAgentCfg):
-    experiment_name: str = "a1_tt_real_v5"
-    run_name = "scratch_sjfixed_5k_easy_5k_ramp_20k_hold"
+    experiment_name: str = "a1_tt_real_v6"
+    run_name = "scratch_sjfixed_v4ppo_paddleabove_5k_easy_5k_ramp_20k_hold"
     resume = False
     max_iterations = 30000
 
     def __post_init__(self):
         super().__post_init__()
-        # 4096 envs need small PPO mini-batches so sparse contact samples are not
-        # averaged away. Fixed LR avoids early KL scheduling collapse; the entropy
-        # is high enough to find contact but below the unstable 0.03 probe.
-        self.algorithm.learning_rate = 7.0e-4
-        self.algorithm.entropy_coef = 0.015
-        self.algorithm.desired_kl = 0.05
+        # v6: keep the fixed-sj / serve-curriculum changes, but return PPO to the
+        # v4 stable settings after v5 showed std/action/value runaway on 4096 envs.
+        self.algorithm.learning_rate = 5.0e-4
+        self.algorithm.entropy_coef = 0.006
+        self.algorithm.desired_kl = 0.01
         self.algorithm.num_mini_batches = 64
-        self.algorithm.schedule = "fixed"
+        self.algorithm.schedule = "adaptive"
         _apply_agent_overrides(self)
 
 
