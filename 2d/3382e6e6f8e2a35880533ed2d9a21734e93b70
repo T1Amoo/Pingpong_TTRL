@@ -1,0 +1,43 @@
+legged_lab/scripts/record_a1_play_trace.py
+  s_157fc71933de1f::t_6dc0c143452c89 193,195-196
+  s_157fc71933de1f::t_6ca416d1414b6a 396
+  s_157fc71933de1f::t_ce40fbd6e8d148 192,201-208,210-217
+  s_157fc71933de1f::t_b96b8a11d3a14d 68-123
+  s_157fc71933de1f::t_910734f3c3e168 226-232,246
+  s_157fc71933de1f::t_a302aafdd7b704 22-24,124-191,194,197-200,209,218-225,233-245,247-259,270-271,282-283,305,315-316,320-321,326-327,376
+  s_157fc71933de1f::t_5151a62c24198e 335,381
+  s_157fc71933de1f::t_4e5440bc47ccb6 284-304,306-308,375
+  s_157fc71933de1f::t_c0a39e0d987d0d 25-26
+  s_157fc71933de1f::t_95cde42f12b5f4 361
+legged_lab/scripts/replay_a1_forced_motor_target.py
+  s_157fc71933de1f::t_a21c6b10998933 1-50,52-68,70-196
+  s_157fc71933de1f::t_91fc53ad5dd030 51,69
+docs/superpowers/plans/2026-07-14-a1-tt-real-v1-config-summary.md
+  s_a1ef32c53ac02d::t_ef3fb66284d0a3 5-8
+docs/superpowers/plans/2026-07-16-a1-real-response-actuator-repro.md
+  s_a1ef32c53ac02d::t_ef3fb66284d0a3 1-306
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "2d3382e6e6f8e2a35880533ed2d9a21734e93b70",
+  "prompts": {},
+  "sessions": {
+    "s_157fc71933de1f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f601d-106e-7702-a694-6d6deef26a04",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    },
+    "s_a1ef32c53ac02d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6a86-05c9-7c10-9537-0de09c90171d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
