@@ -19,6 +19,11 @@ parser.add_argument("--experiment_name", type=str, default=None)
 parser.add_argument("--out", type=Path, default=Path("/tmp/a1_play_trace.csv"))
 parser.add_argument("--predictor", action="store_true")
 parser.add_argument("--no_noise", action="store_true")
+parser.add_argument("--ball-trajectory-csv", type=Path, default=None)
+parser.add_argument("--trajectory-start-delay-s", type=float, default=0.0)
+parser.add_argument("--trajectory-loop", action=argparse.BooleanOptionalAction, default=False)
+parser.add_argument("--initial-state-csv", type=Path, default=None)
+parser.add_argument("--initial-state-time-s", type=float, default=None)
 AppLauncher.add_app_launcher_args(parser)
 args, _ = parser.parse_known_args()
 args.headless = True
@@ -60,6 +65,198 @@ def _env0(value, device, *, dtype=None):
     return value
 
 
+def _load_initial_joint_state(path: Path, time_s: float | None) -> tuple[np.ndarray, np.ndarray, float]:
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(path)
+    with path.open(newline="") as f:
+        rows = list(csv.DictReader(f))
+    if not rows:
+        raise ValueError(f"{path} is empty")
+    q_cols = [f"q{i}" for i in range(1, 8)]
+    dq_cols = [f"dq{i}" for i in range(1, 8)]
+    required = {"time_s", *q_cols}
+    missing = required - set(rows[0].keys())
+    if missing:
+        raise ValueError(f"{path} missing columns: {sorted(missing)}")
+    times = np.asarray([float(row["time_s"]) for row in rows], dtype=np.float64)
+    q_values = np.asarray([[float(row[col]) for col in q_cols] for row in rows], dtype=np.float64)
+    if all(col in rows[0] for col in dq_cols):
+        dq_values = np.asarray([[float(row[col]) for col in dq_cols] for row in rows], dtype=np.float64)
+    else:
+        dq_values = np.zeros_like(q_values)
+    if time_s is None:
+        return q_values[0].copy(), dq_values[0].copy(), float(times[0])
+    t = float(np.clip(float(time_s), times[0], times[-1]))
+    q = np.asarray([np.interp(t, times, q_values[:, i]) for i in range(7)], dtype=np.float64)
+    dq = np.asarray([np.interp(t, times, dq_values[:, i]) for i in range(7)], dtype=np.float64)
+    return q, dq, t
+
+
+def _set_robot_initial_state(env, q: np.ndarray, dq: np.ndarray) -> None:
+    env_ids = torch.arange(env.num_envs, device=env.device, dtype=torch.long)
+    action_ids = list(env.action_joint_ids)
+    q_t = torch.as_tensor(q, device=env.device, dtype=env.robot.data.joint_pos.dtype).reshape(1, 7)
+    dq_t = torch.as_tensor(dq, device=env.device, dtype=env.robot.data.joint_vel.dtype).reshape(1, 7)
+    q_all = env.robot.data.joint_pos.clone()
+    dq_all = env.robot.data.joint_vel.clone()
+    q_all[:, action_ids] = q_t
+    dq_all[:, action_ids] = dq_t
+    env.robot.write_joint_state_to_sim(q_all, dq_all)
+    env.robot.set_joint_position_target(q_all)
+    env.scene.write_data_to_sim()
+    env.sim.forward()
+    env.scene.update(dt=0.0)
+    if hasattr(env, "_reset_action_target_limiter"):
+        env._reset_action_target_limiter(env_ids)
+    if hasattr(env, "_reset_action_response_model"):
+        env._reset_action_response_model(env_ids)
+    q_action = env.robot.data.joint_pos[:, action_ids].clone()
+    env.processed_actions = q_action
+    if hasattr(env, "action_response_targets"):
+        env.action_response_targets = q_action.clone()
+    try:
+        env.action_buffer.reset(env_ids)
+    except Exception:
+        pass
+
+
+class BallTrajectoryReplay:
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        if not self.path.exists():
+            raise FileNotFoundError(self.path)
+        rows: list[tuple[float, list[float], list[float]]] = []
+        with self.path.open(newline="") as f:
+            reader = csv.DictReader(f)
+            required = {"segment_time_s", "x", "y", "z", "vx", "vy", "vz"}
+            missing = required - set(reader.fieldnames or [])
+            if missing:
+                raise ValueError(f"{self.path} missing columns: {sorted(missing)}")
+            for row in reader:
+                try:
+                    t = float(row["segment_time_s"])
+                    pos = [float(row["x"]), float(row["y"]), float(row["z"])]
+                    vel = [float(row["vx"]), float(row["vy"]), float(row["vz"])]
+                except (TypeError, ValueError):
+                    continue
+                values = np.asarray([t, *pos, *vel], dtype=np.float64)
+                if not np.isfinite(values).all():
+                    continue
+                if rows and t <= rows[-1][0]:
+                    t = rows[-1][0] + 1.0e-6
+                rows.append((t, pos, vel))
+        if len(rows) < 2:
+            raise ValueError(f"{self.path} must contain at least two finite trajectory rows")
+        self.time = np.asarray([r[0] for r in rows], dtype=np.float64)
+        self.pos = np.asarray([r[1] for r in rows], dtype=np.float64)
+        self.vel = np.asarray([r[2] for r in rows], dtype=np.float64)
+        self.duration = float(self.time[-1])
+
+    def sample(self, phase_s: float) -> tuple[np.ndarray, np.ndarray, bool]:
+        active = 0.0 <= phase_s <= self.duration
+        t = float(np.clip(phase_s, self.time[0], self.time[-1]))
+        pos = np.asarray([np.interp(t, self.time, self.pos[:, i]) for i in range(3)], dtype=np.float64)
+        vel = np.asarray([np.interp(t, self.time, self.vel[:, i]) for i in range(3)], dtype=np.float64)
+        return pos, vel, active
+
+
+def _trajectory_phase(step: int, dt: float, replay: BallTrajectoryReplay) -> tuple[float, int, bool]:
+    phase = float(step) * float(dt) - float(args.trajectory_start_delay_s)
+    if args.trajectory_loop:
+        period = max(replay.duration, 1.0e-6)
+        cycle = int(np.floor(max(phase, 0.0) / period)) if phase >= 0.0 else -1
+        phase = phase - cycle * period if phase >= 0.0 else phase
+    else:
+        cycle = 0 if phase >= 0.0 else -1
+    active = 0.0 <= phase <= replay.duration
+    return phase, cycle, active
+
+
+def _set_ball_state(env, pos: np.ndarray, vel: np.ndarray) -> None:
+    env_ids = torch.arange(env.num_envs, device=env.device, dtype=torch.long)
+    pos_t = torch.as_tensor(pos, device=env.device, dtype=env.ball.data.root_pos_w.dtype).reshape(1, 3)
+    vel_t = torch.as_tensor(vel, device=env.device, dtype=env.ball.data.root_lin_vel_w.dtype).reshape(1, 3)
+    pose = torch.zeros((env.num_envs, 7), device=env.device, dtype=env.ball.data.root_pos_w.dtype)
+    pose[:, :3] = env.scene.env_origins + pos_t
+    pose[:, 3] = 1.0
+    root_vel = torch.zeros((env.num_envs, 6), device=env.device, dtype=env.ball.data.root_lin_vel_w.dtype)
+    root_vel[:, :3] = vel_t
+    env.ball.write_root_pose_to_sim(pose, env_ids)
+    env.ball.write_root_velocity_to_sim(root_vel, env_ids)
+    env.scene.write_data_to_sim()
+    env.sim.forward()
+    env.scene.update(dt=0.0)
+
+
+def _sync_forced_ball_observation(env, *, fill_history: bool = False) -> torch.Tensor:
+    env.compute_perception()
+    env.compute_paddle_touch()
+    env.compute_intermediate_values()
+    env.delayed_perception = env.current_perception.clone()
+    current_actor_obs, current_critic_obs = env.compute_current_observations_perception()
+    env.current_actor_obs = current_actor_obs
+    if env.add_noise:
+        current_actor_obs = current_actor_obs + (2 * torch.rand_like(current_actor_obs) - 1) * env.noise_scale_vec
+    if fill_history:
+        env_ids = torch.arange(env.num_envs, device=env.device, dtype=torch.long)
+        env.actor_obs_buffer.reset(env_ids)
+        env.critic_obs_buffer.reset(env_ids)
+        for _ in range(env.actor_obs_buffer.max_length):
+            env.actor_obs_buffer.append(current_actor_obs)
+        for _ in range(env.critic_obs_buffer.max_length):
+            env.critic_obs_buffer.append(current_critic_obs)
+    else:
+        if env.actor_obs_buffer._buffer is None:
+            env.actor_obs_buffer.append(current_actor_obs)
+        else:
+            env.actor_obs_buffer._buffer[env.actor_obs_buffer._pointer] = current_actor_obs
+        if env.critic_obs_buffer._buffer is None:
+            env.critic_obs_buffer.append(current_critic_obs)
+        else:
+            env.critic_obs_buffer._buffer[env.critic_obs_buffer._pointer] = current_critic_obs
+    actor_obs = env.actor_obs_buffer.buffer.reshape(env.num_envs, -1)
+    critic_obs = env.critic_obs_buffer.buffer.reshape(env.num_envs, -1)
+    actor_obs = torch.clip(actor_obs, -env.clip_obs, env.clip_obs)
+    critic_obs = torch.clip(critic_obs, -env.clip_obs, env.clip_obs)
+    env.extras["observations"] = {"critic": critic_obs}
+    return actor_obs
+
+
+def _apply_replay_to_env(
+    env,
+    replay: BallTrajectoryReplay,
+    step: int,
+    *,
+    fill_history: bool = False,
+) -> tuple[torch.Tensor, dict[str, float | str]]:
+    phase_s, cycle, active = _trajectory_phase(step, env.step_dt, replay)
+    if active:
+        pos, vel, _ = replay.sample(phase_s)
+    else:
+        pos = np.array([1.75, 1.35, 0.20], dtype=np.float64)
+        vel = np.zeros(3, dtype=np.float64)
+    _set_ball_state(env, pos, vel)
+    if not active:
+        env.mask_invalid[:] = True
+        try:
+            env._reset_prediction_buffers()
+        except Exception:
+            pass
+    obs = _sync_forced_ball_observation(env, fill_history=fill_history)
+    meta: dict[str, float | str] = {
+        "trajectory_active": float(active),
+        "trajectory_cycle": float(cycle),
+        "trajectory_phase_s": float(phase_s),
+        "trajectory_file": str(replay.path),
+    }
+    for i, value in enumerate(pos, 1):
+        meta[f"replay_ball_{i}"] = float(value)
+    for i, value in enumerate(vel, 1):
+        meta[f"replay_ball_vel_{i}"] = float(value)
+    return obs, meta
+
+
 def main() -> None:
     env_cfg, agent_cfg = task_registry.get_cfgs(args.task)
     if args.experiment_name is not None:
@@ -70,6 +267,8 @@ def main() -> None:
     env_cfg.scene.num_envs = 1
     env_cfg.noise.add_noise = not args.no_noise
     env_cfg.domain_rand.events.push_robot = None
+    env_cfg.domain_rand.action_delay.enable = False
+    env_cfg.domain_rand.perception_delay.enable = False
 
     env = task_registry.get_task_class(args.task)(env_cfg, headless=True)
     log_root = os.path.abspath(os.path.join("logs", agent_cfg.experiment_name))
@@ -80,19 +279,52 @@ def main() -> None:
     policy = runner.get_inference_policy(device=env.device)
 
     obs, _ = env.get_observations()
+    replay = BallTrajectoryReplay(args.ball_trajectory_csv) if args.ball_trajectory_csv is not None else None
+    replay_meta: dict[str, float | str] = {}
+    run_meta: dict[str, float | str] = {}
+    if args.initial_state_csv is not None:
+        initial_q, initial_dq, initial_time_s = _load_initial_joint_state(
+            args.initial_state_csv,
+            args.initial_state_time_s,
+        )
+        _set_robot_initial_state(env, initial_q, initial_dq)
+        run_meta.update(
+            {
+                "initial_state_file": str(args.initial_state_csv),
+                "initial_state_time_s": float(initial_time_s),
+            }
+        )
+        run_meta.update(_row("initial_q_", initial_q))
+        run_meta.update(_row("initial_dq_", initial_dq))
+        print(
+            "[a1_play_trace] initial_state "
+            f"path={args.initial_state_csv} time_s={initial_time_s:.6f} "
+            f"q={np.round(initial_q, 4).tolist()} dq={np.round(initial_dq, 4).tolist()}",
+            flush=True,
+        )
+    if replay is not None:
+        obs, replay_meta = _apply_replay_to_env(env, replay, 0, fill_history=args.initial_state_csv is not None)
+    elif args.initial_state_csv is not None:
+        obs = _sync_forced_ball_observation(env, fill_history=True)
     rows: list[dict[str, float]] = []
     action_ids = list(env.action_joint_ids)
     default_q = env.robot.data.default_joint_pos[0, action_ids]
 
     with torch.inference_mode():
         for step in range(args.steps):
+            if replay is not None:
+                obs, replay_meta = _apply_replay_to_env(env, replay, step)
             action = policy(obs)
             obs_in = obs[0].detach().cpu().numpy().copy()
             obs, _, _, _ = env.step(action)
+            if replay is not None:
+                obs, replay_meta = _apply_replay_to_env(env, replay, step + 1)
             if args.predictor:
                 try:
                     runner._record_ball_positions()
                     runner._maybe_predict_and_update_env()
+                    if replay is not None:
+                        obs = _sync_forced_ball_observation(env)
                 except Exception:
                     pass
 
@@ -100,6 +332,7 @@ def main() -> None:
             q = robot.joint_pos[0, action_ids]
             dq = robot.joint_vel[0, action_ids]
             q_des = getattr(env, "processed_actions", default_q.unsqueeze(0))[0]
+            motor_q_des = getattr(env, "action_response_targets", q_des.unsqueeze(0))[0]
             applied_tau = robot.applied_torque[0, action_ids]
             computed_tau = robot.computed_torque[0, action_ids]
             effort_limit = robot.joint_effort_limits[0, action_ids]
@@ -125,7 +358,7 @@ def main() -> None:
 
             row = {
                 "step": float(step),
-                "source": "isaac_play",
+                "source": "isaac_play_replay" if replay is not None else "isaac_play",
                 "obs_max_abs": float(np.max(np.abs(obs_in))),
                 "mask_invalid": float(bool(mask_invalid)),
                 "mask_before": float(bool(mask_before)),
@@ -139,10 +372,13 @@ def main() -> None:
                 "ball_contact_rew": float(_cpu_np(ball_contact_rew)),
                 "ball_contact_raw_rew": float(_cpu_np(ball_contact_raw)),
             }
+            row.update(run_meta)
+            row.update(replay_meta)
             row.update(_row("action_", _cpu_np(action[0])))
             row.update(_row("q_", _cpu_np(q)))
             row.update(_row("q_rel_", _cpu_np(q - default_q)))
             row.update(_row("q_des_", _cpu_np(q_des)))
+            row.update(_row("motor_q_des_", _cpu_np(motor_q_des)))
             row.update(_row("dq_", _cpu_np(dq)))
             row.update(_row("applied_tau_", _cpu_np(applied_tau)))
             row.update(_row("computed_tau_", _cpu_np(computed_tau)))
@@ -157,7 +393,7 @@ def main() -> None:
             rows.append(row)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    with args.out.open("w", newline="") as f:
+    with args.out.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         writer.writeheader()
         writer.writerows(rows)

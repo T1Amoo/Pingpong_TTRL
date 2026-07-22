@@ -2,6 +2,10 @@
 
 This note summarizes the current reusable `a1_tt_real` / `a1_tt_real_v1` experiment configuration as of 2026-07-14.
 
+For the current `a1_tt_real_v4` reproduction reference for the second-order response
+model and high-stiffness implicit actuator, use
+`docs/superpowers/plans/2026-07-16-a1-real-response-actuator-repro.md`.
+
 ## Entry Point
 
 - Task registry: `a1_tt_real`
