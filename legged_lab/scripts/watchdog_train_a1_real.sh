@@ -2,15 +2,15 @@
 # Watchdog for a1_tt_real - A1 table-tennis real-aligned scratch training.
 #
 # This run intentionally starts from scratch: no v12/v13 warm-start and no dedicated
-# no-ball curriculum. a1_tt_real_v6 uses the seven-joint identified second-order
-# arm response model, fixed-sj USD, v4 PPO stability settings, and a 5k easy /
-# 5k serve-ramp / 20k hard-hold curriculum.
+# no-ball curriculum. a1_tt_real_v7 uses the explicit Damiao MIT torque actuator
+# with the deployment q_des slew limit, fixed-sj USD, v4 PPO stability settings,
+# and a 30k easy / 30k serve-ramp / 40k hard-hold curriculum.
 #
 # Usage (local):
 #   NUM_ENVS=128 nohup bash legged_lab/scripts/watchdog_train_a1_real.sh > /tmp/a1_real_watchdog.log 2>&1 &
 #
 # Usage (cloud):
-#   TARGET=30000 NUM_ENVS=4096 TRAIN_PY=/root/miniconda3/envs/pingpong/bin/python \
+#   TARGET=100000 NUM_ENVS=4096 TRAIN_PY=/root/miniconda3/envs/pingpong/bin/python \
 #     OMNI_KIT_ACCEPT_EULA=YES nohup bash legged_lab/scripts/watchdog_train_a1_real.sh >/dev/null 2>&1 &
 set -u
 
@@ -20,9 +20,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 PY=${TRAIN_PY:-/home/woan/.conda/envs/pingpong/bin/python}
 TASK=${TASK:-a1_tt_real}
-EXP=${EXP:-a1_tt_real_v6}
+EXP=${EXP:-a1_tt_real_v7}
 NUM_ENVS=${NUM_ENVS:-128}
-TARGET=${TARGET:-30000}
+TARGET=${TARGET:-100000}
 LOGROOT="$REPO/logs/$EXP"
 WLOG="$REPO/train_${EXP}_watchdog.log"
 cd "$REPO"
@@ -52,7 +52,7 @@ latest() {
   echo "$best|$bdir|$bfile"
 }
 
-echo "[wd] $(date +%F_%H-%M-%S) start; target=$TARGET envs=$NUM_ENVS task=$TASK exp=$EXP (scratch, fixed-sj, v4 PPO, paddle-above penalty, 5k easy / 5k ramp / 20k hold)" | tee -a "$WLOG"
+echo "[wd] $(date +%F_%H-%M-%S) start; target=$TARGET envs=$NUM_ENVS task=$TASK exp=$EXP (scratch, fixed-sj, Damiao MIT torque actuator, 30k easy / 30k ramp / 40k hold)" | tee -a "$WLOG"
 while true; do
   IFS='|' read -r N DIR FILE <<< "$(latest)"
   if [ "$N" -ge "$((TARGET-1))" ]; then

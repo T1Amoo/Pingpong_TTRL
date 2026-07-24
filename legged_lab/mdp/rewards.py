@@ -76,13 +76,18 @@ def joint_computed_torque_limit_l2(
     env: BaseEnv,
     threshold: float = 0.9,
     max_ratio: float = 3.0,
+    limit: float | Tuple[float, ...] | None = None,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
     """Penalize commanded PD torque demand above a fraction of the simulated effort limit."""
     asset: Articulation = env.scene[asset_cfg.name]
     joint_ids = asset_cfg.joint_ids
     computed = torch.abs(asset.data.computed_torque[:, joint_ids])
-    limits = torch.clamp(torch.abs(asset.data.joint_effort_limits[:, joint_ids]), min=1e-6)
+    if limit is None:
+        limits = asset.data.joint_effort_limits[:, joint_ids]
+    else:
+        limits = _joint_param_tensor(limit, computed)
+    limits = torch.clamp(torch.abs(limits), min=1e-6)
     ratio = torch.clamp(computed / limits, max=max_ratio)
     return torch.sum(torch.square(torch.clamp(ratio - threshold, min=0.0)), dim=1)
 

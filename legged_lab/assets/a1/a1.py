@@ -5,6 +5,11 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
 from isaaclab.actuators import DelayedPDActuatorCfg, ImplicitActuatorCfg
 
+try:
+    from legged_lab.actuators import DamiaoMITActuatorCfg
+except ModuleNotFoundError:
+    from actuators import DamiaoMITActuatorCfg
+
 A1_USD_PATH_ORIGINAL = os.path.join(os.path.dirname(__file__), "X1_URDF_V1_1", "X1_URDF_V1_1.usd")
 A1_USD_PATH_SJ_FIXED = os.path.join(os.path.dirname(__file__), "X1_URDF_V1_1", "X1_URDF_V1_1_sj_fixed.usd")
 A1_USD_PATH = A1_USD_PATH_SJ_FIXED
@@ -181,4 +186,25 @@ A1_TT_REAL_FITTED_CFG.actuators["right_arm"] = ImplicitActuatorCfg(
     velocity_limit_sim=_REAL_FITTED_TRACKING_VEL,
     stiffness=_REAL_FITTED_TRACKING_KP,
     damping=_REAL_FITTED_TRACKING_KD,
+)
+
+A1_TT_REAL_TORQUE_ONLY_CFG = copy.deepcopy(A1_TT_CFG)
+A1_TT_REAL_TORQUE_ONLY_CFG.actuators["right_arm"] = DamiaoMITActuatorCfg(
+    joint_names_expr=A1_RIGHT_ARM_JOINTS,
+    effort_limit=_EFFORT,
+    velocity_limit=_VEL,
+    effort_limit_sim=_REAL_FITTED_TRACKING_EFFORT,
+    velocity_limit_sim=_REAL_FITTED_TRACKING_VEL,
+    stiffness=_REAL_FITTED_NODE_KP,
+    damping=_REAL_FITTED_NODE_KD,
+    armature=_ARM,
+    control_dt=0.002,
+    command_delay_s=0.0,
+    command_velocity_limit=_VEL,
+    use_command_velocity=False,
+    torque_time_constant=0.0,
+    viscous_friction=0.0,
+    coulomb_friction=0.0,
+    torque_speed_limit_enable=True,
+    brake_effort_limit=_EFFORT,
 )

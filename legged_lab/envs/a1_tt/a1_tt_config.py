@@ -14,6 +14,7 @@ from legged_lab.assets.a1.a1 import (
     A1_TT_DAMIAO_DELAYED_CFG,
     A1_TT_OPENARM_CFG,
     A1_TT_REAL_FITTED_CFG,
+    A1_TT_REAL_TORQUE_ONLY_CFG,
 )
 from legged_lab.assets.table_tennis.table import TABLE_CFG
 from legged_lab.assets.table_tennis.ball import BALL_CFG
@@ -30,6 +31,19 @@ A1_REAL_V5_EASY_ITERS = 5000
 A1_REAL_V5_RAMP_ITERS = 5000
 A1_REAL_V5_SERVE_CURRICULUM_START = A1_REAL_V5_EASY_ITERS * A1_TT_RAW_STEPS_PER_ITER
 A1_REAL_V5_SERVE_CURRICULUM_STEPS = A1_REAL_V5_RAMP_ITERS * A1_TT_RAW_STEPS_PER_ITER
+A1_REAL_V7_EASY_ITERS = 30000
+A1_REAL_V7_RAMP_ITERS = 30000
+A1_REAL_V7_SERVE_CURRICULUM_START = A1_REAL_V7_EASY_ITERS * A1_TT_RAW_STEPS_PER_ITER
+A1_REAL_V7_SERVE_CURRICULUM_STEPS = A1_REAL_V7_RAMP_ITERS * A1_TT_RAW_STEPS_PER_ITER
+A1_REAL_TORQUE_LIMIT_NM = (
+    28.0,  # r1
+    28.0,  # r2
+    28.0,  # r3
+    8.0,   # r4
+    8.0,   # r5
+    8.0,   # r6
+    8.0,   # r7
+)
 A1_DEPLOY_QDES_MAX_DELTA_PER_TICK = (
     0.020,  # r1
     0.024,  # r2
@@ -535,6 +549,39 @@ class A1TableTennisDeployEnvCfg(A1TableTennisEnvCfg):
 
 
 @configclass
+class A1TableTennisTorqueOnlyEnvCfg(A1TableTennisDeployEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.robot = A1_TT_REAL_TORQUE_ONLY_CFG
+        # a1_tt_real_v7: raw q_des after deploy slew limiting goes directly to
+        # explicit MIT torque with 28/8 Nm limits. No fitted second-order response
+        # and no high-stiffness implicit tracking stage.
+        self.robot.action_response_model_enable = False
+        self.robot.action_response_u_mean = ()
+        self.robot.action_response_fn_hz = ()
+        self.robot.action_response_zeta = ()
+        self.robot.action_response_delay_s = ()
+        self.robot.action_response_gain = ()
+        self.robot.action_response_bias_rad = ()
+        # The explicit actuator uses a large PhysX effort_limit_sim to avoid
+        # double-clipping; score the true Damiao envelope explicitly here.
+        self.reward.joint_computed_torque_limit.weight = -0.03
+        self.reward.joint_computed_torque_limit.params["limit"] = A1_REAL_TORQUE_LIMIT_NM
+        # 100k schedule: 0..30k easy, 30k..60k expand, 60k..100k consolidate.
+        # Hard range is wider than v6, but stays on the reachable forehand side.
+        self.ball.serve_bounce_x_range = (-1.24, -0.96)
+        self.ball.serve_bounce_x_range_hard = (-1.32, -0.88)
+        self.ball.serve_bounce_vz_range = (1.60, 2.10)
+        self.ball.serve_bounce_vz_range_hard = (1.45, 2.40)
+        self.ball.serve_y_center = 0.17
+        self.ball.serve_y_start = 0.04
+        self.ball.serve_y_wide = 0.17
+        self.ball.serve_curriculum_perf_gated = False
+        self.ball.serve_curriculum_phase_start = A1_REAL_V7_SERVE_CURRICULUM_START
+        self.ball.serve_curriculum_steps = A1_REAL_V7_SERVE_CURRICULUM_STEPS
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -630,6 +677,13 @@ class A1TableTennisDeployAgentCfg(A1TableTennisAgentCfg):
         self.algorithm.num_mini_batches = 64
         self.algorithm.schedule = "adaptive"
         _apply_agent_overrides(self)
+
+
+@configclass
+class A1TableTennisTorqueOnlyAgentCfg(A1TableTennisDeployAgentCfg):
+    experiment_name: str = "a1_tt_real_v7"
+    run_name = "scratch_damiao_mit_30k_easy_30k_expand_40k_hold"
+    max_iterations = 100000
 
 
 @configclass
