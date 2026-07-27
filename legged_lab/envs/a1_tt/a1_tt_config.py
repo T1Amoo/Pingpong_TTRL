@@ -45,13 +45,13 @@ A1_REAL_TORQUE_LIMIT_NM = (
     8.0,   # r7
 )
 A1_DEPLOY_QDES_MAX_DELTA_PER_TICK = (
-    0.020,  # r1
-    0.024,  # r2
-    0.036,  # r3
-    0.032,  # r4
-    0.080,  # r5
-    0.064,  # r6
-    0.160,  # r7
+    0.05,  # r1
+    0.05,  # r2
+    0.05,  # r3
+    0.10,  # r4
+    0.10,  # r5
+    0.10,  # r6
+    0.10,  # r7
 )
 A1_DAMIAO_PEAK_TORQUE_NM = (
     27.0,  # r1
@@ -74,54 +74,54 @@ A1_DAMIAO_NO_LOAD_SPEED_RAD_S = (
 A1_REAL_FITTED_NODE_KP = (300.0, 300.0, 300.0, 120.0, 120.0, 120.0, 120.0)
 A1_REAL_FITTED_NODE_KD = (3.5, 3.5, 3.5, 1.0, 1.0, 1.0, 1.0)
 A1_REAL_FITTED_U_MEAN = (
-    0.5683523841788314,
-    -0.6892612481040505,
-    0.7196804487882763,
+    0.5681831170861339,
+    -0.6928691673392671,
+    0.7161501174932786,
     1.1293556605846493,
     -1.2407980020381792,
     0.030473524919208673,
     0.7714033875755423,
 )
 A1_REAL_FITTED_FN_HZ = (
-    4.974636627849852,
-    3.4161507054849762,
-    4.967641307013087,
+    6.661038037881058,
+    5.008208552071931,
+    6.984778406823649,
     4.341336283530257,
     15.30971682198707,
     8.223759975617558,
     18.61140865177779,
 )
 A1_REAL_FITTED_ZETA = (
-    0.4941346530768593,
-    0.3701409158816248,
-    0.47587293666159597,
+    0.16764263679500072,
+    0.1876649639165574,
+    0.28653637194779724,
     0.22981041868709606,
     0.7941795710126007,
     0.565832498155223,
     1.3208910165925782,
 )
 A1_REAL_FITTED_DELAY_S = (
-    0.001999999999997056,
-    0.005352908841469569,
-    0.008116843219232367,
+    0.03502917289780583,
+    0.032912611967056964,
+    0.02843821965716936,
     0.018006420135349824,
     0.017563104629677986,
     0.013993930820317215,
     0.014997124673895237,
 )
 A1_REAL_FITTED_GAIN = (
-    0.9898595325716487,
-    0.9609492557382776,
-    1.0032869565726132,
+    0.9832701113210972,
+    0.9741513252336587,
+    0.9991903500772663,
     1.0027218616565117,
     0.9998451719960618,
     1.0020846023179375,
     1.0005302866606762,
 )
 A1_REAL_FITTED_BIAS_RAD = (
-    -0.015168034936686725,
-    0.018117660993894003,
-    -0.001476035439111456,
+    -0.014673280544373668,
+    0.01278231705691013,
+    -0.0012048834601215974,
     -0.03152619331089834,
     -0.0003882480267090038,
     0.0010492923888134296,
@@ -554,8 +554,9 @@ class A1TableTennisTorqueOnlyEnvCfg(A1TableTennisDeployEnvCfg):
         super().__post_init__()
         self.scene.robot = A1_TT_REAL_TORQUE_ONLY_CFG
         # a1_tt_real_v7: raw q_des after deploy slew limiting goes directly to
-        # explicit MIT torque with 28/8 Nm limits. No fitted second-order response
-        # and no high-stiffness implicit tracking stage.
+        # explicit MIT torque with 28/8 Nm limits. The fitted second-order
+        # response lives inside the Damiao actuator here, so keep TTEnv's
+        # action-response filter disabled to avoid double filtering.
         self.robot.action_response_model_enable = False
         self.robot.action_response_u_mean = ()
         self.robot.action_response_fn_hz = ()
@@ -567,7 +568,9 @@ class A1TableTennisTorqueOnlyEnvCfg(A1TableTennisDeployEnvCfg):
         # double-clipping; score the true Damiao envelope explicitly here.
         self.reward.joint_computed_torque_limit.weight = -0.03
         self.reward.joint_computed_torque_limit.params["limit"] = A1_REAL_TORQUE_LIMIT_NM
-        # 100k schedule: 0..30k easy, 30k..60k expand, 60k..100k consolidate.
+        # Default 100k schedule: 0..30k easy, 30k..60k expand, 60k..100k consolidate.
+        # Override the curriculum phase with A1_REAL_V7_CURRICULUM_START_ITER and
+        # A1_REAL_V7_CURRICULUM_RAMP_ITERS for mid-run range-expansion resumes.
         # Hard range is wider than v6, but stays on the reachable forehand side.
         self.ball.serve_bounce_x_range = (-1.24, -0.96)
         self.ball.serve_bounce_x_range_hard = (-1.32, -0.88)
@@ -577,8 +580,28 @@ class A1TableTennisTorqueOnlyEnvCfg(A1TableTennisDeployEnvCfg):
         self.ball.serve_y_start = 0.04
         self.ball.serve_y_wide = 0.17
         self.ball.serve_curriculum_perf_gated = False
-        self.ball.serve_curriculum_phase_start = A1_REAL_V7_SERVE_CURRICULUM_START
-        self.ball.serve_curriculum_steps = A1_REAL_V7_SERVE_CURRICULUM_STEPS
+        curriculum_start_iter = _env_int("A1_REAL_V7_CURRICULUM_START_ITER")
+        curriculum_ramp_iters = _env_int("A1_REAL_V7_CURRICULUM_RAMP_ITERS")
+        self.ball.serve_curriculum_phase_start = (
+            A1_REAL_V7_SERVE_CURRICULUM_START
+            if curriculum_start_iter is None
+            else curriculum_start_iter * A1_TT_RAW_STEPS_PER_ITER
+        )
+        self.ball.serve_curriculum_steps = (
+            A1_REAL_V7_SERVE_CURRICULUM_STEPS
+            if curriculum_ramp_iters is None
+            else curriculum_ramp_iters * A1_TT_RAW_STEPS_PER_ITER
+        )
+        if curriculum_start_iter is not None:
+            print(
+                "[A1TTCfg] A1_REAL_V7_CURRICULUM_START_ITER: "
+                f"serve_curriculum_phase_start={self.ball.serve_curriculum_phase_start}"
+            )
+        if curriculum_ramp_iters is not None:
+            print(
+                "[A1TTCfg] A1_REAL_V7_CURRICULUM_RAMP_ITERS: "
+                f"serve_curriculum_steps={self.ball.serve_curriculum_steps}"
+            )
 
 
 @configclass

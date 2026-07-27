@@ -24,6 +24,9 @@ parser.add_argument("--trajectory-start-delay-s", type=float, default=0.0)
 parser.add_argument("--trajectory-loop", action=argparse.BooleanOptionalAction, default=False)
 parser.add_argument("--initial-state-csv", type=Path, default=None)
 parser.add_argument("--initial-state-time-s", type=float, default=None)
+parser.add_argument("--policy-obs-csv", type=Path, default=None, help="Use obs_N columns from this CSV as the actor input for policy inference.")
+parser.add_argument("--raw-action-csv", type=Path, default=None, help="Use raw_action_N columns from this CSV instead of running policy inference.")
+parser.add_argument("--trace-obs", action="store_true", help="Include the 195-D policy input as obs_N columns in the output CSV.")
 AppLauncher.add_app_launcher_args(parser)
 args, _ = parser.parse_known_args()
 args.headless = True
@@ -161,6 +164,48 @@ class BallTrajectoryReplay:
         return pos, vel, active
 
 
+class StepVectorReplay:
+    """Per-control-tick vector replay from a CSV with prefix_0 or prefix_1 columns."""
+
+    def __init__(self, path: Path, prefix: str, width: int | None = None):
+        self.path = Path(path)
+        if not self.path.exists():
+            raise FileNotFoundError(self.path)
+        with self.path.open(newline="") as f:
+            rows = list(csv.DictReader(f))
+        if not rows:
+            raise ValueError(f"{self.path} is empty")
+        names = rows[0].keys()
+        zero_cols = [f"{prefix}_{i}" for i in range(width or 0)]
+        one_cols = [f"{prefix}_{i}" for i in range(1, (width or 0) + 1)]
+        if width is None:
+            indexed: list[tuple[int, str]] = []
+            for name in names:
+                if not name.startswith(prefix + "_"):
+                    continue
+                suffix = name[len(prefix) + 1 :]
+                if suffix.isdigit():
+                    indexed.append((int(suffix), name))
+            if not indexed:
+                raise ValueError(f"{self.path} has no {prefix}_N columns")
+            indexed.sort()
+            self.columns = [name for _, name in indexed]
+        elif all(col in names for col in zero_cols):
+            self.columns = zero_cols
+        elif all(col in names for col in one_cols):
+            self.columns = one_cols
+        else:
+            raise ValueError(f"{self.path} missing {prefix} columns width={width}")
+        values = []
+        for row in rows:
+            values.append([float(row[col]) for col in self.columns])
+        self.values = np.asarray(values, dtype=np.float32)
+
+    def get(self, idx: int) -> np.ndarray:
+        idx = int(np.clip(idx, 0, len(self.values) - 1))
+        return self.values[idx].copy()
+
+
 def _trajectory_phase(step: int, dt: float, replay: BallTrajectoryReplay) -> tuple[float, int, bool]:
     phase = float(step) * float(dt) - float(args.trajectory_start_delay_s)
     if args.trajectory_loop:
@@ -280,6 +325,12 @@ def main() -> None:
 
     obs, _ = env.get_observations()
     replay = BallTrajectoryReplay(args.ball_trajectory_csv) if args.ball_trajectory_csv is not None else None
+    policy_obs_replay = StepVectorReplay(args.policy_obs_csv, "obs") if args.policy_obs_csv is not None else None
+    raw_action_replay = (
+        StepVectorReplay(args.raw_action_csv, "raw_action", width=7)
+        if args.raw_action_csv is not None
+        else None
+    )
     replay_meta: dict[str, float | str] = {}
     run_meta: dict[str, float | str] = {}
     if args.initial_state_csv is not None:
@@ -314,8 +365,23 @@ def main() -> None:
         for step in range(args.steps):
             if replay is not None:
                 obs, replay_meta = _apply_replay_to_env(env, replay, step)
-            action = policy(obs)
-            obs_in = obs[0].detach().cpu().numpy().copy()
+            external_obs_max_abs = float("nan")
+            if raw_action_replay is not None:
+                action_np = raw_action_replay.get(step)
+                action = torch.as_tensor(action_np, device=env.device, dtype=obs.dtype).reshape(1, -1)
+                obs_in = obs[0].detach().cpu().numpy().copy()
+                policy_input_source = "external_raw_action"
+            else:
+                if policy_obs_replay is not None:
+                    obs_np = policy_obs_replay.get(step)
+                    external_obs_max_abs = float(np.max(np.abs(obs_np)))
+                    obs_for_policy = torch.as_tensor(obs_np, device=env.device, dtype=obs.dtype).reshape(1, -1)
+                    policy_input_source = "external_policy_obs"
+                else:
+                    obs_for_policy = obs
+                    policy_input_source = "sim_policy_obs"
+                action = policy(obs_for_policy)
+                obs_in = obs_for_policy[0].detach().cpu().numpy().copy()
             obs, _, _, _ = env.step(action)
             if replay is not None:
                 obs, replay_meta = _apply_replay_to_env(env, replay, step + 1)
@@ -360,6 +426,9 @@ def main() -> None:
                 "step": float(step),
                 "source": "isaac_play_replay" if replay is not None else "isaac_play",
                 "obs_max_abs": float(np.max(np.abs(obs_in))),
+                "policy_input_source": policy_input_source,
+                "policy_input_idx": float(step),
+                "external_obs_max_abs": external_obs_max_abs,
                 "mask_invalid": float(bool(mask_invalid)),
                 "mask_before": float(bool(mask_before)),
                 "mask_after": float(bool(mask_after)),
@@ -387,6 +456,9 @@ def main() -> None:
             row.update(_row("ball_", _cpu_np(ball_pos)))
             row.update(_row("ball_pred_", _cpu_np(ball_pred)))
             row.update(_row("ball_future_", _cpu_np(ball_future)))
+            if args.trace_obs:
+                for i, value in enumerate(np.asarray(obs_in, dtype=np.float64).reshape(-1)):
+                    row[f"obs_{i}"] = float(value)
             row.update(_row("paddle_", _cpu_np(paddle_pos)))
             row.update(_row("paddle_touch_", _cpu_np(paddle_touch_local)))
             row.update(_row("paddle_vel_", _cpu_np(paddle_vel)))

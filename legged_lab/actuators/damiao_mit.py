@@ -203,12 +203,15 @@ class DamiaoMITActuator(ActuatorBase):
         self._command_velocity[env_ids] = 0.0
         self._command_acceleration[env_ids] = 0.0
         self._lead_command_position[env_ids] = joint_pos[env_ids]
-        self._response_state_position[env_ids] = joint_pos[env_ids] - self._response_u_mean[env_ids]
+        response_gain = torch.clamp(self._response_linear_gain[env_ids], min=1.0e-6)
+        response_state_position = (joint_pos[env_ids] - self._response_intercept[env_ids]) / response_gain
+        steady_raw_command = self._response_u_mean[env_ids] + response_state_position
+        self._response_state_position[env_ids] = response_state_position
         self._response_state_velocity[env_ids] = 0.0
         self._response_state_acceleration[env_ids] = 0.0
         self._response_command_position[env_ids] = joint_pos[env_ids]
         self._response_command_velocity[env_ids] = 0.0
-        self._response_delay_buffer[:, env_ids, :] = joint_pos[env_ids].unsqueeze(0)
+        self._response_delay_buffer[:, env_ids, :] = steady_raw_command.unsqueeze(0)
         self._delayed_command_position[env_ids] = joint_pos[env_ids]
         self._command_delay_buffer[:, env_ids, :] = joint_pos[env_ids].unsqueeze(0)
         self._feedback_velocity[env_ids] = joint_vel[env_ids]

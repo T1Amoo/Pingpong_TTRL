@@ -67,9 +67,65 @@ _DAMIAO_DELAYED_KD = {joint: 4.0 for joint in A1_RIGHT_ARM_JOINTS}
 _DAMIAO_DELAYED_EFFORT = dict(_OPENARM_LIKE_EFFORT)
 _DAMIAO_DELAYED_VEL = dict(_OPENARM_LIKE_VEL)
 
-# System-ID deployment gains, measured on the right arm 2026-07-14 at the FixStand pose.
+# System-ID deployment gains and second-order response at the FixStand pose.
+# r1-r3 were refit after the 2026-07-25 motor replacement; r4-r7 keep the
+# 2026-07-14 baseline.
 _REAL_FITTED_NODE_KP = {joint: (300.0 if idx < 3 else 120.0) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}
 _REAL_FITTED_NODE_KD = {joint: (3.5 if idx < 3 else 1.0) for idx, joint in enumerate(A1_RIGHT_ARM_JOINTS)}
+_REAL_FITTED_RESPONSE_U_MEAN = {
+    "r1": 0.5681831170861339,
+    "r2": -0.6928691673392671,
+    "r3": 0.7161501174932786,
+    "r4": 1.1293556605846493,
+    "r5": -1.2407980020381792,
+    "r6": 0.030473524919208673,
+    "r7": 0.7714033875755423,
+}
+_REAL_FITTED_RESPONSE_FN_HZ = {
+    "r1": 6.661038037881058,
+    "r2": 5.008208552071931,
+    "r3": 6.984778406823649,
+    "r4": 4.341336283530257,
+    "r5": 15.30971682198707,
+    "r6": 8.223759975617558,
+    "r7": 18.61140865177779,
+}
+_REAL_FITTED_RESPONSE_ZETA = {
+    "r1": 0.16764263679500072,
+    "r2": 0.1876649639165574,
+    "r3": 0.28653637194779724,
+    "r4": 0.22981041868709606,
+    "r5": 0.7941795710126007,
+    "r6": 0.565832498155223,
+    "r7": 1.3208910165925782,
+}
+_REAL_FITTED_RESPONSE_DELAY_S = {
+    "r1": 0.03502917289780583,
+    "r2": 0.032912611967056964,
+    "r3": 0.02843821965716936,
+    "r4": 0.018006420135349824,
+    "r5": 0.017563104629677986,
+    "r6": 0.013993930820317215,
+    "r7": 0.014997124673895237,
+}
+_REAL_FITTED_RESPONSE_GAIN = {
+    "r1": 0.9832701113210972,
+    "r2": 0.9741513252336587,
+    "r3": 0.9991903500772663,
+    "r4": 1.0027218616565117,
+    "r5": 0.9998451719960618,
+    "r6": 1.0020846023179375,
+    "r7": 1.0005302866606762,
+}
+_REAL_FITTED_RESPONSE_INTERCEPT = {
+    "r1": 0.5535098365417602,
+    "r2": -0.6800868502823569,
+    "r3": 0.714945234033157,
+    "r4": 1.097829467273751,
+    "r5": -1.2411862500648883,
+    "r6": 0.0315228173080221,
+    "r7": 0.771172217142933,
+}
 
 # The fitted motor response itself is applied in TTEnv. This solver-side implicit
 # actuator is intentionally much harder than the identified motor loop, so it
@@ -202,6 +258,14 @@ A1_TT_REAL_TORQUE_ONLY_CFG.actuators["right_arm"] = DamiaoMITActuatorCfg(
     command_delay_s=0.0,
     command_velocity_limit=_VEL,
     use_command_velocity=False,
+    response_model_enable=True,
+    response_fn_hz=_REAL_FITTED_RESPONSE_FN_HZ,
+    response_zeta=_REAL_FITTED_RESPONSE_ZETA,
+    response_delay_s=_REAL_FITTED_RESPONSE_DELAY_S,
+    response_linear_gain=_REAL_FITTED_RESPONSE_GAIN,
+    response_intercept=_REAL_FITTED_RESPONSE_INTERCEPT,
+    response_u_mean=_REAL_FITTED_RESPONSE_U_MEAN,
+    response_tau_zero_s=0.0,
     torque_time_constant=0.0,
     viscous_friction=0.0,
     coulomb_friction=0.0,
