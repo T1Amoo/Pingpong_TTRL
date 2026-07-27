@@ -1,0 +1,46 @@
+legged_lab/assets/a1/a1.py
+  s_80b59032956662::t_a025cbb900d25f 70-72,75-128,261-268
+legged_lab/actuators/damiao_mit.py
+  s_80b59032956662::t_00432e6190bcdd 206-209,214
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_2a60cd27fd1930::t_b19f79ec8850c7 48-54
+  s_80b59032956662::t_f0fca613503c6a 77-79,86-88,95-97,104-106,113-115,122-124
+  s_80b59032956662::t_3d91cfb97c8b30 557-559
+  s_8a461360ef487e::t_05ca161142f1b4 571-573,583-604
+legged_lab/scripts/record_a1_play_trace.py
+  s_2a60cd27fd1930::t_6b6820ed6e84e6 460-461
+  s_2a60cd27fd1930::t_9efdfec7cba068 29,459
+  s_2a60cd27fd1930::t_8dc7bbddf8dea0 27-28,167-208,328-333,368-384,429-431
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d015d483518a3fde466f1960b9ab855745246033",
+  "prompts": {},
+  "sessions": {
+    "s_2a60cd27fd1930": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa155-7444-7d52-998f-a29137cc11bb",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    },
+    "s_80b59032956662": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa23d-4819-7ef1-a191-b0f20f124ef5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    },
+    "s_8a461360ef487e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9334-529c-7380-a5fb-d7575fc0c5b2",
+        "model": "gpt-5.5"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
