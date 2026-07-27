@@ -301,6 +301,36 @@ class TTEnv(VecEnv):
                 device=self.device,
                 dtype=self.robot.data.default_joint_pos.dtype,
             ).unsqueeze(0)
+        self._action_target_lowpass_enable = bool(
+            getattr(self.cfg.robot, "action_target_lowpass_enable", False)
+        )
+        self._action_target_lowpass_tau = None
+        self._action_target_lowpass_vel = None
+        if self._action_target_lowpass_enable:
+            if self._action_target_rate_limit_enable:
+                raise ValueError(
+                    "action_target_lowpass_enable and action_target_rate_limit_enable are "
+                    "mutually exclusive; enable only one command-shaping path."
+                )
+            tau = tuple(getattr(self.cfg.robot, "action_target_lowpass_tau_s", ()) or ())
+            if len(tau) != self.num_actions:
+                raise ValueError(
+                    "robot.action_target_lowpass_tau_s must have one value per action "
+                    f"joint ({self.num_actions}), got {len(tau)}"
+                )
+            self._action_target_lowpass_tau = torch.tensor(
+                tau, device=self.device, dtype=self.robot.data.default_joint_pos.dtype
+            ).unsqueeze(0)
+            vel = tuple(getattr(self.cfg.robot, "action_target_lowpass_vel_limit", ()) or ())
+            if vel:
+                if len(vel) != self.num_actions:
+                    raise ValueError(
+                        "robot.action_target_lowpass_vel_limit must be empty or one value per "
+                        f"action joint ({self.num_actions}), got {len(vel)}"
+                    )
+                self._action_target_lowpass_vel = torch.tensor(
+                    vel, device=self.device, dtype=self.robot.data.default_joint_pos.dtype
+                ).unsqueeze(0)
         self._last_processed_actions = self.robot.data.default_joint_pos[:, self.action_joint_ids].clone()
         self._init_action_response_model()
 
@@ -1068,6 +1098,20 @@ class TTEnv(VecEnv):
         self._last_processed_actions.copy_(limited_actions)
         return limited_actions
 
+    def _apply_action_target_lowpass(self, processed_actions: torch.Tensor) -> torch.Tensor:
+        if self._action_target_lowpass_tau is None:
+            return processed_actions
+        # First-order low-pass matching the deploy bridge servo_filter:
+        # dq = (target - q_cmd) / tau, clamped to vel_limit, integrated at the policy step_dt.
+        desired_dq = (processed_actions - self._last_processed_actions) / self._action_target_lowpass_tau
+        if self._action_target_lowpass_vel is not None:
+            desired_dq = torch.clamp(
+                desired_dq, -self._action_target_lowpass_vel, self._action_target_lowpass_vel
+            )
+        filtered = self._last_processed_actions + desired_dq * self.step_dt
+        self._last_processed_actions.copy_(filtered)
+        return filtered
+
     def _init_action_response_model(self):
         self._action_response_model_enable = bool(
             getattr(self.cfg.robot, "action_response_model_enable", False)
@@ -1175,6 +1219,7 @@ class TTEnv(VecEnv):
         cliped_actions = torch.clip(delayed_actions, -self.clip_actions, self.clip_actions).to(self.device)
         processed_actions = cliped_actions * self.action_scale + self.robot.data.default_joint_pos[:, self.action_joint_ids]
         processed_actions = self._apply_action_target_rate_limit(processed_actions)
+        processed_actions = self._apply_action_target_lowpass(processed_actions)
         self.processed_actions = processed_actions   # commanded joint target (for joint_pos_target_limits reward)
 
         for _ in range(self.cfg.sim.decimation):

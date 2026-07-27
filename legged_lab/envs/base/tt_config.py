@@ -82,6 +82,16 @@ class RobotCfg:
     # the actuator. Units are rad/control-step in action joint order.
     action_target_rate_limit_enable: bool = False
     action_target_max_delta_per_tick: tuple = ()
+    # Optional deploy-style first-order low-pass on processed q_des (matches the deploy
+    # bridge servo_filter: dq=(target-q_cmd)/tau clamped to vel_limit, integrated at step_dt).
+    # Mutually exclusive with the rate_limit above. tau in seconds, vel_limit in rad/s,
+    # action joint order. Fitted 2026-07-27 from the identified per-joint resonance
+    # (tau >= 1/(4*pi*fn*zeta)) to suppress the underdamped 4-7 Hz proximal ringing that the
+    # bang-bang rate_limit excited on hardware; matching the same filter at deploy removes the
+    # train/deploy command-shaping mismatch.
+    action_target_lowpass_enable: bool = False
+    action_target_lowpass_tau_s: tuple = ()
+    action_target_lowpass_vel_limit: tuple = ()
     # Optional identified motor response model. This filters the processed q_des at
     # physics rate before the target is sent to the actuator, so an ideal high-bandwidth
     # actuator can execute the measured closed-loop motor response instead of acting as

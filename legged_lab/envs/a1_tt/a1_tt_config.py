@@ -140,6 +140,16 @@ A1_REAL_DEPLOY_MAX_DELTA_PER_TRAIN_TICK = (
     0.10,  # r7
 )
 
+# v8 (2026-07-27): first-order low-pass replacing the bang-bang rate_limit. tau fitted from
+# the identified per-joint resonance (tau >= 1/(4*pi*fn*zeta)); the most underdamped proximal
+# joints (r1/r2/r4, fn~4-7 Hz, zeta~0.17-0.23) need ~0.085, so uniform 0.10 covers them with
+# margin while roughly halving the over-smoothing of the old uniform tau=0.25 deploy filter.
+# vel_limit matches the deploy servo_velocity_limit. r7 kept at 0.10 (conservatively) because
+# its fitted model reads overdamped yet it is the empirically jittery joint -> refine from the
+# planned motor-current measurement.
+A1_REAL_DEPLOY_LOWPASS_TAU_S = (0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10)
+A1_REAL_DEPLOY_LOWPASS_VEL_LIMIT = (1.0, 1.2, 1.8, 1.6, 4.0, 3.2, 8.0)
+
 
 def _env_float(name: str):
     value = os.environ.get(name)
@@ -605,6 +615,22 @@ class A1TableTennisTorqueOnlyEnvCfg(A1TableTennisDeployEnvCfg):
 
 
 @configclass
+class A1TableTennisTorqueLowpassEnvCfg(A1TableTennisTorqueOnlyEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        # a1_tt_real_v8: same DamiaoMIT actuator + serve curriculum as v7, but the command
+        # shaping switches from the bang-bang rate_limit (which excited the identified
+        # underdamped 4-7 Hz proximal resonance -> hardware jitter) to the first-order low-pass
+        # that deployment already uses. Training and deploy now share the command shaping, so the
+        # policy learns against the non-ringing command instead of relying on sim's harmless ring.
+        self.robot.action_target_rate_limit_enable = False
+        self.robot.action_target_max_delta_per_tick = ()
+        self.robot.action_target_lowpass_enable = True
+        self.robot.action_target_lowpass_tau_s = A1_REAL_DEPLOY_LOWPASS_TAU_S
+        self.robot.action_target_lowpass_vel_limit = A1_REAL_DEPLOY_LOWPASS_VEL_LIMIT
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -706,6 +732,13 @@ class A1TableTennisDeployAgentCfg(A1TableTennisAgentCfg):
 class A1TableTennisTorqueOnlyAgentCfg(A1TableTennisDeployAgentCfg):
     experiment_name: str = "a1_tt_real_v7"
     run_name = "scratch_damiao_mit_30k_easy_30k_expand_40k_hold"
+    max_iterations = 100000
+
+
+@configclass
+class A1TableTennisTorqueLowpassAgentCfg(A1TableTennisTorqueOnlyAgentCfg):
+    experiment_name: str = "a1_tt_real_v8"
+    run_name = "scratch_lowpass_tau0p10"
     max_iterations = 100000
 
 
