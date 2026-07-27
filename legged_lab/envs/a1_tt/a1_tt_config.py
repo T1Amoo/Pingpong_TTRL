@@ -644,6 +644,12 @@ class A1TableTennisTorqueLowpassEnvCfg(A1TableTennisTorqueOnlyEnvCfg):
         self.scene.robot = robot_cfg
         self.robot.home_y = 0.0
         self.ball.serve_y_center = -0.59   # v7 0.17 shifted by -0.76 (table half-width 0.7625: hard spread -0.59+-0.17 stays on-table)
+        # hit_target_y_range clamps ball_future_pose.y (the hit target the actor/critic see and the
+        # plausibility gate validates). v7 used (0.0, 0.55) for the robot at y=0.76; the y=0 recenter
+        # must shift it by -0.76 too, else the target y is clamped to the old +y band (~0) while the
+        # paddle/gate sit at home_y+paddle_offset=-0.66 -> pred_usable never true, policy chases a
+        # target ~0.6 m off the ball. Shift (0.0,0.55) -> (-0.76,-0.21).
+        self.robot.hit_target_y_range = (-0.76, -0.21)
 
 
 @configclass
