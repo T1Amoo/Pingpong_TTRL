@@ -2,6 +2,7 @@
 # All rights reserved.
 # Licensed under BSD-3-Clause.
 
+import copy
 import os
 
 from isaaclab.managers import RewardTermCfg as RewTerm
@@ -10,6 +11,7 @@ from isaaclab.utils import configclass
 import legged_lab.mdp as mdp
 from legged_lab.assets.a1.a1 import (
     A1_RIGHT_ARM_JOINTS,
+    A1_INIT_Z,
     A1_TT_CFG,
     A1_TT_DAMIAO_DELAYED_CFG,
     A1_TT_OPENARM_CFG,
@@ -630,6 +632,18 @@ class A1TableTennisTorqueLowpassEnvCfg(A1TableTennisTorqueOnlyEnvCfg):
         self.robot.action_target_lowpass_enable = True
         self.robot.action_target_lowpass_tau_s = A1_REAL_DEPLOY_LOWPASS_TAU_S
         self.robot.action_target_lowpass_vel_limit = A1_REAL_DEPLOY_LOWPASS_VEL_LIMIT
+        # v8 also re-centers the robot to table-relative y=0 (the real robot sits on the table
+        # centerline). v7 trained at y=0.76 and deployment shifted every ball by +0.76 to
+        # compensate; moving the robot to y=0 removes that deploy-side offset (deploy ball bridge
+        # origin_in_training_world y: 0.76 -> 0.0). Relative geometry is preserved -- base, home_y
+        # and the serve bounce center all shift by -0.76, so the forehand paddle
+        # (home_y + paddle_y_offset = 0 - 0.66 = -0.66) and the ball still meet the same way.
+        # deepcopy so v7 (which shares A1_TT_REAL_TORQUE_ONLY_CFG) keeps its y=0.76 spawn.
+        robot_cfg = copy.deepcopy(A1_TT_REAL_TORQUE_ONLY_CFG)
+        robot_cfg.init_state.pos = (-1.8, 0.0, A1_INIT_Z)
+        self.scene.robot = robot_cfg
+        self.robot.home_y = 0.0
+        self.ball.serve_y_center = -0.59   # v7 0.17 shifted by -0.76 (table half-width 0.7625: hard spread -0.59+-0.17 stays on-table)
 
 
 @configclass
