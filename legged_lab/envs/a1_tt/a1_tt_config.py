@@ -140,14 +140,16 @@ A1_REAL_DEPLOY_MAX_DELTA_PER_TRAIN_TICK = (
     0.10,  # r7
 )
 
-# v8 (2026-07-27): first-order low-pass replacing the bang-bang rate_limit. tau fitted from
-# the identified per-joint resonance (tau >= 1/(4*pi*fn*zeta)); the most underdamped proximal
-# joints (r1/r2/r4, fn~4-7 Hz, zeta~0.17-0.23) need ~0.085, so uniform 0.10 covers them with
-# margin while roughly halving the over-smoothing of the old uniform tau=0.25 deploy filter.
-# vel_limit matches the deploy servo_velocity_limit. r7 kept at 0.10 (conservatively) because
-# its fitted model reads overdamped yet it is the empirically jittery joint -> refine from the
-# planned motor-current measurement.
-A1_REAL_DEPLOY_LOWPASS_TAU_S = (0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10)
+# v8 (2026-07-27): first-order low-pass replacing the bang-bang rate_limit. Per-joint tau, NOT
+# uniform: tau >= 1/(4*pi*fn*zeta) means only the underdamped proximal joints (r1/r2/r4,
+# fn~4-7 Hz, zeta~0.17-0.23) need large tau (~0.08-0.10) to suppress their resonance; the
+# well-damped wrist/forearm (r5/r6 zeta 0.57-0.79, r7 zeta 1.32) barely ring, so a uniform 0.10
+# needlessly throttled them (offline replay: r7 hit-velocity dropped ~4x vs tau=0.05). Distal
+# joints therefore run at 0.05 to keep the paddle snap. r7 is held at 0.10 (conservative) rather
+# than its tiny model-implied tau because it is the empirically jittery joint whose buzz lives
+# ABOVE the fitted 0.1-2 Hz identification band -> refine from the planned motor-current data.
+# vel_limit matches the deploy servo_velocity_limit.
+A1_REAL_DEPLOY_LOWPASS_TAU_S = (0.10, 0.10, 0.08, 0.10, 0.05, 0.05, 0.10)
 A1_REAL_DEPLOY_LOWPASS_VEL_LIMIT = (1.0, 1.2, 1.8, 1.6, 4.0, 3.2, 8.0)
 
 
