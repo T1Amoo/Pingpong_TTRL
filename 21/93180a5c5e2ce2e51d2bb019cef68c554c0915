@@ -1,0 +1,19 @@
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_88e8ffb3462b74::t_2e53fcd3635ea0 143-152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "2193180a5c5e2ce2e51d2bb019cef68c554c0915",
+  "prompts": {},
+  "sessions": {
+    "s_88e8ffb3462b74": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "46353d23-4af8-41a7-8834-f85b3864fa5c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
