@@ -1,0 +1,32 @@
+legged_lab/envs/base/tt_env.py
+  s_88e8ffb3462b74::t_3dc0511c5c5f9e 304-333
+  s_88e8ffb3462b74::t_dbc7794d815761 1101-1114
+  s_88e8ffb3462b74::t_5df2bd2c6e2910 1222
+legged_lab/envs/__init__.py
+  s_88e8ffb3462b74::t_a77eaf822461ce 46-47
+  s_88e8ffb3462b74::t_36a21ca0dbe141 67
+legged_lab/envs/base/tt_config.py
+  s_88e8ffb3462b74::t_4eb45c223a997a 85-94
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_88e8ffb3462b74::t_05138c31558119 618-632
+  s_88e8ffb3462b74::t_847384692a7791 739-744
+  s_88e8ffb3462b74::t_860db227d78ecb 143-152
+  s_88e8ffb3462b74::t_8beb9f13fa56c0 617
+  s_88e8ffb3462b74::t_ea53227a7c3693 738
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a786b4265701b45a551198851bf606cc9c5814f5",
+  "prompts": {},
+  "sessions": {
+    "s_88e8ffb3462b74": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "46353d23-4af8-41a7-8834-f85b3864fa5c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
