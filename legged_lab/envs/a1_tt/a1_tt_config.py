@@ -689,6 +689,35 @@ class A1TableTennisV9EnvCfg(A1TableTennisTorqueLowpassEnvCfg):
 
 
 @configclass
+class A1TableTennisV10EnvCfg(A1TableTennisV9EnvCfg):
+    # v10 (2026-07-28): (a) new default/ready pose, (b) delaymotor(DamiaoMIT) response params
+    #   swapped to the 2026-07-28 re-fit values (<=2Hz chirp; non-unique, may revert if v10 worse),
+    #   (c) hit-plane/target/serve geometry rebuilt for the new paddle ready position.
+    #   FK: paddle world (-1.383,-0.725,1.278) -> (-1.578,-0.849,1.296), Δ=(-0.194,-0.124,+0.018).
+    def __post_init__(self):
+        super().__post_init__()  # V1_3 + v9 anti-wrist-twist rewards + lowpass + y=0 recenter
+        # (a) new default/ready pose
+        NEW_POSE = {"r1": -0.505, "r2": -1.13, "r3": 1.13, "r4": 1.02,
+                    "r5": -0.7, "r6": 0.0, "r7": -1.3}
+        self.scene.robot.init_state.joint_pos.update(NEW_POSE)
+        # (b) KEEP official DamiaoMIT response dynamics (validated ~7.5mrad). This-session re-fit
+        #     is non-unique/degenerate (fn/zeta/delay trade off under <=2Hz data, no gain), so we
+        #     do NOT swap fn/zeta/delay/gain. Only re-anchor the operating point to the new pose
+        #     (u_mean/intercept were the OLD ready pose) so the response model holds the new pose.
+        act = self.scene.robot.actuators["right_arm"]
+        act.response_u_mean = dict(NEW_POSE)
+        act.response_intercept = dict(NEW_POSE)
+        # (c) rebuilt hit geometry: paddle x ~unchanged (new -1.578 ~ old hit_plane -1.60),
+        #     y shifts -0.12, z +0.02. Serve x/vz unchanged (hit-plane x barely moved).
+        self.robot.hit_plane_x = -1.58
+        self.robot.hit_target_x_range = (-1.58, -1.58)
+        self.robot.hit_target_y_range = (-0.88, -0.33)
+        self.robot.hit_target_z_range = (0.92, 1.27)
+        self.robot.paddle_y_offset = -0.72
+        self.ball.serve_y_center = -0.71
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -810,6 +839,13 @@ class A1TableTennisV9AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
     experiment_name: str = "a1_tt_real_v9"
     run_name = "scratch_v13_rewardfix"
     max_iterations = 100000
+
+
+@configclass
+class A1TableTennisV10AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
+    experiment_name: str = "a1_tt_real_v10"
+    run_name = "scratch_newpose_officialdamiao_5k_10k_5k"
+    max_iterations = 20000
 
 
 @configclass
