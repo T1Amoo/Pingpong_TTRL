@@ -1,0 +1,34 @@
+legged_lab/assets/a1/a1.py
+  s_88e8ffb3462b74::t_271d263a04f1e6 16-18
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_88e8ffb3462b74::t_653fc3e783c3bc 657-666
+  s_88e8ffb3462b74::t_4b20a6cb2a2b03 667-690
+  s_88e8ffb3462b74::t_01804c6003dd94 809-814
+  s_88e8ffb3462b74::t_e68802007dcb82 15
+  s_88e8ffb3462b74::t_e1fcc119b10678 656,803-808
+legged_lab/assets/a1/X1_URDF_V1_3/urdf/X1_URDF_V1_3.urdf
+  s_88e8ffb3462b74::t_b3fb7d79b56384 1-1726
+legged_lab/assets/a1/X1_URDF_V1_3/urdf/X1_URDF_V1_3.csv
+  s_88e8ffb3462b74::t_b3fb7d79b56384 1-31
+legged_lab/mdp/rewards.py
+  s_88e8ffb3462b74::t_090d9acf94a8c8 161-175
+legged_lab/envs/__init__.py
+  s_88e8ffb3462b74::t_5618f481a64dad 50-51,73
+  s_88e8ffb3462b74::t_de7179854ff828 48-49,72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "8e9feea505d6cddb90c65454f978c564a7b6d675",
+  "prompts": {},
+  "sessions": {
+    "s_88e8ffb3462b74": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "46353d23-4af8-41a7-8834-f85b3864fa5c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
