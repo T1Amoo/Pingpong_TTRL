@@ -158,6 +158,21 @@ def action_l2(env: BaseEnv) -> torch.Tensor:
     return torch.sum(torch.square(env.action_buffer._circular_buffer.buffer[:, -1, :]), dim=1)
 
 
+def action_l2_weighted(env: BaseEnv, weights) -> torch.Tensor:
+    """Per-joint-weighted action_l2. v9: make the torque-limited proximal joints CHEAP (small
+    weight) and the low-inertia wrist r7 EXPENSIVE (large weight), so the policy stops
+    farming reward by twisting the paddle instead of moving the arm to the ball."""
+    w = torch.as_tensor(weights, device=env.device, dtype=torch.float)
+    return torch.sum(w * torch.square(env.action_buffer._circular_buffer.buffer[:, -1, :]), dim=1)
+
+
+def action_rate_l2_weighted(env: BaseEnv, weights) -> torch.Tensor:
+    """Per-joint-weighted action_rate_l2 (see action_l2_weighted)."""
+    w = torch.as_tensor(weights, device=env.device, dtype=torch.float)
+    d = env.action_buffer._circular_buffer.buffer[:, -1, :] - env.action_buffer._circular_buffer.buffer[:, -2, :]
+    return torch.sum(w * torch.square(d), dim=1)
+
+
 def action_target_slew_limit_l2(env: BaseEnv) -> torch.Tensor:
     if not hasattr(env, "action_target_slew_excess_l2"):
         return torch.zeros(env.num_envs, device=env.device)

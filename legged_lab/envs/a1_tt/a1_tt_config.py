@@ -12,6 +12,7 @@ import legged_lab.mdp as mdp
 from legged_lab.assets.a1.a1 import (
     A1_RIGHT_ARM_JOINTS,
     A1_INIT_Z,
+    A1_USD_PATH_V1_3,
     A1_TT_CFG,
     A1_TT_DAMIAO_DELAYED_CFG,
     A1_TT_OPENARM_CFG,
@@ -653,6 +654,41 @@ class A1TableTennisTorqueLowpassEnvCfg(A1TableTennisTorqueOnlyEnvCfg):
 
 
 @configclass
+class A1TableTennisV13TestEnvCfg(A1TableTennisTorqueLowpassEnvCfg):
+    # TEMP (2026-07-28): run the v8 policy on the V1_3 (heavier arm + 0.15 paddle) USD for a
+    # visual test only. Not for training, not committed. Swaps just the robot USD; everything
+    # else (actuator, lowpass, y=0 geometry, ball/table) stays as v8.
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.robot.spawn.usd_path = "/home/woan/下载/X1_URDF_V1_3_test/X1_URDF_V1_3_paddle.usd"
+
+
+@configclass
+class A1TableTennisV9EnvCfg(A1TableTennisTorqueLowpassEnvCfg):
+    # v9 (2026-07-28): train on the V1_3 CAD (arm ~6% heavier, matches latest export) + reward
+    # changes to stop the v8 "twist the paddle to graze the ball instead of moving the arm" habit.
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.robot.spawn.usd_path = A1_USD_PATH_V1_3
+        # (1) reward contact QUALITY not raw contact (raw contact is farmable by wrist-angling the
+        #     blade into a passing ball); tighten the sweet radius so edge grazes score low.
+        self.reward.reward_contact.weight = 60.0
+        self.reward.reward_sweet_contact.weight = 100.0
+        self.ball.sweet_contact_radius = 0.05
+        # (2) sharper paddle-POSITION tracking. r7 roll cannot move the paddle position (COM on
+        #     axis), so a strong/sharp position reward can only be satisfied by moving the arm.
+        self.reward.reward_future_dis_ee.weight = 3.5
+        self.reward.reward_future_dis_ee.params["std_ee"] = 0.35
+        # (3)+(4) per-joint action penalty: cheap torque-limited proximal (needs to move), expensive
+        #     low-inertia wrist r7 (was farming twist). weight (rate/l2) is modulated per joint.
+        _AW = (0.5, 0.5, 0.5, 0.7, 1.0, 1.0, 2.0)
+        self.reward.action_l2.func = mdp.action_l2_weighted
+        self.reward.action_l2.params = {"weights": _AW}
+        self.reward.action_rate_l2.func = mdp.action_rate_l2_weighted
+        self.reward.action_rate_l2.params = {"weights": _AW}
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -761,6 +797,18 @@ class A1TableTennisTorqueOnlyAgentCfg(A1TableTennisDeployAgentCfg):
 class A1TableTennisTorqueLowpassAgentCfg(A1TableTennisTorqueOnlyAgentCfg):
     experiment_name: str = "a1_tt_real_v8"
     run_name = "scratch_lowpass_tau0p10"
+    max_iterations = 100000
+
+
+@configclass
+class A1TableTennisV13TestAgentCfg(A1TableTennisTorqueLowpassAgentCfg):
+    experiment_name: str = "a1_tt_real_v8"  # find logs/a1_tt_real_v8/pulled_14000/model_14000.pt
+
+
+@configclass
+class A1TableTennisV9AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
+    experiment_name: str = "a1_tt_real_v9"
+    run_name = "scratch_v13_rewardfix"
     max_iterations = 100000
 
 
