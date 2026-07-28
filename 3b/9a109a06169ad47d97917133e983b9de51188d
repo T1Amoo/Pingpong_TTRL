@@ -1,0 +1,19 @@
+legged_lab/assets/a1/X1_URDF_V1_3/config.yaml
+  s_88e8ffb3462b74::t_ffa571656b11ff 1-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "3b9a109a06169ad47d97917133e983b9de51188d",
+  "prompts": {},
+  "sessions": {
+    "s_88e8ffb3462b74": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "46353d23-4af8-41a7-8834-f85b3864fa5c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
