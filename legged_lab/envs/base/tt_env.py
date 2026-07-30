@@ -1620,6 +1620,40 @@ class TTEnv(VecEnv):
         vx = self.ball_linvel[:, 0]
         vy = self.ball_linvel[:, 1]
 
+        # --- serve-arrival probe (guarded, OFF by default) --------------------------------
+        # Set TT_SERVE_PROBE=1 to histogram the PHYSICAL ball (y,z) at the instant it crosses
+        # the env-local hit plane x=hit_plane_x while flying toward the robot (vx<0). This is the
+        # ground truth used to verify a served ball still arrives inside the hit window after a
+        # geometry change (e.g. v12 moved hit_plane -1.58 -> -1.62). Reads real physics, so it
+        # does NOT depend on the analytic/clamped ball_future_pose. Prints running p5/50/95.
+        if os.environ.get("TT_SERVE_PROBE"):
+            _hxp = self.cfg.robot.hit_plane_x
+            _prev = getattr(self, "_probe_prev_x", None)
+            if _prev is None or _prev.numel() != x.numel():
+                self._probe_prev_x = x.detach().clone()
+                self._probe_y, self._probe_z, self._probe_last = [], [], 0
+            else:
+                _crossed = (_prev > _hxp) & (x <= _hxp) & (vx < -0.5)
+                if _crossed.any():
+                    self._probe_y.append(y[_crossed].detach().cpu())
+                    self._probe_z.append(z[_crossed].detach().cpu())
+                self._probe_prev_x = x.detach().clone()
+                _tot = sum(t.numel() for t in self._probe_y)
+                if _tot - self._probe_last >= 2000 and _tot > 0:
+                    self._probe_last = _tot
+                    _ally = torch.cat(self._probe_y); _allz = torch.cat(self._probe_z)
+                    _qs = torch.tensor([0.05, 0.5, 0.95])
+                    _yq = torch.quantile(_ally, _qs); _zq = torch.quantile(_allz, _qs)
+                    _tyl, _tyh = self.cfg.robot.hit_target_y_range
+                    _tzl, _tzh = self.cfg.robot.hit_target_z_range
+                    print(
+                        f"[TT_SERVE_PROBE] n={_tot} @x={_hxp:.3f} | "
+                        f"y p5/50/95={_yq[0]:.3f}/{_yq[1]:.3f}/{_yq[2]:.3f} win[{_tyl},{_tyh}] | "
+                        f"z p5/50/95={_zq[0]:.3f}/{_zq[1]:.3f}/{_zq[2]:.3f} win[{_tzl},{_tzh}]",
+                        flush=True,
+                    )
+        # ----------------------------------------------------------------------------------
+
         g=9.81
         body_height = self.cfg.robot.hit_body_height
         vel_max = self.cfg.robot.robot_vel_max

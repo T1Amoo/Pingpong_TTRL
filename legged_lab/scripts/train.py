@@ -26,7 +26,8 @@ parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
-parser.add_argument("--predictor", action="store_true", help="Use predictor-augmented runner and train auxiliary predictor")
+parser.add_argument("--predictor", action="store_true", default=True, help="Use predictor-augmented runner and train auxiliary predictor (DEFAULT ON as of 2026-07-30; use --no-predictor to disable)")
+parser.add_argument("--no-predictor", action="store_false", dest="predictor", help="Disable the predictor-augmented runner (opt out of the 2026-07-30 default)")
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)

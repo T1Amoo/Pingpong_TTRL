@@ -777,6 +777,36 @@ class A1TableTennisV11EnvCfg(A1TableTennisV10EnvCfg):
 
 
 @configclass
+class A1TableTennisV12EnvCfg(A1TableTennisV11EnvCfg):
+    # v12 (2026-07-30): "forward-reach" hit geometry. In v10/v11 the ready forehand paddle sat
+    #   essentially ON the hit plane (FK: ready touch_point x=-1.578 vs hit_plane_x=-1.58, Δ=1.5mm)
+    #   -> the paddle just waits in place, no active forward swing is trained. To force an active
+    #   forward-reach hit, move the hit plane ~0.16m IN FRONT of the ready blade (toward the net,
+    #   +x). The blade is already ~above the near table edge, so instead of pushing the hit plane
+    #   further forward (table-collision risk) we move the BASE BACK 0.20m and push the hit plane
+    #   forward 0.04m; net push = ready->hit ≈ 0.16m, with 0.25m clearance to the near edge.
+    #
+    #   Geometry (arm pose fixed -> ready blade tracks base: ready_x ≈ base_x + 0.222):
+    #     base x  -1.8 -> -2.0     (world/env-local; joint pose UNCHANGED, so u_mean/intercept stay)
+    #     hit_plane_x  -1.58 -> -1.62
+    #     ready blade x  -1.578 -> ≈ -1.778   (FK)
+    #     push (hit - ready)  ~0 -> +0.158 ≈ 0.16m ✓
+    #     hit_plane to near edge (x=-1.37)  0.21m -> 0.25m ✓
+    #   base=-2.0 matches the validated G1 stance (g1.py:40 "stance >=60cm from table").
+    #   y/z windows unchanged (x-shift does not move them). Serve stays v11 initially; the ball
+    #   now travels 4cm further (-x) while descending -> verified in-window by the TT_SERVE_PROBE
+    #   physical crossing histogram (bump serve_bounce_vz only if z drops below the window).
+    #   No new push/wait rewards: forward-reach is driven by geometry + reward_future_dis_ee
+    #   (pulls blade to the clamped hit target) + reward_swing_through (0.25); adding reward
+    #   shaping risks critic divergence (g1_tt_critic_divergence_termination_penalty_2026-06-30).
+    def __post_init__(self):
+        super().__post_init__()  # V11: forehand pose + 0729 fit + lowpass + ready-idle + y=0.76
+        self.scene.robot.init_state.pos = (-2.0, 0.76, A1_INIT_Z)
+        self.robot.hit_plane_x = -1.62
+        self.robot.hit_target_x_range = (-1.62, -1.62)
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -911,6 +941,13 @@ class A1TableTennisV10AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
 class A1TableTennisV11AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
     experiment_name: str = "a1_tt_real_v11"
     run_name = "scratch_fit0729_readyidle_y076_10k_10k_10k"
+    max_iterations = 30000
+
+
+@configclass
+class A1TableTennisV12AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
+    experiment_name: str = "a1_tt_real_v12"
+    run_name = "scratch_forwardhit_base-2.0_hitplane-1.62_predictor"
     max_iterations = 30000
 
 
