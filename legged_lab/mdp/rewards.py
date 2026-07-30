@@ -392,6 +392,42 @@ def joint_deviation_l1_idle(env: TTEnv, asset_cfg: SceneEntityCfg = SceneEntityC
     return torch.where(env.mask_invalid, dev, torch.zeros_like(dev))
 
 
+def reward_arm_ready_idle(
+    env: TTEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    k: float = 4.0,
+) -> torch.Tensor:
+    """Dense POSITIVE bonus for holding the arm at its READY (default) pose whenever there is
+    no playable ball (mask_invalid) DURING NORMAL PLAY -- NOT idle injection (no_ball_period_s
+    stays 0). Fills the gap left by reward_future_body_target being zeroed under mask_invalid:
+    between rallies / when the ball is not hittable nothing pulled the arm to a stable ready
+    pose, so the policy extrapolated to garbage on the no-ball sentinel obs at deploy (v10:
+    idle |action| ~= 4.7, r1/r3/r7 driven ~1.2-1.6 rad off home). exp(-k*||q_arm-default||^2)
+    gives a strong bounded pull to ready. Returns 0 whenever a ball IS playable
+    (mask_invalid False during the hit) so it NEVER competes with the swing -> avoids the
+    "add idle -> hitting goes soft" failure the plain every-step deviation term caused.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    q = asset.data.joint_pos[:, asset_cfg.joint_ids]
+    ready = asset.data.default_joint_pos[:, asset_cfg.joint_ids]
+    err = torch.sum(torch.square(q - ready), dim=-1)
+    return env.mask_invalid.float() * torch.exp(-k * err)
+
+
+def penalty_arm_vel_idle(
+    env: TTEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize arm joint velocity when there is no playable ball (mask_invalid): kill the
+    no-ball waving/flailing directly (velocity/settle term complementing the position pull of
+    reward_arm_ready_idle). Gated OFF while a ball is playable so it never damps the swing.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    dq = asset.data.joint_vel[:, asset_cfg.joint_ids]
+    vel = torch.sum(torch.square(dq), dim=-1)
+    return torch.where(env.mask_invalid, vel, torch.zeros_like(vel))
+
+
 def body_orientation_l2(env: BaseEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     body_orientation = math_utils.quat_apply_inverse(

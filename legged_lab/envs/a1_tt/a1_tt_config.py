@@ -248,7 +248,7 @@ class A1TableTennisRewardCfg(RewardCfg):
     joint_pos_target_limits = RewTerm(func=mdp.joint_pos_target_limits, weight=-0.5)   # v12: raise from -0.1; still below G1's -1.0 after earlier critic instability.
     joint_deviation_right_arm = RewTerm(
         func=mdp.joint_deviation_l1_idle,   # v5: idle-only (no-ball); was joint_deviation_l1 every step -> fought the swing
-        weight=-0.05,
+        weight=-0.1,                        # v11: -0.05 -> -0.1 (still mask_invalid-gated, pairs with reward_arm_ready_idle)
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=A1_ARM_JOINTS)},
     )
     # --- don't crash into table ---
@@ -269,6 +269,20 @@ class A1TableTennisRewardCfg(RewardCfg):
     # --- ready-pose regularization when no playable ball ---
     # reward_idle_pose is G1-specific (hardcoded 23-joint ready vector); drop for A1.
     reward_idle_stand = RewTerm(func=mdp.reward_idle_stand, weight=0.5)
+    # v11: mask_invalid-gated ready-pose shaping (NOT idle injection; no_ball_period_s stays 0).
+    # Strengthens the too-weak joint_deviation_l1_idle (-0.05) that let v10 flail when no ball
+    # (idle |action|~4.7, r1/r3/r7 driven 1.2-1.6 rad off home). exp ready bonus + arm-velocity
+    # penalty, both ZERO while a ball is playable -> never competes with the swing.
+    reward_arm_ready_idle = RewTerm(
+        func=mdp.reward_arm_ready_idle,
+        weight=2.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=A1_ARM_JOINTS), "k": 4.0},
+    )
+    penalty_arm_vel_idle = RewTerm(
+        func=mdp.penalty_arm_vel_idle,
+        weight=-0.05,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=A1_ARM_JOINTS)},
+    )
     # --- ball / hitting core ---
     # v4: kill the "hover in the ball's path and farm positioning/orientation" exploit seen in play
     # (v3 hit ~10%, returned 0%). paddle_face + future_dis_ee are dense and DON'T need contact, so a
@@ -718,6 +732,51 @@ class A1TableTennisV10EnvCfg(A1TableTennisV9EnvCfg):
 
 
 @configclass
+class A1TableTennisV11EnvCfg(A1TableTennisV10EnvCfg):
+    # v11 (2026-07-30): inherits V10 (forehand ready pose + rebuilt hit geometry + y=0), and
+    #   (a) swaps DamiaoMIT response dynamics to the 2026-07-29 re-fit (0.1-6Hz chirp + 0.4Hz
+    #       step, measured AT the forehand ready pose). Unlike the <=2Hz 0728 fit, this has
+    #       chirp+step so near-end fn/zeta/delay/gain are well-determined; the (fn,zeta,delay,
+    #       gain) tuple reproduces the measured response (chirp_rmse<0.017), so the fn/delay
+    #       degeneracy does NOT hurt sim fidelity. Wrist fn was unidentifiable (>~20Hz, capped
+    #       at the 30Hz search ceiling by the 100Hz-log / 6Hz-chirp bandwidth) -> use 30Hz;
+    #       exact value is irrelevant for such a fast joint, and the measured wrist delay/zeta
+    #       are kept (they are what matter). u_mean/intercept stay = forehand pose (from V10).
+    #   (b) reward: mask_invalid-gated ready-pose shaping (reward_arm_ready_idle +
+    #       penalty_arm_vel_idle, both zero while a ball is playable; no idle injection,
+    #       no_ball_period_s stays 0) to fix v10's no-ball whole-arm flailing (idle |action|
+    #       ~4.7, r1/r3/r7 driven 1.2-1.6 rad off home) WITHOUT softening the swing.
+    def __post_init__(self):
+        super().__post_init__()  # V10: forehand pose + geometry + u_mean/intercept=forehand
+        act = self.scene.robot.actuators["right_arm"]
+        # 2026-07-29 forehand fit (系统辨识/0729/fit/A1_0729_actuator_params.csv).
+        act.response_fn_hz = {
+            "r1": 15.835, "r2": 2.806, "r3": 18.0, "r4": 3.648,
+            "r5": 30.0, "r6": 30.0, "r7": 30.0,          # wrist fn unidentifiable -> "high"
+        }
+        act.response_zeta = {
+            "r1": 0.271, "r2": 0.555, "r3": 0.752, "r4": 0.721,
+            "r5": 0.331, "r6": 1.058, "r7": 0.782,
+        }
+        act.response_delay_s = {
+            "r1": 0.0362, "r2": 0.0, "r3": 0.0441, "r4": 0.0,
+            "r5": 0.0443, "r6": 0.0381, "r7": 0.0376,
+        }
+        act.response_linear_gain = {
+            "r1": 0.9832, "r2": 0.9796, "r3": 0.9275, "r4": 1.0885,
+            "r5": 0.9649, "r6": 1.0135, "r7": 1.0027,
+        }
+        # (c) robot back to the v7-style offset y=+0.76 (undo the v8 y=0 recenter). The forehand
+        #     pose reaches -y, so at +0.76 the paddle meets the ball near table center
+        #     (home_y+paddle_offset = 0.76-0.72 = +0.04, on-table). Shift every world-y term by
+        #     +0.76 (paddle_y_offset is base-relative -> unchanged); relative task == v10.
+        self.scene.robot.init_state.pos = (-1.8, 0.76, A1_INIT_Z)
+        self.robot.home_y = 0.76
+        self.ball.serve_y_center = 0.05                 # v10 -0.71 + 0.76
+        self.robot.hit_target_y_range = (-0.12, 0.43)   # v10 (-0.88, -0.33) + 0.76
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -846,6 +905,13 @@ class A1TableTennisV10AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
     experiment_name: str = "a1_tt_real_v10"
     run_name = "scratch_newpose_officialdamiao_5k_10k_5k"
     max_iterations = 20000
+
+
+@configclass
+class A1TableTennisV11AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
+    experiment_name: str = "a1_tt_real_v11"
+    run_name = "scratch_fit0729_readyidle_y076_10k_10k_10k"
+    max_iterations = 30000
 
 
 @configclass
