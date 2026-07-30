@@ -1,0 +1,29 @@
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_643953f7e396fd::t_8142d93fe8f553 948-953
+  s_643953f7e396fd::t_af024803fddd63 780-808
+  s_643953f7e396fd::t_2b6bda20e7c63e 779
+  s_643953f7e396fd::t_e814462e396e55 947
+legged_lab/envs/__init__.py
+  s_643953f7e396fd::t_d4e677bd96eb87 82
+  s_643953f7e396fd::t_6518df9ad183bc 56-57
+legged_lab/scripts/train.py
+  s_643953f7e396fd::t_87cb684179ec51 29-30
+legged_lab/envs/base/tt_env.py
+  s_643953f7e396fd::t_e9a2ea9b474c50 1623-1656
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "5a27a0e3bd033fe12cae1050731f2bf0498a8fa3",
+  "prompts": {},
+  "sessions": {
+    "s_643953f7e396fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c101dffa-aa59-4a9f-891f-fa0d2478f73e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
