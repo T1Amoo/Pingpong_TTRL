@@ -1,0 +1,19 @@
+docs/superpowers/specs/2026-07-30-a1-v12-forward-hit-plane-design.md
+  s_643953f7e396fd::t_f368ea31bf96d4 1-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "94b3bc0e5962d8498ea866a92cb8c5cdb3d73c41",
+  "prompts": {},
+  "sessions": {
+    "s_643953f7e396fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c101dffa-aa59-4a9f-891f-fa0d2478f73e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
