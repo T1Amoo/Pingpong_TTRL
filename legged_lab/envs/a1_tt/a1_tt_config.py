@@ -325,6 +325,13 @@ class A1TableTennisRewardCfg(RewardCfg):
         weight=1.0,   # only reward forward swing once the blade is near the target y/z; avoids high-overhead farming.
         params={"near_dist": 0.30, "target_yz_gate": 0.18},
     )
+    # v13: first-contact forward-speed bonus (un-farmable; fires once per rally at the hit).
+    # OFF by default (weight 0.0) so v9-v12 are unchanged; v13 turns it on to force an active
+    # swing-into-the-ball instead of a static block.
+    reward_approach_velocity = RewTerm(
+        func=mdp.reward_approach_velocity,
+        weight=0.0,
+    )
     reward_future_dis_ro = RewTerm(
         func=mdp.reward_future_body_target,
         weight=0.0,
@@ -807,6 +814,56 @@ class A1TableTennisV12EnvCfg(A1TableTennisV11EnvCfg):
 
 
 @configclass
+class A1TableTennisV13EnvCfg(A1TableTennisV12EnvCfg):
+    # v13 (2026-07-31): v12 (forward-reach geometry) only learned STATIC pre-positioning -- the
+    #   serve distribution was narrow enough (hard lateral half-width 0.17m, centered 0.05 low in
+    #   the reachable window) that one fixed paddle spot covered every serve, so camping at the
+    #   intercept dominated an active swing. v13 breaks this with THREE coordinated changes;
+    #   geometry (base -2.0 / hit_plane -1.62) stays from v12.
+    #
+    #   (1) WIDEN + RE-CENTER the serve to FILL the reachable window so no single pre-position
+    #       covers it -> the arm MUST track laterally and re-reach each ball. The reachable intercept
+    #       window is hit_target_y_range=(-0.12,0.43) (center 0.155); the old serve centered at 0.05
+    #       wasted the +y reach and spilled -y out of reach. Re-center + widen (hard end; easy start
+    #       stays gentle for the stage-1 bootstrap):
+    #         serve_y_center          0.05 -> 0.15  (match reachable-window center 0.155)
+    #         serve_y_wide            0.17 -> 0.25  (fills [-0.10,0.40] ⊂ reachable (-0.12,0.43))
+    #         serve_bounce_x_range_hard  (-1.32,-0.88) -> (-1.34,-1.00)  (depth; SHALLOW end raised
+    #                                             -0.86 -> -1.00: probe showed the shallowest near-net
+    #                                             serves arrive lowest -- deep bounce = higher z at the
+    #                                             plane, shallow bounce = lower z -- so trimming the
+    #                                             shallowest lifts the low-z tail into the reach window)
+    #         serve_bounce_vz_range_hard (1.45, 2.40) -> (1.50, 2.55)    (arc height / speed spread)
+    #       Verified in-window by TT_SERVE_PROBE (physical crossing histogram) at c=1: with shallow end
+    #       at -0.86 the z p5 sat ~0.70-0.75 (below the 0.92 floor -- vz was NOT the lever, bounce depth
+    #       was); raising the shallow end to -1.00 pulls the low-z tail up. y is well-centered
+    #       (p50~0.18 on window center 0.155).
+    #   (2) reward_approach_velocity (0 -> 3.0): first-contact forward blade speed -> pay for MEETING
+    #       the ball with a moving paddle (un-farmable, fires once per rally). Forces swing-through.
+    #   (3) STRENGTHEN the no-ball return-to-default shaping (already mask_invalid-gated, and
+    #       mask_invalid includes has_touch_paddle -> the post-hit "no ball" window):
+    #         reward_arm_ready_idle  2.0 -> 5.0   (strong pull back to the retracted default after a
+    #                                             hit -> can't camp at the extended hit pose)
+    #         penalty_arm_vel_idle  -0.05 -> -0.15
+    #   Guardrails: termination_penalty stays -100 (critic-safe); from scratch (warm-start + this
+    #   distribution shift diverges per a1_tt_v12_from_scratch_warmstart_diverges); curriculum
+    #   5k-10k-5k (easy 0-5k -> ramp 5k-15k -> consolidate 15k-20k, via watchdog START=5000/
+    #   RAMP=10000, TARGET 20000) to avoid the c~=0.3 critic blow-up; monitor value_loss<100 past 15k.
+    def __post_init__(self):
+        super().__post_init__()  # V12: forward-reach geometry (base -2.0, hit_plane -1.62)
+        # (1) widen + re-center serve to fill the reachable window (hard end; easy start unchanged)
+        self.ball.serve_y_center = 0.15
+        self.ball.serve_y_wide = 0.25
+        self.ball.serve_bounce_x_range_hard = (-1.34, -1.00)
+        self.ball.serve_bounce_vz_range_hard = (1.50, 2.55)
+        # (2) first-contact approach-velocity reward
+        self.reward.reward_approach_velocity.weight = 3.0
+        # (3) strengthen no-ball return-to-default shaping
+        self.reward.reward_arm_ready_idle.weight = 5.0
+        self.reward.penalty_arm_vel_idle.weight = -0.15
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -949,6 +1006,13 @@ class A1TableTennisV12AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
     experiment_name: str = "a1_tt_real_v12"
     run_name = "scratch_forwardhit_base-2.0_hitplane-1.62_predictor"
     max_iterations = 30000
+
+
+@configclass
+class A1TableTennisV13AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
+    experiment_name: str = "a1_tt_real_v13"
+    run_name = "scratch_widenserve_approachvel_strongidle_5k10k5k"
+    max_iterations = 20000
 
 
 @configclass

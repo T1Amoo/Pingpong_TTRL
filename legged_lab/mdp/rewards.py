@@ -888,6 +888,20 @@ def reward_swing_through(
     return torch.nan_to_num(rew, nan=0.0, posinf=0.0, neginf=0.0)
 
 
+def reward_approach_velocity(env: TTEnv) -> torch.Tensor:
+    """FIRST-CONTACT forward paddle speed bonus -- reward MEETING the ball with a forward-moving
+    blade (+x, toward the net) at the instant of the hit. Un-farmable: fires ONCE per rally, only
+    on the first paddle contact (env.ball_landing_dis_rew == has_touch_paddle & ~has_touch_paddle_rew,
+    cached in compute_intermediate_values before has_touch_paddle_rew is latched), so a policy that
+    parks the blade and lets the ball hit a stationary paddle scores 0 here. Complements the geometry
+    forward-reach (v12) + reward_swing_through by paying explicitly for approach velocity at contact,
+    forcing an active swing-into-the-ball rather than a static block. clamp(vx,0): only forward speed.
+    """
+    first_contact = env.ball_landing_dis_rew.float()             # 1.0 exactly on the first-contact step
+    vx = torch.clamp(env.paddle_touch_point_vel[:, 0], min=0.0)  # forward blade speed (+x = toward net)
+    return torch.nan_to_num(vx * first_contact, nan=0.0, posinf=0.0, neginf=0.0)
+
+
 def reward_idle_stand(env: TTEnv) -> torch.Tensor:
     """Dense POSITIVE per-step bonus for ACTIVELY standing when there is no playable ball.
 
