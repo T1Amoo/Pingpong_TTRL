@@ -16,7 +16,7 @@ import numpy as np
 import torch
 from isaaclab.app import AppLauncher
 # Use the Isaac Lab adapter for RSL-RL to match the env API
-from rsl_rl.rsl_rl.runners import OnPolicyRunner
+from rsl_rl.runners import OnPolicyRunner
 # from isaaclab_rl.rsl_rl import OnPolicyRunner
 
 from legged_lab.utils import task_registry
@@ -106,7 +106,7 @@ def play():
 
     # Choose runner implementation
     if args_cli.predictor:
-        from rsl_rl.rsl_rl.runners import OnPolicyPredictorRegressionRunner
+        from rsl_rl.runners import OnPolicyPredictorRegressionRunner
         runner = OnPolicyPredictorRegressionRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
     else:
         runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
