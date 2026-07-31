@@ -1,0 +1,30 @@
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_643953f7e396fd::t_713a9f0f4601a4 335-341
+  s_643953f7e396fd::t_17143d11f685eb 874-902
+  s_643953f7e396fd::t_f7d1dee3ccd88c 1056-1061
+  s_643953f7e396fd::t_4872d88a4a1999 873
+  s_643953f7e396fd::t_fc54314c0434ee 1055
+legged_lab/envs/__init__.py
+  s_643953f7e396fd::t_ce035788279920 60-61
+  s_643953f7e396fd::t_ed5000ca37063a 88
+legged_lab/mdp/rewards.py
+  s_643953f7e396fd::t_de413bc5a95566 905-925
+  s_643953f7e396fd::t_0078692fb4ff6c 1054-1055
+  s_643953f7e396fd::t_135818fbaa2681 1082-1089
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "b3738c53a0eb606c524d82d01e7010df417a8d16",
+  "prompts": {},
+  "sessions": {
+    "s_643953f7e396fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c101dffa-aa59-4a9f-891f-fa0d2478f73e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
