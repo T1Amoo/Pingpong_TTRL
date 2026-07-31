@@ -332,6 +332,13 @@ class A1TableTennisRewardCfg(RewardCfg):
         func=mdp.reward_approach_velocity,
         weight=0.0,
     )
+    # v14: FIRST-CONTACT paddle-normal-vs-ball-velocity alignment (un-farmable, fires once per rally).
+    # OFF by default (0.0) so v9-v13 are unchanged; v14 turns it on to stop glancing/"往身侧打" hits
+    # by paying for meeting the ball square-on (normal parallel to the incoming ball line at contact).
+    reward_hit_direction = RewTerm(
+        func=mdp.reward_hit_direction,
+        weight=0.0,
+    )
     reward_future_dis_ro = RewTerm(
         func=mdp.reward_future_body_target,
         weight=0.0,
@@ -864,6 +871,36 @@ class A1TableTennisV13EnvCfg(A1TableTennisV12EnvCfg):
 
 
 @configclass
+class A1TableTennisV14EnvCfg(A1TableTennisV13EnvCfg):
+    # v14 (2026-07-31): fix the two structural gaps seen in v13 sim2sim play (still iter ~4k, but
+    #   these are design gaps that MORE training only mitigates, not fixes):
+    #   (1) "往身侧打" -- the paddle meets the ball glancingly and sends it sideways. The only
+    #       orientation shaping was paddle_face_x (weight 0.5, aligns the normal to the FIXED world
+    #       ±x every step, unrelated to the incoming ball and farmable by hovering). v14 adds
+    #       reward_hit_direction: FIRST-CONTACT bonus for the blade normal being parallel to the
+    #       ball's incoming velocity line (square-on -> returns it back over the net). Un-farmable
+    #       (fires once per rally at the hit, like reward_approach_velocity), so a camped/glancing
+    #       paddle scores 0. Weight 8.0 (bounded [0,1] per rally; well under contact=150).
+    #   (2) "先去位置等着" -- reward_future_dis_ee was dense every step, so the optimum was to run to
+    #       the (static) intercept early and camp. v14 scales it by TIME-TO-HIT (ball_future_t):
+    #       early = down-weighted to the floor (0.4), near contact = full. Kills the camp-early
+    #       optimum while keeping enough early guidance for the torque-limited arm to travel in time.
+    #   approach_velocity (v13, forward blade speed at first contact) already forces the hit to happen
+    #   WITH motion (a static paddle scores 0 there) -> combined with (2) the blade arrives at the
+    #   intercept moving forward exactly as the ball crosses the plane; no explicit timing term needed
+    #   (an explicit |t_hit - t_arrival| penalty risks the c~=0.3 critic blow-up, avoided).
+    #   Guardrails unchanged from v13: termination_penalty -100, from scratch (warm-start diverges),
+    #   5k-10k-5k curriculum, monitor value_loss<100 past 15k.
+    def __post_init__(self):
+        super().__post_init__()  # V13: widen serve + approach_velocity + strong idle + fwd-reach geom
+        # (1) first-contact paddle-normal-vs-ball-velocity alignment (fix "往身侧打")
+        self.reward.reward_hit_direction.weight = 8.0
+        # (2) time-gate the dense intercept-tracking reward (fix "先去位置等着")
+        self.reward.reward_future_dis_ee.params["time_gate_ref"] = 0.6
+        self.reward.reward_future_dis_ee.params["time_gate_floor"] = 0.4
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -1012,6 +1049,13 @@ class A1TableTennisV12AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
 class A1TableTennisV13AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
     experiment_name: str = "a1_tt_real_v13"
     run_name = "scratch_widenserve_approachvel_strongidle_5k10k5k"
+    max_iterations = 20000
+
+
+@configclass
+class A1TableTennisV14AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
+    experiment_name: str = "a1_tt_real_v14"
+    run_name = "scratch_hitdir_timegate_dis_ee_5k10k5k"
     max_iterations = 20000
 
 

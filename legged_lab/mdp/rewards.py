@@ -902,6 +902,27 @@ def reward_approach_velocity(env: TTEnv) -> torch.Tensor:
     return torch.nan_to_num(vx * first_contact, nan=0.0, posinf=0.0, neginf=0.0)
 
 
+def reward_hit_direction(env: TTEnv) -> torch.Tensor:
+    """FIRST-CONTACT paddle-normal alignment: reward MEETING the ball SQUARE-ON at the instant of
+    the hit -- the paddle blade normal parallel to the ball's incoming velocity line. A square hit
+    sends the ball back the way it came (over the net, toward the opponent) instead of glancing it
+    off to the side ("往身侧打"). The existing paddle_face_x only rewards the normal along the fixed
+    world ±x every step (weak 0.5, farmable by hovering); this ties the normal to the ACTUAL incoming
+    ball direction and fires ONCE per rally on first paddle contact (env.ball_landing_dis_rew), so a
+    parked/glancing paddle scores 0 -- un-farmable like reward_approach_velocity. Double-sided (abs):
+    the physical blade returns the ball off either face, so alignment with +v or -v both count.
+    Squared to sharpen the incentive (matches paddle_face_x's facing**2).
+    """
+    first_contact = env.ball_landing_dis_rew.float()                 # 1.0 exactly on the first-contact step
+    q = env.robot.data.body_quat_w[:, env._paddle_body_id, :]
+    q = q / q.norm(dim=1, keepdim=True).clamp(min=1e-8)
+    local = torch.tensor((0.0, 1.0, 0.0), device=env.device, dtype=q.dtype).unsqueeze(0).expand(q.shape[0], 3)
+    normal_w = math_utils.quat_apply(q, local)                       # paddle blade normal (world)
+    vel_dir = torch.nn.functional.normalize(env.ball.data.root_lin_vel_w, dim=-1, eps=1e-6)
+    align = torch.abs((normal_w * vel_dir).sum(dim=-1)).clamp(max=1.0)   # 1 square-on, 0 glancing/sideways
+    return torch.nan_to_num(align * align * first_contact, nan=0.0, posinf=0.0, neginf=0.0)
+
+
 def reward_idle_stand(env: TTEnv) -> torch.Tensor:
     """Dense POSITIVE per-step bonus for ACTIVELY standing when there is no playable ball.
 
@@ -1030,6 +1051,8 @@ def reward_future_ee_target(
     std_ee: float = 0.4,
     threshold: float = 0.01,
     z_weight: float = 1.0,
+    time_gate_ref: float = 0.0,
+    time_gate_floor: float = 0.4,
 ) -> torch.Tensor:
 
     # dist_ee_before = torch.linalg.norm(env.pos_pred_before - env.paddle_pos, dim=1)
@@ -1056,6 +1079,14 @@ def reward_future_ee_target(
     # mask_invalid_ee = (ball_pos[:, 0] < -1.6) | (vx > 0) | (z < 0.7) 
     reward_ee = torch.where(env.mask_invalid, torch.zeros_like(reward_ee), reward_ee)
     reward = torch.nan_to_num(reward_ee, nan=0.0, posinf=0.0, neginf=0.0)
+    # v14 (2a): scale the dense "be at the intercept" reward by TIME-TO-HIT so early pre-positioning
+    # (ball_future_t large) earns little and the strong pull only kicks in near contact (t->0). Kills
+    # the "run to the spot early and camp/wait" optimum. A floor keeps enough early guidance for the
+    # torque-limited arm to start traveling toward wide intercepts in time. Disabled (ref=0) for v9-v13.
+    if time_gate_ref > 0.0:
+        t = env.ball_future_t.squeeze(-1)
+        time_gain = torch.clamp(1.0 - t / time_gate_ref, min=time_gate_floor, max=1.0)
+        reward = reward * time_gain
     return reward
 
 def paddel_ball_distance(
