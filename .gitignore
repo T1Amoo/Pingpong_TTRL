@@ -9,3 +9,4 @@ wandb
 *_watchdog.log
 train_*.log
 overnight_*.log
+play_*.log
