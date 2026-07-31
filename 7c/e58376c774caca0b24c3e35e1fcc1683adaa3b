@@ -1,0 +1,34 @@
+legged_lab/mdp/rewards.py
+  s_643953f7e396fd::t_cce661d88c0eeb 891-904
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_643953f7e396fd::t_391e4e5dad0356 817-818,823,841-848,852-853,859-865
+  s_643953f7e396fd::t_515dfa2856fa0b 831-840
+  s_643953f7e396fd::t_a176d18a778666 858
+  s_643953f7e396fd::t_557c933403ff65 819-822,824-830,854-856
+  s_643953f7e396fd::t_51ef76342a2f77 1014-1015
+  s_643953f7e396fd::t_94bb55fbbdd691 857
+  s_643953f7e396fd::t_b39a878112070f 328-334
+  s_643953f7e396fd::t_3f2fa1ee8934d9 849-851
+  s_643953f7e396fd::t_6f2072aacbc1f0 1012-1013,1016-1017
+  s_643953f7e396fd::t_6f91ae2b9847d7 816
+  s_643953f7e396fd::t_cd877dd27aca94 1011
+legged_lab/envs/__init__.py
+  s_643953f7e396fd::t_2e4c0638ba8c15 58-59
+  s_643953f7e396fd::t_2ab61afd288103 85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "7ce58376c774caca0b24c3e35e1fcc1683adaa3b",
+  "prompts": {},
+  "sessions": {
+    "s_643953f7e396fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c101dffa-aa59-4a9f-891f-fa0d2478f73e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
