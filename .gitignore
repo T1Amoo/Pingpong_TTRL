@@ -10,3 +10,6 @@ wandb
 train_*.log
 overnight_*.log
 play_*.log
+
+# codex/claude 本地项目记忆(含基础设施 IP/凭据,不进公开仓库)
+AGENTS.md
