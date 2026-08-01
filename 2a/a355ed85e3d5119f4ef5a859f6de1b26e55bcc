@@ -1,0 +1,22 @@
+watchdog_a1_tt_backhand_v1.sh
+  s_d7bdfbc037e805::t_53e1bfde012214 30,36-38,41,45,58-60,80-82
+  s_d7bdfbc037e805::t_c3600ce2721ac9 35,39
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_d7bdfbc037e805::t_53e1bfde012214 1056-1060,1064,1253
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "2aa355ed85e3d5119f4ef5a859f6de1b26e55bcc",
+  "prompts": {},
+  "sessions": {
+    "s_d7bdfbc037e805": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb780-0fbb-7d70-ad81-7f6b5c3684bd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
