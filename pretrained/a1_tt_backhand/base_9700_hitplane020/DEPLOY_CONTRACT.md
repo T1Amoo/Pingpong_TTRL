@@ -105,3 +105,15 @@ velocity/effort envelope, table-frame observation transform, ball-validity
 gate, predictor history, and hit-plane geometry recorded above. Before enabling
 torque, run a servo-disabled observation/action trace and a low-speed MoveJ to
 the ready pose.
+
+The current real bridge shapes the raw 50 Hz policy target with the first-order
+command filter below before publishing to the SDK:
+
+```text
+tau_s = [0.10, 0.10, 0.08, 0.10, 0.05, 0.05, 0.10] s
+velocity_limit = [1.0, 1.2, 1.8, 1.6, 4.0, 3.2, 8.0] rad/s
+```
+
+The hard `qdes_slew/max_delta_per_tick` branch is disabled. The SDK node keeps
+only a higher per-cycle discontinuity guard; under the velocity limits above it
+does not shape the normal trajectory.
