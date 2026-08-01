@@ -1,0 +1,19 @@
+pretrained/a1_tt_backhand/base_9700_hitplane020/DEPLOY_CONTRACT.md
+  s_d7bdfbc037e805::t_261117886f1fa6 109-111,114-116,119-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "dd56750a6beda02608b335dc74f48df041ee2435",
+  "prompts": {},
+  "sessions": {
+    "s_d7bdfbc037e805": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb780-0fbb-7d70-ad81-7f6b5c3684bd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
