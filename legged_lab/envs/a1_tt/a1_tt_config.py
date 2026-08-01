@@ -155,6 +155,27 @@ A1_REAL_DEPLOY_MAX_DELTA_PER_TRAIN_TICK = (
 A1_REAL_DEPLOY_LOWPASS_TAU_S = (0.10, 0.10, 0.08, 0.10, 0.05, 0.05, 0.10)
 A1_REAL_DEPLOY_LOWPASS_VEL_LIMIT = (1.0, 1.2, 1.8, 1.6, 4.0, 3.2, 8.0)
 
+# Backhand base imported from mentor model_9700, plus the 2026-08-01 natural-swing
+# q_des->q refit.  The fit uses the *post-tau* command seen by the SDK and is a
+# closed-loop black-box response; pair it with A1_TT_REAL_FITTED_CFG (high-bandwidth
+# tracking) rather than the explicit Damiao actuator to avoid applying two motor
+# dynamics in series.  Validation on the new hardware-latency trace is 3.1--8.2 mrad.
+A1_BACKHAND_READY_Q = (1.450, -0.762, -2.050, 1.445, 0.206, -0.827, 1.043)
+A1_BACKHAND_RESPONSE_FN_HZ = (3.166, 9.959, 9.899, 5.892, 20.000, 8.572, 19.455)
+A1_BACKHAND_RESPONSE_ZETA = (0.414, 0.559, 0.728, 0.325, 0.889, 0.615, 0.565)
+A1_BACKHAND_RESPONSE_DELAY_S = (0.010, 0.040, 0.040, 0.030, 0.040, 0.030, 0.040)
+A1_BACKHAND_RESPONSE_GAIN = (0.9965, 1.0006, 1.0060, 0.9771, 1.0060, 1.0045, 0.9948)
+A1_BACKHAND_RESPONSE_BIAS_RAD = (-0.0208, 0.0004, -0.0095, -0.0084, -0.0050, 0.0041, 0.0003)
+A1_BACKHAND_LOWPASS_TAU_RANGE_S = (
+    (0.080, 0.130),  # r1
+    (0.080, 0.130),  # r2
+    (0.065, 0.105),  # r3
+    (0.080, 0.130),  # r4
+    (0.040, 0.065),  # r5
+    (0.040, 0.065),  # r6
+    (0.075, 0.130),  # r7
+)
+
 
 def _env_float(name: str):
     value = os.environ.get(name)
@@ -380,6 +401,38 @@ class A1TableTennisDeployRewardCfg(A1TableTennisRewardCfg):
         func=mdp.action_target_slew_limit_l2,
         weight=-0.02,
     )
+
+
+@configclass
+class A1TableTennisBackhandRewardCfg(A1TableTennisRewardCfg):
+    """Success-first reward subset available in this repository.
+
+    The delivered mentor snapshot names additional private backhand shaping
+    terms whose source was not included.  This task keeps its verified outcome
+    ladder and uses the current un-farmable approach/direction terms instead of
+    pretending those missing functions can be resumed bit-for-bit.
+    """
+
+    def __post_init__(self):
+        self.action_rate_l2.weight = -0.015
+        self.action_l2.weight = -0.002
+        self.joint_deviation_right_arm.weight = -0.05
+        self.paddle_face_x.weight = 0.0
+        self.reward_contact.weight = 260.0
+        self.reward_sweet_contact.weight = 50.0
+        self.reward_future_dis_ee.weight = 1.0
+        self.penalty_paddle_above_target.weight = -4.0
+        self.reward_swing_through.weight = 0.75
+        self.reward_approach_velocity.weight = 3.0
+        self.reward_hit_direction.weight = 8.0
+        self.reward_future_landing_dis.weight = 90.0
+        self.reward_future_pass_net.weight = 180.0
+        self.reward_table_success.weight = 300.0
+        self.reward_arm_ready_idle.weight = 3.0
+        self.penalty_arm_vel_idle.weight = -0.10
+        # The closed-loop black-box actuator intentionally does not expose the
+        # real SDK torque, so a simulated computed-torque penalty is misleading.
+        self.joint_computed_torque_limit.weight = 0.0
 
 
 @configclass
@@ -901,6 +954,130 @@ class A1TableTennisV14EnvCfg(A1TableTennisV13EnvCfg):
 
 
 @configclass
+class A1TableTennisBackhandEnvCfg(A1TableTennisEnvCfg):
+    """2026-08-01 backhand scratch task aligned to the current camera/SDK path."""
+
+    reward = A1TableTennisBackhandRewardCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # Frozen mentor geometry and ready pose.  Use the V1_3 paddle asset, but
+        # execute the newly fitted closed-loop q_des->q trajectory through a
+        # high-bandwidth tracking articulation (no duplicate MIT dynamics).
+        robot_cfg = copy.deepcopy(A1_TT_REAL_FITTED_CFG)
+        robot_cfg.spawn.usd_path = A1_USD_PATH_V1_3
+        robot_cfg.init_state.pos = (-1.8, 0.0, A1_INIT_Z)
+        robot_cfg.init_state.joint_pos.update(
+            {joint: q for joint, q in zip(A1_ARM_JOINTS, A1_BACKHAND_READY_Q)}
+        )
+        self.scene.robot = robot_cfg
+        self.robot.home_y = 0.0
+        self.robot.paddle_offset = (0.0, 0.0, 0.0)
+        self.robot.paddle_y_offset = -0.03
+        self.robot.hit_body_height = 0.028
+        self.robot.hit_plane_x = -1.243
+        self.robot.hit_target_x_range = (-1.243, -1.243)
+        # The old mentor box covered only 3/10 of today's measured crossings.
+        # This conservative envelope contains the measured p5..p95 tails while
+        # retaining the original center as the easy curriculum start.
+        self.robot.hit_target_y_range = (-0.06, 0.20)
+        self.robot.hit_target_z_range = (0.84, 1.14)
+
+        self.robot.action_target_rate_limit_enable = False
+        self.robot.action_target_max_delta_per_tick = ()
+        self.robot.action_target_lowpass_enable = True
+        self.robot.action_target_lowpass_tau_s = A1_REAL_DEPLOY_LOWPASS_TAU_S
+        self.robot.action_target_lowpass_vel_limit = A1_REAL_DEPLOY_LOWPASS_VEL_LIMIT
+        self.robot.action_target_lowpass_tau_range_s = A1_BACKHAND_LOWPASS_TAU_RANGE_S
+        self.robot.action_target_lowpass_vel_limit_scale_range = (0.85, 1.15)
+
+        self.robot.action_response_model_enable = True
+        self.robot.action_response_u_mean = A1_BACKHAND_READY_Q
+        self.robot.action_response_fn_hz = A1_BACKHAND_RESPONSE_FN_HZ
+        self.robot.action_response_zeta = A1_BACKHAND_RESPONSE_ZETA
+        self.robot.action_response_delay_s = A1_BACKHAND_RESPONSE_DELAY_S
+        self.robot.action_response_gain = A1_BACKHAND_RESPONSE_GAIN
+        self.robot.action_response_bias_rad = A1_BACKHAND_RESPONSE_BIAS_RAD
+        self.robot.action_response_fn_scale_range = (0.85, 1.15)
+        self.robot.action_response_zeta_scale_range = (0.80, 1.25)
+        self.robot.action_response_gain_scale_range = (0.98, 1.02)
+        self.robot.action_response_bias_jitter_rad = (0.006, 0.004, 0.004, 0.008, 0.006, 0.006, 0.004)
+
+        # One 50 Hz action tick covers scheduler/ROS phase uncertainty beyond
+        # the per-joint delay already present in the fitted motor response.
+        self.domain_rand.action_delay.enable = True
+        self.domain_rand.action_delay.params = {"min_delay": 0, "max_delay": 1}
+
+        # Timestamped 60 Hz camera path measured today.  Latency is sampled as
+        # a persistent per-rally mode; the model then applies the same two-frame
+        # acquisition, alpha-beta tracking, one-bounce extrapolation and 50 Hz
+        # sample consumption as deployment.
+        self.domain_rand.perception_delay.enable = False
+        camera = self.domain_rand.camera_observation
+        camera.enable = True
+        camera.fps = 60.0
+        camera.acquire_frames = 2
+        camera.reset_gap_s = 0.25
+        camera.coast_max_s = 0.12
+        camera.dropout_prob = 0.01
+        camera.latency_mode_weights = (0.85, 0.10, 0.05)
+        camera.latency_ranges_s = ((0.010, 0.025), (0.025, 0.060), (0.060, 0.100))
+        camera.position_noise_std = (0.004, 0.004, 0.006)
+        camera.filter_alpha = 0.65
+        camera.filter_beta = 0.10
+        camera.max_extrapolation_s = 0.16
+        camera.x_range = (-1.50, 1.20)
+        camera.y_range = (-0.30, 0.30)
+        camera.z_range = (0.76, 1.70)
+        camera.extrapolate_to_now = True
+        camera.gravity_mps2 = -9.81
+        camera.table_bounce_enable = True
+        camera.table_ball_center_z = 0.78
+        camera.table_restitution = 0.95
+        # Camera noise is owned by the model above; do not add the legacy
+        # elementwise perception noise a second time.
+        self.noise.noise_scales.perception = 0.0
+
+        self.ball.ball_max_eposide_length = 1.8
+        self.ball.ball_reset_repeat = 1
+        self.ball.max_serve_per_episode = 5
+        self.ball.serve_bounce_enable = True
+        # Start exactly on the mentor distribution, then expand toward today's
+        # hand-fed y/z/vx envelope instead of clamping real balls to a tiny box.
+        self.ball.serve_bounce_x_range = (-1.053, -0.773)
+        self.ball.serve_bounce_vz_range = (0.0, 0.45)
+        self.ball.serve_y_center = 0.041
+        self.ball.serve_y_center_hard = 0.070
+        self.ball.serve_y_start = 0.020
+        self.ball.serve_bounce_x_range_hard = (-1.10, -0.35)
+        self.ball.serve_bounce_vz_range_hard = (0.50, 2.00)
+        self.ball.serve_y_wide = 0.15
+        self.ball.serve_curriculum_perf_gated = False
+        self.ball.serve_curriculum_phase_start = 3000 * A1_TT_RAW_STEPS_PER_ITER
+        self.ball.serve_curriculum_steps = 18000 * A1_TT_RAW_STEPS_PER_ITER
+
+        self.ball.require_active_contact = True
+        self.ball.active_contact_min_paddle_speed = 0.18
+        self.ball.active_contact_min_forward_speed = 0.32
+        self.ball.active_contact_require_own_bounce = False
+        self.ball.active_contact_hit_plane_margin = 0.11
+        self.ball.sweet_contact_radius = 0.08
+        self.ball.sweet_contact_core_radius = 0.03
+        self.ball.sweet_contact_gate_outcomes = True
+        self.ball.sweet_contact_outcome_floor = 0.5
+        self.ball.hit_plane_contact_radius = 0.11
+        self.ball.hit_plane_contact_core_radius = 0.04
+        self.ball.hit_plane_contact_gate_outcomes = True
+        self.ball.hit_plane_contact_outcome_floor = 0.5
+        self.ball.no_ball_period_s = 0.0
+        self.ball.ball_active_s = 0.0
+        self.ball.no_ball_curriculum_steps = 0
+        self.ball.idle_reward_ramp_steps = 0
+        self.ball.curriculum_phase1_steps = 0
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -1057,6 +1234,23 @@ class A1TableTennisV14AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
     experiment_name: str = "a1_tt_real_v14"
     run_name = "scratch_hitdir_timegate_dis_ee_5k10k5k"
     max_iterations = 20000
+
+
+@configclass
+class A1TableTennisBackhandAgentCfg(A1TableTennisDeployAgentCfg):
+    experiment_name: str = "a1_tt_backhand_real_v1"
+    run_name = "scratch_camera_dr_blackbox0801_tau_dr"
+    resume = False
+    max_iterations = 25000
+    predictor = {
+        "history_len": 5,
+        "traj_max_len": 128,
+        "hidden_sizes": [64, 64],
+        "lr": 0.5e-3,
+        "epochs_per_update": 1,
+        "batch_size": 1024,
+        "train_until_iters": 1000,
+    }
 
 
 @configclass

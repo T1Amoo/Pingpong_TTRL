@@ -380,17 +380,19 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
         if not hasattr(self.env, "ball_pos"):
             return
         with torch.no_grad():
-            ball_pos = self.env.ball_pos.detach().to("cpu")  # [N, 3]
-            # Bug B fix: during a no-ball window the ball is parked underground (z=-50). Recording
-            # that off-field position poisons the H-frame predictor history, producing garbage
-            # (OOD) predictions for H steps after the ball returns -> the actor (gate already open)
-            # eats the garbage and the action explodes. Skip off-field samples and invalidate the
-            # history so predictions resume only after H fresh, valid ball samples accumulate.
-            if bool((ball_pos[:, 2] < -1.0).any()):
-                self._traj_len = 0
-                return
+            if hasattr(self.env, "get_predictor_ball_positions"):
+                ball_pos_device, sample_valid_device = self.env.get_predictor_ball_positions()
+                ball_pos = ball_pos_device.detach().to("cpu")
+                sample_valid = sample_valid_device.detach().to("cpu").bool()
+            else:
+                ball_pos = self.env.ball_pos.detach().to("cpu")  # [N, 3]
+                sample_valid = torch.ones(self.env.num_envs, dtype=torch.bool)
             self._traj_buf_cpu[self._traj_write_idx].copy_(ball_pos)
-            sample_valid = torch.isfinite(ball_pos).all(dim=-1) & (ball_pos[:, 2] > 0.1) & (ball_pos[:, 2] < 3.0)
+            sample_valid &= (
+                torch.isfinite(ball_pos).all(dim=-1)
+                & (ball_pos[:, 2] > 0.1)
+                & (ball_pos[:, 2] < 3.0)
+            )
             try:
                 if hasattr(self.env, "ball_reset_ids"):
                     reset_ids = self.env.ball_reset_ids.detach().to("cpu").long()
@@ -443,6 +445,12 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
         idxs = (torch.arange(-H, 0) + self._traj_write_idx) % self._traj_maxlen  # [H]
         hist = self._traj_buf_cpu[idxs]  # [H, N, 3]
         X = hist.permute(1, 0, 2).reshape(self.env.num_envs, -1).to(self.device)  # [N, H*3]
+        history_valid = self._sample_valid_buf_cpu[idxs].all(dim=0)
+        same_serve = (
+            self._serve_id_buf_cpu[idxs]
+            == self._serve_id_buf_cpu[idxs[-1]].unsqueeze(0)
+        ).all(dim=0)
+        predictor_valid = history_valid & same_serve
         with torch.no_grad():
             preds = self._predictor(X)  # [N, 3]
         self._pred_call_count += 1
@@ -455,7 +463,11 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
         # If update hook exists in env, call it. Otherwise, skip safely.
         try:
             if hasattr(self.env, "update_prediction"):
-                self.env.update_prediction(preds)
+                try:
+                    self.env.update_prediction(preds, predictor_valid.to(self.env.device))
+                except TypeError:
+                    # Backward compatibility for non-TT environments with the older hook.
+                    self.env.update_prediction(preds)
         except Exception:
             # Do not break PPO rollout if env-side hook is not implemented yet
             pass

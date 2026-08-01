@@ -75,7 +75,8 @@ KP       = [300, 300, 300, 120, 120, 120, 60]
 KD       = [3.5, 3.5, 3.5, 1.0, 1.0, 1.0, 0.5]
 effort   = [28, 28, 28, 8, 8, 8, 8] Nm
 velocity = [4, 4, 5, 6, 8, 6, 9] rad/s
-50Hz q_des delta limit = [0.05, 0.05, 0.05, 0.10, 0.10, 0.10, 0.10] rad
+50Hz tau_s = [0.10, 0.10, 0.08, 0.10, 0.05, 0.05, 0.10] s
+q_des velocity cap = [1.0, 1.2, 1.8, 1.6, 4.0, 3.2, 8.0] rad/s
 ```
 
 The fitted response constants (`fn_hz`, damping ratio, delay, linear gain,
@@ -106,17 +107,16 @@ gate, predictor history, and hit-plane geometry recorded above. Before enabling
 torque, run a servo-disabled observation/action trace and a low-speed MoveJ to
 the ready pose.
 
-The current real bridge uses the same 50 Hz action-target rate limiter recorded
-in `training_params/env.yaml` before publishing position-only commands to the
-SDK:
+The current real bridge uses the same 50 Hz first-order action-target low-pass
+as the training route before publishing position-only commands to the SDK:
 
 ```text
-max_delta_per_tick = [0.05, 0.05, 0.05, 0.10, 0.10, 0.10, 0.10] rad
-servo_filter_enabled = false
-qdes_slew_enabled = true
+tau_s = [0.10, 0.10, 0.08, 0.10, 0.05, 0.05, 0.10] s
+velocity_limit = [1.0, 1.2, 1.8, 1.6, 4.0, 3.2, 8.0] rad/s
+servo_filter_enabled = true
+qdes_slew_enabled = false
 ```
 
-At 50 Hz this corresponds to target velocity envelopes of
-`[2.5, 2.5, 2.5, 5.0, 5.0, 5.0, 5.0] rad/s`. The SDK node's higher per-cycle
-discontinuity guard remains a safety guard and does not shape this normal
-trajectory. Desired velocity and feedforward torque remain zero.
+The SDK node's higher per-cycle discontinuity guard remains a safety guard and
+does not shape this normal trajectory. Desired velocity and feedforward torque
+on the SDK wire remain zero.

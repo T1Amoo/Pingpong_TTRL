@@ -277,6 +277,7 @@ class TTEnv(VecEnv):
                 device=self.device,
             )
             self.perception_buffer.set_time_lag(time_lags, torch.arange(self.num_envs, device=self.device))
+        self._init_camera_observation_model()
 
         # resolve the joints over which the action term is applied
         self.action_joint_ids, self.action_joint_names = self.robot.find_joints(
@@ -306,6 +307,10 @@ class TTEnv(VecEnv):
         )
         self._action_target_lowpass_tau = None
         self._action_target_lowpass_vel = None
+        self._action_target_lowpass_tau_base = None
+        self._action_target_lowpass_vel_base = None
+        self._action_target_lowpass_tau_ranges = None
+        self._action_target_lowpass_vel_scale_range = (1.0, 1.0)
         if self._action_target_lowpass_enable:
             if self._action_target_rate_limit_enable:
                 raise ValueError(
@@ -318,9 +323,30 @@ class TTEnv(VecEnv):
                     "robot.action_target_lowpass_tau_s must have one value per action "
                     f"joint ({self.num_actions}), got {len(tau)}"
                 )
-            self._action_target_lowpass_tau = torch.tensor(
+            self._action_target_lowpass_tau_base = torch.tensor(
                 tau, device=self.device, dtype=self.robot.data.default_joint_pos.dtype
             ).unsqueeze(0)
+            self._action_target_lowpass_tau = self._action_target_lowpass_tau_base.expand(
+                self.num_envs, -1
+            ).clone()
+            tau_ranges = tuple(
+                tuple(float(v) for v in pair)
+                for pair in (getattr(self.cfg.robot, "action_target_lowpass_tau_range_s", ()) or ())
+            )
+            if tau_ranges:
+                if len(tau_ranges) != self.num_actions or any(
+                    len(pair) != 2 or pair[0] <= 0.0 or pair[1] < pair[0]
+                    for pair in tau_ranges
+                ):
+                    raise ValueError(
+                        "robot.action_target_lowpass_tau_range_s must contain one positive "
+                        f"(min,max) pair per action joint; got {tau_ranges}"
+                    )
+                self._action_target_lowpass_tau_ranges = torch.tensor(
+                    tau_ranges,
+                    device=self.device,
+                    dtype=self.robot.data.default_joint_pos.dtype,
+                )
             vel = tuple(getattr(self.cfg.robot, "action_target_lowpass_vel_limit", ()) or ())
             if vel:
                 if len(vel) != self.num_actions:
@@ -328,9 +354,26 @@ class TTEnv(VecEnv):
                         "robot.action_target_lowpass_vel_limit must be empty or one value per "
                         f"action joint ({self.num_actions}), got {len(vel)}"
                     )
-                self._action_target_lowpass_vel = torch.tensor(
+                self._action_target_lowpass_vel_base = torch.tensor(
                     vel, device=self.device, dtype=self.robot.data.default_joint_pos.dtype
                 ).unsqueeze(0)
+                self._action_target_lowpass_vel = self._action_target_lowpass_vel_base.expand(
+                    self.num_envs, -1
+                ).clone()
+                scale_range = tuple(
+                    float(v)
+                    for v in getattr(
+                        self.cfg.robot,
+                        "action_target_lowpass_vel_limit_scale_range",
+                        (1.0, 1.0),
+                    )
+                )
+                if len(scale_range) != 2 or scale_range[0] <= 0.0 or scale_range[1] < scale_range[0]:
+                    raise ValueError(
+                        "robot.action_target_lowpass_vel_limit_scale_range must be a positive "
+                        f"(min,max) pair, got {scale_range}"
+                    )
+                self._action_target_lowpass_vel_scale_range = scale_range
         self._last_processed_actions = self.robot.data.default_joint_pos[:, self.action_joint_ids].clone()
         self._init_action_response_model()
 
@@ -712,7 +755,7 @@ class TTEnv(VecEnv):
 
         return current_actor_obs, current_critic_obs
 
-    def update_prediction(self, preds: torch.Tensor):
+    def update_prediction(self, preds: torch.Tensor, valid_mask: torch.Tensor | None = None):
         """Update learned ball prediction and its visualization.
 
         Args:
@@ -734,7 +777,14 @@ class TTEnv(VecEnv):
             # Store prediction in env-local frame, projected into the same target geometry as
             # the analytic hit point. For fixed-plane tasks this pins x to hit_plane_x, leaving
             # y/z as the learned quantities that matter.
-            self.ball_prediction = self._project_prediction_to_target_geometry(preds)
+            projected = self._project_prediction_to_target_geometry(preds)
+            if valid_mask is not None:
+                valid_mask = torch.as_tensor(valid_mask, device=self.device, dtype=torch.bool).reshape(-1)
+                if valid_mask.numel() != self.num_envs:
+                    return
+                sentinel = self._prediction_sentinel(dtype=projected.dtype)
+                projected = torch.where(valid_mask.unsqueeze(-1), projected, sentinel)
+            self.ball_prediction = projected
             # Visualize only the learned prediction that is valid enough to be a live target.
             # The actor already gates unusable/OOD predictions; drawing raw predictions during
             # invalid flight segments makes the yellow marker look like a drifting trajectory.
@@ -837,7 +887,8 @@ class TTEnv(VecEnv):
         self.ball_pos = self.ball.data.root_pos_w - self.scene.env_origins
         self.robot_pos = self.robot.data.root_link_pos_w - self.table.data.root_link_pos_w
         self.current_perception = torch.cat([self.ball_pos, self.robot_pos], dim=-1)
-        self.delayed_perception[env_ids] = self.current_perception[env_ids]
+        if not self._camera_observation_enable:
+            self.delayed_perception[env_ids] = self.current_perception[env_ids]
         self._reset_action_target_limiter(env_ids)
         self._reset_action_response_model(env_ids)
 
@@ -983,7 +1034,11 @@ class TTEnv(VecEnv):
                 xb_lo, xb_hi = _bclerp(self.cfg.ball.serve_bounce_x_range, getattr(self.cfg.ball, "serve_bounce_x_range_hard", self.cfg.ball.serve_bounce_x_range), c)
                 vz_lo, vz_hi = _bclerp(self.cfg.ball.serve_bounce_vz_range, getattr(self.cfg.ball, "serve_bounce_vz_range_hard", self.cfg.ball.serve_bounce_vz_range), c)
                 y_half = self.cfg.ball.serve_y_start + c * (self.cfg.ball.serve_y_wide - self.cfg.ball.serve_y_start)
-                y_center = getattr(self.cfg.ball, "serve_y_center", 0.0)
+                y_center_easy = getattr(self.cfg.ball, "serve_y_center", 0.0)
+                y_center_hard = getattr(self.cfg.ball, "serve_y_center_hard", None)
+                if y_center_hard is None:
+                    y_center_hard = y_center_easy
+                y_center = y_center_easy + c * (y_center_hard - y_center_easy)
                 g, Z_LAUNCH, Z_BOUNCE, X_LAUNCH = 9.81, 1.03, 0.78, 1.35
                 x_b = torch.empty(n, 1, device=self.device).uniform_(xb_lo, xb_hi)
                 y_b = y_center + torch.empty(n, 1, device=self.device).uniform_(-y_half, y_half)
@@ -1049,6 +1104,7 @@ class TTEnv(VecEnv):
             self.ball.write_root_velocity_to_sim(old_states[:, 7:], old_state_env_ids)
 
         self.ball_linvel_prev[env_ids] = self.reset_ball_state_buf[env_ids, 7:10]
+        self._reset_camera_observation(env_ids)
 
     def _apply_effort_curriculum(self):
         """Anneal the first `num_joints` action joints' effort limit from start_scale -> 1.0 over
@@ -1079,6 +1135,34 @@ class TTEnv(VecEnv):
             self._last_processed_actions[env_ids] = current_joint_pos[env_ids]
             self.action_target_slew_excess_l2[env_ids] = 0.0
             self.action_target_slew_clip_frac[env_ids] = 0.0
+        self._randomize_action_target_lowpass(env_ids)
+
+    def _randomize_action_target_lowpass(self, env_ids=None) -> None:
+        if self._action_target_lowpass_tau is None:
+            return
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=self.device)
+        else:
+            env_ids = torch.as_tensor(env_ids, device=self.device, dtype=torch.long)
+        if self._action_target_lowpass_tau_ranges is None:
+            self._action_target_lowpass_tau[env_ids] = self._action_target_lowpass_tau_base
+        else:
+            lo = self._action_target_lowpass_tau_ranges[:, 0]
+            hi = self._action_target_lowpass_tau_ranges[:, 1]
+            rand = torch.rand(
+                len(env_ids), self.num_actions,
+                device=self.device,
+                dtype=self._action_target_lowpass_tau.dtype,
+            )
+            self._action_target_lowpass_tau[env_ids] = lo + rand * (hi - lo)
+        if self._action_target_lowpass_vel is not None:
+            lo, hi = self._action_target_lowpass_vel_scale_range
+            scale = lo + torch.rand(
+                len(env_ids), self.num_actions,
+                device=self.device,
+                dtype=self._action_target_lowpass_vel.dtype,
+            ) * (hi - lo)
+            self._action_target_lowpass_vel[env_ids] = self._action_target_lowpass_vel_base * scale
 
     def _apply_action_target_rate_limit(self, processed_actions: torch.Tensor) -> torch.Tensor:
         if self._action_target_max_delta is None:
@@ -1131,18 +1215,52 @@ class TTEnv(VecEnv):
                 dtype=self.robot.data.default_joint_pos.dtype,
             ).unsqueeze(0)
 
-        self._action_response_fn_hz = _param_tensor("action_response_fn_hz")
-        self._action_response_zeta = _param_tensor("action_response_zeta")
+        self._action_response_fn_hz_base = _param_tensor("action_response_fn_hz")
+        self._action_response_zeta_base = _param_tensor("action_response_zeta")
         self._action_response_delay_s = _param_tensor("action_response_delay_s")
-        self._action_response_gain = _param_tensor("action_response_gain")
-        self._action_response_bias = _param_tensor("action_response_bias_rad")
+        self._action_response_gain_base = _param_tensor("action_response_gain")
+        self._action_response_bias_base = _param_tensor("action_response_bias_rad")
         self._action_response_u_mean = _param_tensor("action_response_u_mean")
+        self._action_response_fn_hz = self._action_response_fn_hz_base.expand(
+            self.num_envs, -1
+        ).clone()
+        self._action_response_zeta = self._action_response_zeta_base.expand(
+            self.num_envs, -1
+        ).clone()
+        self._action_response_gain = self._action_response_gain_base.expand(
+            self.num_envs, -1
+        ).clone()
+        self._action_response_bias = self._action_response_bias_base.expand(
+            self.num_envs, -1
+        ).clone()
 
-        self._action_response_omega = 2.0 * torch.tensor(
-            np.pi,
-            device=self.device,
-            dtype=self.robot.data.default_joint_pos.dtype,
-        ) * torch.clamp(self._action_response_fn_hz, min=1.0e-6)
+        def _scale_range(name: str) -> tuple[float, float]:
+            value = tuple(float(v) for v in getattr(self.cfg.robot, name, (1.0, 1.0)))
+            if len(value) != 2 or value[0] <= 0.0 or value[1] < value[0]:
+                raise ValueError(f"robot.{name} must be a positive (min,max) pair, got {value}")
+            return value
+
+        self._action_response_fn_scale_range = _scale_range("action_response_fn_scale_range")
+        self._action_response_zeta_scale_range = _scale_range("action_response_zeta_scale_range")
+        self._action_response_gain_scale_range = _scale_range("action_response_gain_scale_range")
+        bias_jitter = tuple(
+            float(v) for v in (getattr(self.cfg.robot, "action_response_bias_jitter_rad", ()) or ())
+        )
+        if bias_jitter and (len(bias_jitter) != self.num_actions or any(v < 0.0 for v in bias_jitter)):
+            raise ValueError(
+                "robot.action_response_bias_jitter_rad must be empty or contain one "
+                f"non-negative value per action joint, got {bias_jitter}"
+            )
+        self._action_response_bias_jitter = (
+            None
+            if not bias_jitter
+            else torch.tensor(
+                bias_jitter,
+                device=self.device,
+                dtype=self.robot.data.default_joint_pos.dtype,
+            ).unsqueeze(0)
+        )
+        self._action_response_omega = torch.zeros_like(self._action_response_fn_hz)
         delay_steps = torch.round(self._action_response_delay_s / self.physics_dt).to(dtype=torch.long)
         self._action_response_delay_steps = torch.clamp(delay_steps.squeeze(0), min=0)
         self._action_response_delay_buffer_len = int(torch.max(self._action_response_delay_steps).item()) + 1
@@ -1161,20 +1279,48 @@ class TTEnv(VecEnv):
     def _reset_action_response_model(self, env_ids=None):
         if not getattr(self, "_action_response_model_enable", False):
             return
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=self.device)
+        else:
+            env_ids = torch.as_tensor(env_ids, device=self.device, dtype=torch.long)
+        self._randomize_action_response_model(env_ids)
         current_joint_pos = self.robot.data.joint_pos[:, self.action_joint_ids]
         gain = torch.clamp(self._action_response_gain, min=1.0e-6)
         x_rel = (current_joint_pos - self._action_response_u_mean - self._action_response_bias) / gain
         steady_raw_command = self._action_response_u_mean + x_rel
-        if env_ids is None:
-            self._action_response_x_rel.copy_(x_rel)
-            self._action_response_v_rel.zero_()
-            self._action_response_delay_buffer.copy_(steady_raw_command.unsqueeze(0))
-            self.action_response_targets.copy_(current_joint_pos)
-        else:
-            self._action_response_x_rel[env_ids] = x_rel[env_ids]
-            self._action_response_v_rel[env_ids] = 0.0
-            self._action_response_delay_buffer[:, env_ids, :] = steady_raw_command[env_ids].unsqueeze(0)
-            self.action_response_targets[env_ids] = current_joint_pos[env_ids]
+        self._action_response_x_rel[env_ids] = x_rel[env_ids]
+        self._action_response_v_rel[env_ids] = 0.0
+        self._action_response_delay_buffer[:, env_ids, :] = steady_raw_command[env_ids].unsqueeze(0)
+        self.action_response_targets[env_ids] = current_joint_pos[env_ids]
+
+    def _randomize_action_response_model(self, env_ids: torch.Tensor) -> None:
+        count = len(env_ids)
+
+        def _sample_scale(value_range, dtype):
+            lo, hi = value_range
+            return lo + torch.rand(count, 1, device=self.device, dtype=dtype) * (hi - lo)
+
+        dtype = self._action_response_fn_hz.dtype
+        self._action_response_fn_hz[env_ids] = (
+            self._action_response_fn_hz_base
+            * _sample_scale(self._action_response_fn_scale_range, dtype)
+        )
+        self._action_response_zeta[env_ids] = (
+            self._action_response_zeta_base
+            * _sample_scale(self._action_response_zeta_scale_range, dtype)
+        )
+        self._action_response_gain[env_ids] = (
+            self._action_response_gain_base
+            * _sample_scale(self._action_response_gain_scale_range, dtype)
+        )
+        self._action_response_bias[env_ids] = self._action_response_bias_base
+        if self._action_response_bias_jitter is not None:
+            jitter = (2.0 * torch.rand(count, self.num_actions, device=self.device, dtype=dtype) - 1.0)
+            self._action_response_bias[env_ids] += jitter * self._action_response_bias_jitter
+        self._action_response_omega[env_ids] = (
+            2.0 * torch.tensor(np.pi, device=self.device, dtype=dtype)
+            * torch.clamp(self._action_response_fn_hz[env_ids], min=1.0e-6)
+        )
 
     def _delayed_action_response_command(self, raw_command: torch.Tensor) -> torch.Tensor:
         write_idx = self._action_response_delay_index
@@ -1337,7 +1483,275 @@ class TTEnv(VecEnv):
             ],
             dim=-1,
         )
-        self.delayed_perception = self.perception_buffer.compute(self.current_perception)
+        if self._camera_observation_enable:
+            camera_ball_pos = self._compute_camera_observation()
+            self.delayed_perception = torch.cat([camera_ball_pos, self.robot_pos], dim=-1)
+        else:
+            self.delayed_perception = self.perception_buffer.compute(self.current_perception)
+
+    def _init_camera_observation_model(self) -> None:
+        cfg = self.cfg.domain_rand.camera_observation
+        self._camera_observation_enable = bool(getattr(cfg, "enable", False))
+        self.camera_track_valid = torch.ones(self.num_envs, device=self.device, dtype=torch.bool)
+        self.camera_observation_age_s = torch.zeros(self.num_envs, device=self.device)
+        self._camera_estimated_ball_pos = torch.zeros(self.num_envs, 3, device=self.device)
+        if not self._camera_observation_enable:
+            return
+
+        if self.cfg.domain_rand.perception_delay.enable:
+            raise ValueError(
+                "camera_observation and legacy perception_delay are mutually exclusive; "
+                "the camera model already owns ball transport latency"
+            )
+        fps = float(cfg.fps)
+        if fps <= 0.0:
+            raise ValueError(f"camera_observation.fps must be positive, got {fps}")
+        self._camera_period_s = 1.0 / fps
+        self._camera_acquire_frames = max(1, int(cfg.acquire_frames))
+        self._camera_reset_gap_s = max(self._camera_period_s, float(cfg.reset_gap_s))
+        self._camera_coast_max_s = max(0.0, float(cfg.coast_max_s))
+        self._camera_dropout_prob = min(1.0, max(0.0, float(cfg.dropout_prob)))
+        self._camera_extrapolate = bool(cfg.extrapolate_to_now)
+        self._camera_filter_alpha = min(1.0, max(0.0, float(cfg.filter_alpha)))
+        self._camera_filter_beta = min(1.0, max(0.0, float(cfg.filter_beta)))
+        self._camera_max_extrapolation_s = max(0.0, float(cfg.max_extrapolation_s))
+        self._camera_gravity = float(cfg.gravity_mps2)
+        self._camera_table_bounce = bool(cfg.table_bounce_enable)
+        self._camera_table_z = float(cfg.table_ball_center_z)
+        self._camera_table_restitution = float(cfg.table_restitution)
+        self._camera_x_range = tuple(float(v) for v in cfg.x_range)
+        self._camera_y_range = tuple(float(v) for v in cfg.y_range)
+        self._camera_z_range = tuple(float(v) for v in cfg.z_range)
+        self._camera_position_noise_std = torch.tensor(
+            tuple(float(v) for v in cfg.position_noise_std),
+            device=self.device,
+            dtype=self.robot.data.default_joint_pos.dtype,
+        ).reshape(1, 3)
+
+        ranges = tuple(tuple(float(v) for v in pair) for pair in cfg.latency_ranges_s)
+        weights = tuple(float(v) for v in cfg.latency_mode_weights)
+        if not ranges or len(ranges) != len(weights):
+            raise ValueError("camera latency ranges and weights must have the same non-zero length")
+        if any(len(pair) != 2 or pair[0] < 0.0 or pair[1] < pair[0] for pair in ranges):
+            raise ValueError(f"invalid camera latency ranges: {ranges}")
+        weight_tensor = torch.tensor(weights, device=self.device, dtype=torch.float32)
+        if bool((weight_tensor < 0.0).any()) or float(weight_tensor.sum()) <= 0.0:
+            raise ValueError(f"invalid camera latency mode weights: {weights}")
+        self._camera_latency_ranges = torch.tensor(
+            ranges, device=self.device, dtype=self.robot.data.default_joint_pos.dtype
+        )
+        self._camera_latency_weights = weight_tensor / weight_tensor.sum()
+        max_latency_s = max(pair[1] for pair in ranges)
+        self._camera_history_len = int(np.ceil(max_latency_s / self.physics_dt)) + 3
+        state_dtype = self.robot.data.default_joint_pos.dtype
+        self._camera_truth_history = torch.zeros(
+            self._camera_history_len, self.num_envs, 6, device=self.device, dtype=state_dtype
+        )
+        self._camera_generation_history = torch.full(
+            (self._camera_history_len, self.num_envs),
+            -1,
+            device=self.device,
+            dtype=torch.long,
+        )
+        self._camera_history_index = 0
+        self._camera_generation = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+        self._camera_mode = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+        self._camera_latency_s = torch.zeros(self.num_envs, device=self.device, dtype=state_dtype)
+        self._camera_phase_s = torch.zeros(self.num_envs, device=self.device, dtype=state_dtype)
+        self._camera_raw_gap_s = torch.full(
+            (self.num_envs,), self._camera_reset_gap_s, device=self.device, dtype=state_dtype
+        )
+        self._camera_sample_age_s = torch.zeros(self.num_envs, device=self.device, dtype=state_dtype)
+        self._camera_acquire_count = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+        self._camera_source_pos = torch.zeros(self.num_envs, 3, device=self.device, dtype=state_dtype)
+        self._camera_source_vel = torch.zeros(self.num_envs, 3, device=self.device, dtype=state_dtype)
+        self._camera_candidate_pos = torch.zeros(self.num_envs, 3, device=self.device, dtype=state_dtype)
+        self.camera_track_valid.zero_()
+
+    def _reset_camera_observation(self, env_ids) -> None:
+        if not getattr(self, "_camera_observation_enable", False) or len(env_ids) == 0:
+            return
+        env_ids = torch.as_tensor(env_ids, device=self.device, dtype=torch.long)
+        self._camera_generation[env_ids] += 1
+        probs = self._camera_latency_weights.expand(len(env_ids), -1)
+        self._camera_mode[env_ids] = torch.multinomial(probs, 1).squeeze(-1)
+        ranges = self._camera_latency_ranges[self._camera_mode[env_ids]]
+        self._camera_latency_s[env_ids] = ranges[:, 0] + torch.rand(
+            len(env_ids), device=self.device, dtype=ranges.dtype
+        ) * (ranges[:, 1] - ranges[:, 0])
+        self._camera_phase_s[env_ids] = torch.rand(
+            len(env_ids), device=self.device, dtype=self._camera_phase_s.dtype
+        ) * self._camera_period_s
+        self._camera_raw_gap_s[env_ids] = self._camera_reset_gap_s
+        self._camera_sample_age_s[env_ids] = 0.0
+        self._camera_acquire_count[env_ids] = 0
+        self.camera_track_valid[env_ids] = False
+        self.camera_observation_age_s[env_ids] = 0.0
+        self._camera_source_pos[env_ids] = 0.0
+        self._camera_source_vel[env_ids] = 0.0
+        self._camera_candidate_pos[env_ids] = 0.0
+        self._camera_estimated_ball_pos[env_ids] = 0.0
+
+    def _propagate_camera_ball(
+        self, pos: torch.Tensor, vel: torch.Tensor, dt: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Match deploy's gravity plus at-most-one table-bounce extrapolator."""
+        dt = torch.clamp(dt, min=0.0)
+        out_pos = pos.clone()
+        out_vel = vel.clone()
+        pre = dt
+        post = torch.zeros_like(dt)
+        if self._camera_table_bounce:
+            a = 0.5 * self._camera_gravity
+            b = vel[:, 2]
+            c = pos[:, 2] - self._camera_table_z
+            disc = b.square() - 4.0 * a * c
+            root = torch.sqrt(torch.clamp(disc, min=0.0))
+            denom = 2.0 * a
+            t1 = (-b - root) / denom
+            t2 = (-b + root) / denom
+            inf = torch.full_like(dt, float("inf"))
+            impact = torch.minimum(
+                torch.where(t1 >= -1.0e-6, torch.clamp(t1, min=0.0), inf),
+                torch.where(t2 >= -1.0e-6, torch.clamp(t2, min=0.0), inf),
+            )
+            impact_vz = b + self._camera_gravity * impact
+            bounced = (
+                (disc >= 0.0)
+                & torch.isfinite(impact)
+                & (impact <= dt)
+                & (impact_vz < 0.0)
+                & (pos[:, 2] >= self._camera_table_z - 0.02)
+            )
+            pre = torch.where(bounced, impact, dt)
+            post = torch.where(bounced, dt - impact, torch.zeros_like(dt))
+        else:
+            bounced = torch.zeros_like(dt, dtype=torch.bool)
+
+        out_pos[:, 0] = pos[:, 0] + vel[:, 0] * dt
+        out_pos[:, 1] = pos[:, 1] + vel[:, 1] * dt
+        out_pos[:, 2] = pos[:, 2] + vel[:, 2] * pre + 0.5 * self._camera_gravity * pre.square()
+        out_vel[:, 2] = vel[:, 2] + self._camera_gravity * pre
+        if bool(bounced.any()):
+            bounce_vz = -self._camera_table_restitution * out_vel[:, 2]
+            post_z = self._camera_table_z + bounce_vz * post + 0.5 * self._camera_gravity * post.square()
+            post_vz = bounce_vz + self._camera_gravity * post
+            out_pos[:, 2] = torch.where(bounced, post_z, out_pos[:, 2])
+            out_vel[:, 2] = torch.where(bounced, post_vz, out_vel[:, 2])
+        return out_pos, out_vel
+
+    def _compute_camera_observation(self) -> torch.Tensor:
+        write_idx = self._camera_history_index
+        truth_state = torch.cat([self.ball_pos, self.ball.data.root_lin_vel_w], dim=-1)
+        self._camera_truth_history[write_idx].copy_(truth_state)
+        self._camera_generation_history[write_idx].copy_(self._camera_generation)
+
+        self._camera_phase_s.sub_(self.physics_dt)
+        self._camera_raw_gap_s.add_(self.physics_dt)
+        self._camera_sample_age_s.add_(self.physics_dt)
+        due = self._camera_phase_s <= 0.0
+        if bool(due.any()):
+            due_ids = due.nonzero(as_tuple=False).flatten()
+            self._camera_phase_s[due_ids] += self._camera_period_s
+            # A camera run normally stays in one latency phase (fresh lock or a
+            # buffered/backlog phase).  Sample that phase once per rally rather
+            # than adding unrealistic frame-to-frame timestamp reordering.
+            latency_s = self._camera_latency_s[due_ids]
+            delay_steps = torch.round(latency_s / self.physics_dt).long()
+            delay_steps = torch.clamp(delay_steps, min=0, max=self._camera_history_len - 2)
+            read_idx = (write_idx - delay_steps) % self._camera_history_len
+            state = self._camera_truth_history[read_idx, due_ids]
+            generation = self._camera_generation_history[read_idx, due_ids]
+            source_pos = state[:, :3]
+            finite = torch.isfinite(state).all(dim=-1)
+            in_view = (
+                (source_pos[:, 0] >= self._camera_x_range[0])
+                & (source_pos[:, 0] <= self._camera_x_range[1])
+                & (source_pos[:, 1] >= self._camera_y_range[0])
+                & (source_pos[:, 1] <= self._camera_y_range[1])
+                & (source_pos[:, 2] >= self._camera_z_range[0])
+                & (source_pos[:, 2] <= self._camera_z_range[1])
+            )
+            accepted = finite & in_view & (generation == self._camera_generation[due_ids])
+            if self._camera_dropout_prob > 0.0:
+                accepted &= torch.rand(len(due_ids), device=self.device) >= self._camera_dropout_prob
+            accepted_ids = due_ids[accepted]
+            if len(accepted_ids) > 0:
+                accepted_state = state[accepted]
+                measurement = (
+                    accepted_state[:, :3]
+                    + torch.randn_like(accepted_state[:, :3]) * self._camera_position_noise_std
+                )
+                previous_count = self._camera_acquire_count[accepted_ids]
+                sample_dt = torch.clamp(
+                    self._camera_raw_gap_s[accepted_ids], min=self._camera_period_s
+                )
+
+                first = previous_count == 0
+                if bool(first.any()):
+                    first_ids = accepted_ids[first]
+                    self._camera_candidate_pos[first_ids] = measurement[first]
+
+                second = previous_count == 1
+                if bool(second.any()):
+                    second_ids = accepted_ids[second]
+                    second_dt = sample_dt[second].unsqueeze(-1)
+                    self._camera_source_pos[second_ids] = measurement[second]
+                    self._camera_source_vel[second_ids] = (
+                        measurement[second] - self._camera_candidate_pos[second_ids]
+                    ) / second_dt
+
+                tracking = previous_count >= 2
+                if bool(tracking.any()):
+                    tracking_ids = accepted_ids[tracking]
+                    tracking_dt = sample_dt[tracking]
+                    predicted_pos, predicted_vel = self._propagate_camera_ball(
+                        self._camera_source_pos[tracking_ids],
+                        self._camera_source_vel[tracking_ids],
+                        tracking_dt,
+                    )
+                    innovation = measurement[tracking] - predicted_pos
+                    self._camera_source_pos[tracking_ids] = (
+                        predicted_pos + self._camera_filter_alpha * innovation
+                    )
+                    self._camera_source_vel[tracking_ids] = (
+                        predicted_vel
+                        + self._camera_filter_beta * innovation / tracking_dt.unsqueeze(-1)
+                    )
+                self._camera_sample_age_s[accepted_ids] = delay_steps[accepted].to(
+                    self._camera_sample_age_s.dtype
+                ) * self.physics_dt
+                self._camera_raw_gap_s[accepted_ids] = 0.0
+                self._camera_acquire_count[accepted_ids] = torch.clamp(
+                    self._camera_acquire_count[accepted_ids] + 1,
+                    max=self._camera_acquire_frames,
+                )
+                acquired = self._camera_acquire_count[accepted_ids] >= self._camera_acquire_frames
+                self.camera_track_valid[accepted_ids[acquired]] = True
+
+        stale = self._camera_raw_gap_s > self._camera_coast_max_s
+        self.camera_track_valid[stale] = False
+        reset_track = self._camera_raw_gap_s > self._camera_reset_gap_s
+        self._camera_acquire_count[reset_track] = 0
+        if self._camera_extrapolate:
+            estimated, _ = self._propagate_camera_ball(
+                self._camera_source_pos,
+                self._camera_source_vel,
+                torch.clamp(self._camera_sample_age_s, max=self._camera_max_extrapolation_s),
+            )
+        else:
+            estimated = self._camera_source_pos
+        self._camera_estimated_ball_pos.copy_(estimated)
+        self.camera_observation_age_s.copy_(self._camera_sample_age_s)
+        self._camera_history_index = (write_idx + 1) % self._camera_history_len
+        return self._camera_estimated_ball_pos
+
+    def get_predictor_ball_positions(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return the same timestamped/coasted ball stream used by deployment."""
+        if getattr(self, "_camera_observation_enable", False):
+            return self._camera_estimated_ball_pos, self.camera_track_valid
+        valid = torch.isfinite(self.ball_pos).all(dim=-1) & (self.ball_pos[:, 2] > 0.1)
+        return self.ball_pos, valid
 
     def compute_paddle_touch(self):
         self.ball_global_pos = self.ball.data.root_pos_w 
@@ -1753,6 +2167,10 @@ class TTEnv(VecEnv):
             | self.has_touch_paddle                # already hit this ball
             | self.mask_no_ball                    # true no-ball (injection)
         )
+        if self._camera_observation_enable:
+            # Match deployment: before two valid camera frames establish a track (or after
+            # coast timeout), both raw ball observation and learned target stay at sentinel.
+            self.mask_invalid |= ~self.camera_track_valid
         self.mask_terminal = (self.ball_pos[:, 0] > hx + 0.1) | (self.ball_pos[:, 0] < hx - 0.3) | self.has_touch_paddle_rew | (vz < 0.0) | (self.ball_pos[:, 2] < 0.6)
             #mask_terminal: true-> future,mask_terminal: false->distance
         self.has_touch_paddle_rew = self.has_touch_paddle.clone() # finally set mask True for reward computation

@@ -92,6 +92,11 @@ class RobotCfg:
     action_target_lowpass_enable: bool = False
     action_target_lowpass_tau_s: tuple = ()
     action_target_lowpass_vel_limit: tuple = ()
+    # Optional per-environment randomization.  ``tau_range_s`` contains one
+    # (min,max) pair per action joint; an empty tuple keeps the fixed values
+    # above.  Velocity limits are scaled independently per env/joint.
+    action_target_lowpass_tau_range_s: tuple = ()
+    action_target_lowpass_vel_limit_scale_range: tuple = (1.0, 1.0)
     # Optional identified motor response model. This filters the processed q_des at
     # physics rate before the target is sent to the actuator, so an ideal high-bandwidth
     # actuator can execute the measured closed-loop motor response instead of acting as
@@ -103,6 +108,13 @@ class RobotCfg:
     action_response_gain: tuple = ()
     action_response_bias_rad: tuple = ()
     action_response_u_mean: tuple = ()
+    # Per-environment uncertainty around a fitted closed-loop response.  Scale
+    # ranges apply jointly to every configured action joint; bias jitter is a
+    # per-joint symmetric half-width in radians.  Defaults preserve old tasks.
+    action_response_fn_scale_range: tuple = (1.0, 1.0)
+    action_response_zeta_scale_range: tuple = (1.0, 1.0)
+    action_response_gain_scale_range: tuple = (1.0, 1.0)
+    action_response_bias_jitter_rad: tuple = ()
     # --- Table-tennis paddle / hitting geometry (defaults match Booster T1) ---
     paddle_body_name: str = "right_hand_link"   # body the paddle is rigidly attached to
     paddle_offset: tuple = (0.0, -0.345, 0.0)   # paddle face center offset in that body's local frame
@@ -169,6 +181,7 @@ class BallCfg:
     serve_bounce_x_range: tuple = (-1.25, -0.65)   # depth: mid + deep court (x in robot half [-1.37,0])
     serve_bounce_vz_range: tuple = (1.5, 1.9)      # launch vz -> arc height / bounce timing
     serve_y_center: float = 0.0                     # lateral center for bounce-target sampling
+    serve_y_center_hard: float | None = None        # optional curriculum target for lateral center
     serve_y_start: float = 0.05                    # initial lateral half-width (centered)
     serve_y_wide: float = 0.65                     # final lateral half-width (table half-width 0.7625)
     # --- no-ball idle training (0 = off). Every no_ball_period_s the ball is active for
@@ -352,10 +365,49 @@ class PerceptionDelayCfg:
     params: dict = {"max_delay": 4, "min_delay": 3}
 
 @configclass
+class CameraObservationCfg:
+    """Timestamped camera transport model used by sim2real table-tennis tasks.
+
+    The legacy ``perception_delay`` is a physics-step delay of both ball and
+    robot state.  A real deployment instead samples only the ball at camera
+    rate, receives it after a variable transport delay, then extrapolates the
+    timestamped state to the policy tick.  This opt-in model reproduces that
+    contract while leaving existing tasks unchanged.
+    """
+
+    enable: bool = False
+    fps: float = 60.0
+    acquire_frames: int = 2
+    reset_gap_s: float = 0.25
+    coast_max_s: float = 0.12
+    dropout_prob: float = 0.0
+    # Per-environment latency mode.  Ranges are seconds and correspond to the
+    # measured fresh-lock, degraded and startup/backlog states.
+    latency_mode_weights: tuple = (1.0,)
+    latency_ranges_s: tuple = ((0.0, 0.0),)
+    position_noise_std: tuple = (0.0, 0.0, 0.0)
+    # Match the deployment bridge's timestamp-domain alpha-beta tracker before
+    # extrapolating the accepted state to the policy time.
+    filter_alpha: float = 0.65
+    filter_beta: float = 0.10
+    max_extrapolation_s: float = 0.16
+    # Camera/table corridor is expressed in training world coordinates.  The
+    # z range is absolute world height (table top is about 0.76 m).
+    x_range: tuple = (-100.0, 100.0)
+    y_range: tuple = (-100.0, 100.0)
+    z_range: tuple = (-100.0, 100.0)
+    extrapolate_to_now: bool = True
+    gravity_mps2: float = -9.81
+    table_bounce_enable: bool = True
+    table_ball_center_z: float = 0.78
+    table_restitution: float = 0.95
+
+@configclass
 class DomainRandCfg:
     events: EventCfg = EventCfg()
     action_delay: ActionDelayCfg = ActionDelayCfg()
     perception_delay: PerceptionDelayCfg = PerceptionDelayCfg()
+    camera_observation: CameraObservationCfg = CameraObservationCfg()
 
 
 @configclass
