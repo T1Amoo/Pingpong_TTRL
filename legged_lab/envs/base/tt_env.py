@@ -1217,7 +1217,7 @@ class TTEnv(VecEnv):
 
         self._action_response_fn_hz_base = _param_tensor("action_response_fn_hz")
         self._action_response_zeta_base = _param_tensor("action_response_zeta")
-        self._action_response_delay_s = _param_tensor("action_response_delay_s")
+        self._action_response_delay_s_base = _param_tensor("action_response_delay_s")
         self._action_response_gain_base = _param_tensor("action_response_gain")
         self._action_response_bias_base = _param_tensor("action_response_bias_rad")
         self._action_response_u_mean = _param_tensor("action_response_u_mean")
@@ -1243,6 +1243,23 @@ class TTEnv(VecEnv):
         self._action_response_fn_scale_range = _scale_range("action_response_fn_scale_range")
         self._action_response_zeta_scale_range = _scale_range("action_response_zeta_scale_range")
         self._action_response_gain_scale_range = _scale_range("action_response_gain_scale_range")
+        delay_jitter = tuple(
+            float(v) for v in (getattr(self.cfg.robot, "action_response_delay_jitter_s", ()) or ())
+        )
+        if delay_jitter and (len(delay_jitter) != self.num_actions or any(v < 0.0 for v in delay_jitter)):
+            raise ValueError(
+                "robot.action_response_delay_jitter_s must be empty or contain one "
+                f"non-negative value per action joint, got {delay_jitter}"
+            )
+        self._action_response_delay_jitter = (
+            None
+            if not delay_jitter
+            else torch.tensor(
+                delay_jitter,
+                device=self.device,
+                dtype=self.robot.data.default_joint_pos.dtype,
+            ).unsqueeze(0)
+        )
         bias_jitter = tuple(
             float(v) for v in (getattr(self.cfg.robot, "action_response_bias_jitter_rad", ()) or ())
         )
@@ -1261,9 +1278,18 @@ class TTEnv(VecEnv):
             ).unsqueeze(0)
         )
         self._action_response_omega = torch.zeros_like(self._action_response_fn_hz)
-        delay_steps = torch.round(self._action_response_delay_s / self.physics_dt).to(dtype=torch.long)
-        self._action_response_delay_steps = torch.clamp(delay_steps.squeeze(0), min=0)
-        self._action_response_delay_buffer_len = int(torch.max(self._action_response_delay_steps).item()) + 1
+        max_delay_s = self._action_response_delay_s_base
+        if self._action_response_delay_jitter is not None:
+            max_delay_s = max_delay_s + self._action_response_delay_jitter
+        self._action_response_delay_buffer_len = (
+            int(torch.ceil(torch.max(max_delay_s) / self.physics_dt).item()) + 1
+        )
+        self._action_response_delay_steps = torch.zeros(
+            self.num_envs,
+            self.num_actions,
+            device=self.device,
+            dtype=torch.long,
+        )
         self._action_response_delay_index = 0
         self._action_response_x_rel = torch.zeros_like(self._last_processed_actions)
         self._action_response_v_rel = torch.zeros_like(self._last_processed_actions)
@@ -1313,6 +1339,15 @@ class TTEnv(VecEnv):
             self._action_response_gain_base
             * _sample_scale(self._action_response_gain_scale_range, dtype)
         )
+        delay_s = self._action_response_delay_s_base.expand(count, -1)
+        if self._action_response_delay_jitter is not None:
+            delay_noise = (
+                2.0 * torch.rand(count, self.num_actions, device=self.device, dtype=dtype) - 1.0
+            ) * self._action_response_delay_jitter
+            delay_s = torch.clamp(delay_s + delay_noise, min=0.0)
+        self._action_response_delay_steps[env_ids] = torch.round(
+            delay_s / self.physics_dt
+        ).to(dtype=torch.long)
         self._action_response_bias[env_ids] = self._action_response_bias_base
         if self._action_response_bias_jitter is not None:
             jitter = (2.0 * torch.rand(count, self.num_actions, device=self.device, dtype=dtype) - 1.0)
@@ -1325,12 +1360,14 @@ class TTEnv(VecEnv):
     def _delayed_action_response_command(self, raw_command: torch.Tensor) -> torch.Tensor:
         write_idx = self._action_response_delay_index
         self._action_response_delay_buffer[write_idx].copy_(raw_command)
-        delayed_columns = []
-        for action_id, delay_step in enumerate(self._action_response_delay_steps.tolist()):
-            read_idx = (write_idx - int(delay_step)) % self._action_response_delay_buffer_len
-            delayed_columns.append(self._action_response_delay_buffer[read_idx, :, action_id])
+        read_idx = (
+            write_idx - self._action_response_delay_steps
+        ) % self._action_response_delay_buffer_len
+        env_idx = torch.arange(self.num_envs, device=self.device).unsqueeze(1)
+        action_idx = torch.arange(self.num_actions, device=self.device).unsqueeze(0)
+        delayed = self._action_response_delay_buffer[read_idx, env_idx, action_idx]
         self._action_response_delay_index = (write_idx + 1) % self._action_response_delay_buffer_len
-        return torch.stack(delayed_columns, dim=1)
+        return delayed
 
     def _apply_action_response_model(self, raw_command: torch.Tensor, dt: float) -> torch.Tensor:
         if not getattr(self, "_action_response_model_enable", False):

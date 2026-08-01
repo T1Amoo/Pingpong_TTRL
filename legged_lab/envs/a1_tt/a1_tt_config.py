@@ -164,6 +164,7 @@ A1_BACKHAND_READY_Q = (1.450, -0.762, -2.050, 1.445, 0.206, -0.827, 1.043)
 A1_BACKHAND_RESPONSE_FN_HZ = (3.166, 9.959, 9.899, 5.892, 20.000, 8.572, 19.455)
 A1_BACKHAND_RESPONSE_ZETA = (0.414, 0.559, 0.728, 0.325, 0.889, 0.615, 0.565)
 A1_BACKHAND_RESPONSE_DELAY_S = (0.010, 0.040, 0.040, 0.030, 0.040, 0.030, 0.040)
+A1_BACKHAND_RESPONSE_DELAY_JITTER_S = (0.005, 0.010, 0.010, 0.008, 0.008, 0.008, 0.008)
 A1_BACKHAND_RESPONSE_GAIN = (0.9965, 1.0006, 1.0060, 0.9771, 1.0060, 1.0045, 0.9948)
 A1_BACKHAND_RESPONSE_BIAS_RAD = (-0.0208, 0.0004, -0.0095, -0.0084, -0.0050, 0.0041, 0.0003)
 A1_BACKHAND_LOWPASS_TAU_RANGE_S = (
@@ -1002,6 +1003,7 @@ class A1TableTennisBackhandEnvCfg(A1TableTennisEnvCfg):
         self.robot.action_response_fn_scale_range = (0.85, 1.15)
         self.robot.action_response_zeta_scale_range = (0.80, 1.25)
         self.robot.action_response_gain_scale_range = (0.98, 1.02)
+        self.robot.action_response_delay_jitter_s = A1_BACKHAND_RESPONSE_DELAY_JITTER_S
         self.robot.action_response_bias_jitter_rad = (0.006, 0.004, 0.004, 0.008, 0.006, 0.006, 0.004)
 
         # One 50 Hz action tick covers scheduler/ROS phase uncertainty beyond
@@ -1022,7 +1024,10 @@ class A1TableTennisBackhandEnvCfg(A1TableTennisEnvCfg):
         camera.coast_max_s = 0.12
         camera.dropout_prob = 0.01
         camera.latency_mode_weights = (0.85, 0.10, 0.05)
-        camera.latency_ranges_s = ((0.010, 0.025), (0.025, 0.060), (0.060, 0.100))
+        # Fresh-lock source age is 23.5--27.4 ms on the deployed ZED. Keep a
+        # broad network/inference margin and a rare 80--120 ms degraded tail so
+        # the policy remains tolerant without treating the old backlog as normal.
+        camera.latency_ranges_s = ((0.010, 0.045), (0.045, 0.080), (0.080, 0.120))
         camera.position_noise_std = (0.004, 0.004, 0.006)
         camera.filter_alpha = 0.65
         camera.filter_beta = 0.10
@@ -1054,8 +1059,10 @@ class A1TableTennisBackhandEnvCfg(A1TableTennisEnvCfg):
         self.ball.serve_bounce_vz_range_hard = (0.50, 2.00)
         self.ball.serve_y_wide = 0.15
         self.ball.serve_curriculum_perf_gated = False
-        self.ball.serve_curriculum_phase_start = 3000 * A1_TT_RAW_STEPS_PER_ITER
-        self.ball.serve_curriculum_steps = 18000 * A1_TT_RAW_STEPS_PER_ITER
+        # 30k v1: 0--10k mentor/easy, 10k--20k linear widening, 20k--30k
+        # full-range consolidation. Curriculum clock is raw physics substeps.
+        self.ball.serve_curriculum_phase_start = 10000 * A1_TT_RAW_STEPS_PER_ITER
+        self.ball.serve_curriculum_steps = 10000 * A1_TT_RAW_STEPS_PER_ITER
 
         self.ball.require_active_contact = True
         self.ball.active_contact_min_paddle_speed = 0.18
@@ -1239,9 +1246,9 @@ class A1TableTennisV14AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
 @configclass
 class A1TableTennisBackhandAgentCfg(A1TableTennisDeployAgentCfg):
     experiment_name: str = "a1_tt_backhand_real_v1"
-    run_name = "scratch_camera_dr_blackbox0801_tau_dr"
+    run_name = "scratch_backhand_camera_age35_tau_delay_dr_10k10k10k"
     resume = False
-    max_iterations = 25000
+    max_iterations = 30000
     predictor = {
         "history_len": 5,
         "traj_max_len": 128,
