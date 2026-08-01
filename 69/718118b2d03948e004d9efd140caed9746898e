@@ -1,0 +1,43 @@
+legged_lab/envs/base/tt_config.py
+  s_d7bdfbc037e805::t_4e80d33dce4d63 368-388,394-404,410
+  s_d7bdfbc037e805::t_861e566d32f3ae 184,389-393
+  s_d7bdfbc037e805::t_a6b98f90571e77 95-99
+  s_d7bdfbc037e805::t_2848dc9e27cdab 111-117
+  s_d7bdfbc037e805::t_0d91c7f3326096 367
+pretrained/a1_tt_backhand/base_9700_hitplane020/DEPLOY_CONTRACT.md
+  s_d7bdfbc037e805::t_363fac83d529f0 78-79
+  s_d7bdfbc037e805::t_cdb457302c63c8 110-111,114-117,120-122
+legged_lab/envs/__init__.py
+  s_d7bdfbc037e805::t_ce53c6299a2aef 62-63,91-96
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_d7bdfbc037e805::t_ce53c6299a2aef 956-1001,1006-1079,1239-1253
+  s_d7bdfbc037e805::t_2848dc9e27cdab 1002-1005
+  s_d7bdfbc037e805::t_77c9d2f70f0bb4 158-178,406-435
+  s_d7bdfbc037e805::t_cc965caeeb7878 436-437
+  s_d7bdfbc037e805::t_a80b0724780bd3 1254-1255
+rsl_rl/rsl_rl/runners/on_policy_predictor_regression_runner.py
+  s_d7bdfbc037e805::t_7fd2013817a19e 383-389,391-395,448-453,466-470
+legged_lab/envs/base/tt_env.py
+  s_d7bdfbc037e805::t_5c02c62ff50532 310-313,326,329-349,357,360-376,1138-1165
+  s_d7bdfbc037e805::t_2848dc9e27cdab 1218-1219,1221-1222,1224-1263,1282-1286,1291-1323
+  s_d7bdfbc037e805::t_c7d87ce0b1d253 1515-1517,1559,1568,1578-1581,1592,1656-1659,1681-1720,1738-1740
+  s_d7bdfbc037e805::t_861e566d32f3ae 1037-1041
+  s_d7bdfbc037e805::t_bab142c612de38 890-891,2170-2173
+  s_d7bdfbc037e805::t_7cb055f443d58d 280,758,780-787,1107,1486-1514,1518-1558,1560-1567,1569-1577,1582-1591,1593-1655,1660-1680,1721-1737,1741-1754
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "69718118b2d03948e004d9efd140caed9746898e",
+  "prompts": {},
+  "sessions": {
+    "s_d7bdfbc037e805": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb780-0fbb-7d70-ad81-7f6b5c3684bd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
