@@ -1,0 +1,67 @@
+pretrained/a1_tt_backhand/base_9700_hitplane020/SOURCE_ARCHIVE.sha256
+  s_d7bdfbc037e805::t_7731d0108d028c 1
+pretrained/a1_tt_backhand/README.md
+  s_d7bdfbc037e805::t_7731d0108d028c 1-13
+pretrained/a1_tt_backhand/base_9700_hitplane020/DEPLOY_CONTRACT.md
+  s_d7bdfbc037e805::t_1ce18edff9ce6b 87-107
+  s_d7bdfbc037e805::t_7cad6edc33bcb5 1-86
+pretrained/a1_tt_backhand/base_9700_hitplane020/BASELINE.md
+  s_d7bdfbc037e805::t_7731d0108d028c 1-34,38-48
+  s_d7bdfbc037e805::t_7cad6edc33bcb5 35-37
+pretrained/a1_tt_backhand/base_9700_hitplane020/MANIFEST.txt
+  s_d7bdfbc037e805::t_7f10896cf8a237 1-22
+pretrained/a1_tt_backhand/base_9700_hitplane020/README_DEPLOY.md
+  s_d7bdfbc037e805::t_2562fc22d891fa 1-66
+pretrained/a1_tt_backhand/base_9700_hitplane020/SHA256SUMS
+  s_d7bdfbc037e805::t_c9cca49aef24e8 1-22
+pretrained/a1_tt_backhand/base_9700_hitplane020/patches/current_sim2sim_changes.diff
+  s_d7bdfbc037e805::t_ea27e17df2100b 1-1798
+pretrained/a1_tt_backhand/base_9700_hitplane020/sim2sim_files/deploy/robots/a1_h1/sim2sim/README_original_sim2sim.md
+  s_d7bdfbc037e805::t_8e5a25a3c2e91d 1-165
+pretrained/a1_tt_backhand/base_9700_hitplane020/sim2sim_files/deploy/robots/a1_h1/sim2sim/a1_scene.py
+  s_d7bdfbc037e805::t_e0a931725b883f 1-813
+pretrained/a1_tt_backhand/base_9700_hitplane020/sim2sim_files/deploy/robots/a1_h1/sim2sim/ball_gate.py
+  s_d7bdfbc037e805::t_3b2d7777253abe 1-153
+pretrained/a1_tt_backhand/base_9700_hitplane020/sim2sim_files/deploy/robots/a1_h1/sim2sim/policy_io.py
+  s_d7bdfbc037e805::t_d8f38f4a25358c 1-539
+pretrained/a1_tt_backhand/base_9700_hitplane020/sim2sim_files/deploy/robots/a1_h1/sim2sim/run_a1_tt_sim2sim.py
+  s_d7bdfbc037e805::t_5cf37f502bcf78 1-843
+pretrained/a1_tt_backhand/base_9700_hitplane020/sim2sim_files/deploy/robots/a1_h1/sim2sim/scene/a1_tt_scene.xml
+  s_d7bdfbc037e805::t_5016e22cb190d8 1-237
+pretrained/a1_tt_backhand/base_9700_hitplane020/sim2sim_files/deploy/robots/a1_h1/sim2sim/scene/a1_tt_scene_v1_3_backhand_low_arm_2100.xml
+  s_d7bdfbc037e805::t_ab5cb0204a60ae 1-233
+pretrained/a1_tt_backhand/base_9700_hitplane020/sim2sim_files/deploy/robots/a1_h1/sim2sim/scene/a1_tt_scene_v1_3_backhand_low_arm_hitplane020.xml
+  s_d7bdfbc037e805::t_6e91707296f5c2 1-233
+pretrained/a1_tt_backhand/base_9700_hitplane020/sim2sim_files/deploy/robots/a1_h1/sim2sim/serve.py
+  s_d7bdfbc037e805::t_9c280ef118101a 1-54
+pretrained/a1_tt_backhand/base_9700_hitplane020/sim2sim_files/deploy/robots/a1_h1/sim2sim/test_a1_sim2sim.py
+  s_d7bdfbc037e805::t_4f3210e5f94fc8 1-624
+pretrained/a1_tt_backhand/base_9700_hitplane020/sim2sim_files/deploy/robots/a1_h1/tools/joint_id/fit_0729_response.py
+  s_d7bdfbc037e805::t_6103ed5ddd0206 1-515
+pretrained/a1_tt_backhand/base_9700_hitplane020/sim2sim_files/deploy/robots/a1_h1/tools/joint_id/fit_second_order_actuator.py
+  s_d7bdfbc037e805::t_a95fefd583363d 1-451
+pretrained/a1_tt_backhand/base_9700_hitplane020/sim2sim_files/deploy/robots/a1_h1/tools/joint_id/test_fit_0729_response.py
+  s_d7bdfbc037e805::t_42623bf429adb2 1-151
+pretrained/a1_tt_backhand/base_9700_hitplane020/sim2sim_files/deploy/robots/a1_h1/tools/joint_id/test_fit_second_order_actuator.py
+  s_d7bdfbc037e805::t_414e2ff30aca12 1-33
+pretrained/a1_tt_backhand/base_9700_hitplane020/training_params/agent.yaml
+  s_d7bdfbc037e805::t_0248846f0976bb 1-60
+pretrained/a1_tt_backhand/base_9700_hitplane020/training_params/env.yaml
+  s_d7bdfbc037e805::t_f92d09404f6090 1-1460
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "16df41e7ccb4debd80f950a28648a76341be267a",
+  "prompts": {},
+  "sessions": {
+    "s_d7bdfbc037e805": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb780-0fbb-7d70-ad81-7f6b5c3684bd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
