@@ -1104,6 +1104,8 @@ class TTEnv(VecEnv):
             self.ball.write_root_velocity_to_sim(old_states[:, 7:], old_state_env_ids)
 
         self.ball_linvel_prev[env_ids] = self.reset_ball_state_buf[env_ids, 7:10]
+        if hasattr(self, "_probe_crossed_this_serve"):
+            self._probe_crossed_this_serve[env_ids] = False
         self._reset_camera_observation(env_ids)
 
     def _apply_effort_curriculum(self):
@@ -2082,16 +2084,27 @@ class TTEnv(VecEnv):
             _prev = getattr(self, "_probe_prev_x", None)
             if _prev is None or _prev.numel() != x.numel():
                 self._probe_prev_x = x.detach().clone()
-                self._probe_y, self._probe_z, self._probe_last = [], [], 0
+                self._probe_crossed_this_serve = torch.zeros_like(x, dtype=torch.bool)
+                self._probe_y, self._probe_z = [], []
             else:
-                _crossed = (_prev > _hxp) & (x <= _hxp) & (vx < -0.5)
+                # One sample per serve: later robot/table deflections can cross
+                # the same plane again and used to poison p95 with impossible
+                # y/z outliers. Require the own-table bounce and latch the first
+                # incoming crossing only.
+                _crossed = (
+                    (_prev > _hxp)
+                    & (x <= _hxp)
+                    & (vx < -0.5)
+                    & has_bounced
+                    & (~self._probe_crossed_this_serve)
+                )
                 if _crossed.any():
                     self._probe_y.append(y[_crossed].detach().cpu())
                     self._probe_z.append(z[_crossed].detach().cpu())
+                    self._probe_crossed_this_serve[_crossed] = True
                 self._probe_prev_x = x.detach().clone()
                 _tot = sum(t.numel() for t in self._probe_y)
-                if _tot - self._probe_last >= 2000 and _tot > 0:
-                    self._probe_last = _tot
+                if _tot >= 2000:
                     _ally = torch.cat(self._probe_y); _allz = torch.cat(self._probe_z)
                     _qs = torch.tensor([0.05, 0.5, 0.95])
                     _yq = torch.quantile(_ally, _qs); _zq = torch.quantile(_allz, _qs)
@@ -2103,6 +2116,9 @@ class TTEnv(VecEnv):
                         f"z p5/50/95={_zq[0]:.3f}/{_zq[1]:.3f}/{_zq[2]:.3f} win[{_tzl},{_tzh}]",
                         flush=True,
                     )
+                    # Report the current curriculum slice instead of allowing
+                    # the first 10k easy serves to dominate all later probes.
+                    self._probe_y, self._probe_z = [], []
         # ----------------------------------------------------------------------------------
 
         g=9.81
