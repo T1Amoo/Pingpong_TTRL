@@ -27,16 +27,22 @@ run_of_iter() {
 }
 
 launch() {
-  local iter run
+  local iter run remaining
   iter=$(max_iter)
   iter=${iter:-0}
   if [ "$iter" -gt 0 ]; then
     run=$(run_of_iter "$iter")
+    if [ "$iter" -ge "$TARGET" ]; then
+      echo "[watchdog] $(date --iso-8601=seconds) target=$TARGET already complete at checkpoint=$iter" >> "$WATCHDOG_LOG"
+      return 1
+    fi
+    remaining=$((TARGET + 1 - iter))
     export TT_SIM_STEP_OFFSET=$((iter * 240))
-    echo "[watchdog] $(date --iso-8601=seconds) resume run=$run model_$iter.pt curriculum_raw_step=$TT_SIM_STEP_OFFSET" >> "$WATCHDOG_LOG"
+    echo "[watchdog] $(date --iso-8601=seconds) resume run=$run model_$iter.pt remaining=$remaining curriculum_raw_step=$TT_SIM_STEP_OFFSET" >> "$WATCHDOG_LOG"
     python -u -m legged_lab.scripts.train \
       --task a1_tt_backhand --num_envs 4096 --headless --predictor \
       --resume True --load_run "$run" --checkpoint "model_$iter.pt" \
+      --max_iterations "$remaining" \
       >> "$TRAIN_LOG" 2>&1 &
   else
     unset TT_SIM_STEP_OFFSET
@@ -49,7 +55,9 @@ launch() {
   echo "[watchdog] $(date --iso-8601=seconds) trainer_pid=$TRAIN_PID" >> "$WATCHDOG_LOG"
 }
 
-launch
+if ! launch; then
+  exit 0
+fi
 while true; do
   sleep 60
   iter=$(max_iter)
@@ -69,6 +77,8 @@ while true; do
   fi
   if [ "$alive" = "0" ]; then
     echo "[watchdog] $(date --iso-8601=seconds) trainer exited at checkpoint=$iter; relaunch" >> "$WATCHDOG_LOG"
-    launch
+    if ! launch; then
+      break
+    fi
   fi
 done

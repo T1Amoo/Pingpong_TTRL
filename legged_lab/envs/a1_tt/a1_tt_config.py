@@ -1053,11 +1053,15 @@ class A1TableTennisBackhandEnvCfg(A1TableTennisEnvCfg):
         self.ball.serve_bounce_x_range = (-1.053, -0.773)
         self.ball.serve_bounce_vz_range = (0.0, 0.45)
         self.ball.serve_y_center = 0.041
-        self.ball.serve_y_center_hard = 0.070
+        # y is sampled at the nominal bounce point, then keeps spreading before
+        # x=-1.243. Back-project today's hit-plane envelope instead of applying
+        # its full half-width directly at the bounce (which produced
+        # y_hit p5/p95 ~= -0.082/0.263 and wasted ~31% of hard-stage serves).
+        self.ball.serve_y_center_hard = 0.055
         self.ball.serve_y_start = 0.020
         self.ball.serve_bounce_x_range_hard = (-1.10, -0.35)
         self.ball.serve_bounce_vz_range_hard = (0.50, 2.00)
-        self.ball.serve_y_wide = 0.15
+        self.ball.serve_y_wide = 0.105
         self.ball.serve_curriculum_perf_gated = False
         # 30k v1: 0--10k mentor/easy, 10k--20k linear widening, 20k--30k
         # full-range consolidation. Curriculum clock is raw physics substeps.
@@ -1246,7 +1250,7 @@ class A1TableTennisV14AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
 @configclass
 class A1TableTennisBackhandAgentCfg(A1TableTennisDeployAgentCfg):
     experiment_name: str = "a1_tt_backhand_real_v1"
-    run_name = "scratch_backhand_camera_age35_tau_delay_dr_10k10k10k"
+    run_name = "resume_backhand_camera_age35_tau_delay_dr_servey055h105_10k10k10k"
     resume = False
     max_iterations = 30000
     predictor = {
