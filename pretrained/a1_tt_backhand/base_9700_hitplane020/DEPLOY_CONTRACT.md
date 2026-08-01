@@ -106,14 +106,17 @@ gate, predictor history, and hit-plane geometry recorded above. Before enabling
 torque, run a servo-disabled observation/action trace and a low-speed MoveJ to
 the ready pose.
 
-The current real bridge shapes the raw 50 Hz policy target with the first-order
-command filter below before publishing to the SDK:
+The current real bridge uses the same 50 Hz action-target rate limiter recorded
+in `training_params/env.yaml` before publishing position-only commands to the
+SDK:
 
 ```text
-tau_s = [0.10, 0.10, 0.08, 0.10, 0.05, 0.05, 0.10] s
-velocity_limit = [1.0, 1.2, 1.8, 1.6, 4.0, 3.2, 8.0] rad/s
+max_delta_per_tick = [0.05, 0.05, 0.05, 0.10, 0.10, 0.10, 0.10] rad
+servo_filter_enabled = false
+qdes_slew_enabled = true
 ```
 
-The hard `qdes_slew/max_delta_per_tick` branch is disabled. The SDK node keeps
-only a higher per-cycle discontinuity guard; under the velocity limits above it
-does not shape the normal trajectory.
+At 50 Hz this corresponds to target velocity envelopes of
+`[2.5, 2.5, 2.5, 5.0, 5.0, 5.0, 5.0] rad/s`. The SDK node's higher per-cycle
+discontinuity guard remains a safety guard and does not shape this normal
+trajectory. Desired velocity and feedforward torque remain zero.
