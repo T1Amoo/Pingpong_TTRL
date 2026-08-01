@@ -1,0 +1,19 @@
+legged_lab/envs/base/tt_env.py
+  s_d7bdfbc037e805::t_d69d8fe3da9212 1107-1108,2087-2088,2090-2100,2104,2107,2119-2121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "a921a4927332b1729c69553469fae3510e30faef",
+  "prompts": {},
+  "sessions": {
+    "s_d7bdfbc037e805": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb780-0fbb-7d70-ad81-7f6b5c3684bd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
