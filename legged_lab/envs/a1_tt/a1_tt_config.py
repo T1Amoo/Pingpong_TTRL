@@ -1249,8 +1249,8 @@ class A1TableTennisV14AgentCfg(A1TableTennisTorqueLowpassAgentCfg):
 
 @configclass
 class A1TableTennisBackhandAgentCfg(A1TableTennisDeployAgentCfg):
-    experiment_name: str = "a1_tt_backhand_real_v1"
-    run_name = "resume_backhand_camera_age35_tau_delay_dr_servey055h105_10k10k10k"
+    experiment_name: str = "a1_tt_backhand_real_v1_y055h105"
+    run_name = "scratch_backhand_camera_age35_tau_delay_dr_servey055h105_10k10k10k"
     resume = False
     max_iterations = 30000
     predictor = {

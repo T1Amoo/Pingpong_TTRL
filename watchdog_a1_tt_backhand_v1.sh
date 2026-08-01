@@ -8,10 +8,10 @@ conda activate pingpong
 export OMNI_KIT_ACCEPT_EULA=YES
 export TT_SERVE_PROBE=1
 
-EXP=logs/a1_tt_backhand_real_v1
+EXP=logs/a1_tt_backhand_real_v1_y055h105
 TARGET=29999
-TRAIN_LOG=train_a1_tt_backhand_real_v1.log
-WATCHDOG_LOG=train_a1_tt_backhand_real_v1_watchdog.log
+TRAIN_LOG=train_a1_tt_backhand_real_v1_y055h105.log
+WATCHDOG_LOG=train_a1_tt_backhand_real_v1_y055h105_watchdog.log
 
 max_iter() {
   find "$EXP" -mindepth 2 -maxdepth 2 -type f -name 'model_*.pt' -printf '%f\n' 2>/dev/null \
