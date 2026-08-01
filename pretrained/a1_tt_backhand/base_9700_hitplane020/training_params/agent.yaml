@@ -1,0 +1,60 @@
+seed: 42
+device: cuda:0
+num_steps_per_env: 24
+max_iterations: 12000
+empirical_normalization: true
+obs_groups: {}
+clip_actions: null
+save_interval: 100
+experiment_name: a1_tt_backhand_real_v7_hitplane020_scratch_run1
+run_name: scratch_backhand_damiao_mit_success_first_slow_curriculum
+logger: tensorboard
+neptune_project: leggedlab
+wandb_project: leggedlab
+resume: false
+load_run: .*
+load_checkpoint: model_.*.pt
+class_name: OnPolicyRunner
+policy:
+  class_name: ActorCritic
+  init_noise_std: 1.0
+  noise_std_type: scalar
+  state_dependent_std: false
+  actor_obs_normalization: {}
+  critic_obs_normalization: {}
+  actor_hidden_dims:
+  - 512
+  - 512
+  - 128
+  critic_hidden_dims:
+  - 512
+  - 512
+  - 128
+  activation: elu
+algorithm:
+  class_name: PPO
+  num_learning_epochs: 5
+  num_mini_batches: 64
+  learning_rate: 0.0005
+  schedule: adaptive
+  gamma: 0.95
+  lam: 0.95
+  entropy_coef: 0.006
+  desired_kl: 0.01
+  max_grad_norm: 1.0
+  value_loss_coef: 1.0
+  use_clipped_value_loss: true
+  clip_param: 0.2
+  normalize_advantage_per_mini_batch: false
+  rnd_cfg: null
+  symmetry_cfg: null
+predictor:
+  history_len: 5
+  traj_max_len: 128
+  hidden_sizes:
+  - 64
+  - 64
+  lr: 0.0005
+  epochs_per_update: 1
+  batch_size: 1024
+  train_until_iters: 200

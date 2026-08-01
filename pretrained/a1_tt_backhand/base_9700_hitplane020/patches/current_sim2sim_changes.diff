@@ -1,0 +1,1798 @@
+diff --git a/deploy/robots/a1_h1/sim2sim/README.md b/deploy/robots/a1_h1/sim2sim/README.md
+index df22ba0..164e503 100644
+--- a/deploy/robots/a1_h1/sim2sim/README.md
++++ b/deploy/robots/a1_h1/sim2sim/README.md
+@@ -22,8 +22,8 @@ tau = kp * (q_des - q) + kd * (dq_des - dq) + tau_ff
+ ```
+ 
+ Use `--dynamic-pd` to test the explicit MIT-PD torque path. The runner now
+-loads a generated MJCF scene (`sim2sim/scene/a1_tt_scene.xml`) instead of using
+-the raw URDF directly. The MJCF keeps the URDF geometry/inertias, and adds
++builds a generated MJCF scene from the active profile instead of using the raw
++URDF directly. The MJCF keeps the URDF geometry/inertias, and adds
+ MuJoCo-only metadata that URDF did not carry: joint armature, damping,
+ frictionloss, DAMIAO actuator force ranges, motor actuators, sensors, and
+ table-tennis contact pairs. Those values are still initial estimates until
+@@ -45,6 +45,29 @@ Viewer:
+ conda run -n g1tt_sim2sim python sim2sim/run_a1_tt_sim2sim.py
+ ```
+ 
++Current low-arm `a1_tt_backhand_real_v7` candidate, visual sanity mode:
++
++```bash
++A1_SIM2SIM_PROFILE=v1_3_backhand_low_arm_2100 \
++conda run -n g1tt_sim2sim python sim2sim/run_a1_tt_sim2sim.py \
++  --policy /home/woan/桌面/isolated_worktrees/Pingpong_TTRL_mentor_damiao_v7/logs/a1_tt_backhand_real_v7_low_arm_ready_push_run1/2026-07-30_14-56-45_scratch_backhand_damiao_mit_3k_easy_contact_curriculum/exported/policy.onnx
++```
++
++Current low-arm candidate, training/real-response matched mode:
++
++```bash
++A1_SIM2SIM_PROFILE=v1_3_backhand_low_arm_2100 \
++conda run -n g1tt_sim2sim python sim2sim/run_a1_tt_sim2sim.py \
++  --policy /home/woan/桌面/isolated_worktrees/Pingpong_TTRL_mentor_damiao_v7/logs/a1_tt_backhand_real_v7_low_arm_ready_push_run1/2026-07-30_14-56-45_scratch_backhand_damiao_mit_3k_easy_contact_curriculum/exported/policy.onnx \
++  --actuator-mode damiao_mit \
++  --real-response-model
++```
++
++Dead/out balls are re-served on the next 50 Hz control tick by default
++(`--serve-pause-steps 1`). This matches the training setup more closely than
++leaving the policy in a long no-ball window. Increase `--serve-pause-steps`
++only when you explicitly want to inspect post-hit recovery without a new ball.
++
+ Explicit torque diagnostic:
+ 
+ ```bash
+@@ -63,6 +86,28 @@ Zero-action scene test:
+ conda run -n g1tt_sim2sim python sim2sim/run_a1_tt_sim2sim.py --headless-steps 50 --no-policy
+ ```
+ 
++Asset/profile selection is controlled at process start with
++`A1_SIM2SIM_PROFILE` because `policy_io.py` freezes the observation constants
++when it is imported:
++
++```bash
++# Old reference path for 10999 / old-URDF videos.
++A1_SIM2SIM_PROFILE=model_10999 \
++conda run -n g1tt_sim2sim python sim2sim/run_a1_tt_sim2sim.py
++
++# Current V1_3 backhand training profile.
++A1_SIM2SIM_PROFILE=v1_3_backhand \
++conda run -n g1tt_sim2sim python sim2sim/run_a1_tt_sim2sim.py
++
++# Current low-arm V1_3 candidate trained from 2026-07-30 model_2100.
++A1_SIM2SIM_PROFILE=v1_3_backhand_low_arm_2100 \
++conda run -n g1tt_sim2sim python sim2sim/run_a1_tt_sim2sim.py
++
++# Mentor isolation test: current backhand policy geometry, but old V1_1 URDF.
++A1_SIM2SIM_PROFILE=old_v1_1_backhand \
++conda run -n g1tt_sim2sim python sim2sim/run_a1_tt_sim2sim.py
++```
++
+ ## Defaults
+ 
+ - Scene MJCF: `sim2sim/scene/a1_tt_scene.xml`
+@@ -71,21 +116,27 @@ conda run -n g1tt_sim2sim python sim2sim/run_a1_tt_sim2sim.py --headless-steps 5
+ - Control: 50 Hz policy, 500 Hz MuJoCo physics
+ - Action: `q_des = default_q + clip(raw_action, +/-10) * 0.25`
+ - Training torque limits: r1-r3 `28 Nm`, r4-r7 `8 Nm`
+-- MJCF DAMIAO actuator ranges: r1-r3 `28 Nm`, r4-r7 `10 Nm`
++- MJCF DAMIAO actuator ranges: r1-r3 `28 Nm`, r4-r7 `8 Nm`
+ 
+ If `predictor.onnx` exists next to `policy.onnx`, the runner uses it for the
+ 5-frame ball prediction path and falls back to the analytic hit-plane predictor
+ when the predictor output is outside the training gate.
+ 
++`--actuator-mode isaac_approx` is the default visual sanity mode. It is useful
++for checking scene/profile/policy geometry, but it is not the 0729 real motor
++fit. For the current DamiaoMIT-trained policy, use `--actuator-mode damiao_mit`
++with `--real-response-model` when judging sim2sim against the training actuator
++and real-response chain.
++
+ ## Ball Gate And Hit-Point Visuals
+ 
+ The runner uses a hard ball-validity gate before building the policy
+ observation. When the gate is invalid, the actor's ball slot and hit prediction
+-are both replaced with the same fixed home sentinel used by the A1 training
+-environment:
++are both replaced with the profile's fixed home sentinel. For the current
++`v1_3_backhand` profile this is the training target center:
+ 
+ ```text
+-(hit_plane_x, home_y + paddle_y_offset, hit_body_height + 0.2)
++(-1.159, 0.0675, 1.12)
+ ```
+ 
+ The gate rejects balls that are behind the hit plane, moving away, below table
+diff --git a/deploy/robots/a1_h1/sim2sim/a1_scene.py b/deploy/robots/a1_h1/sim2sim/a1_scene.py
+index 9c19ec5..f229e42 100644
+--- a/deploy/robots/a1_h1/sim2sim/a1_scene.py
++++ b/deploy/robots/a1_h1/sim2sim/a1_scene.py
+@@ -7,6 +7,8 @@ torques directly in MuJoCo instead of going through Unitree DDS.
+ 
+ from __future__ import annotations
+ 
++from dataclasses import dataclass
++import os
+ from pathlib import Path
+ import tempfile
+ import xml.etree.ElementTree as ET
+@@ -24,12 +26,6 @@ def guess_lgy_root() -> Path:
+ 
+ LGY_ROOT = guess_lgy_root()
+ PINGPONG_TTRL = LGY_ROOT / "Pingpong_TTRL"
+-A1_ASSET_ROOT = PINGPONG_TTRL / "legged_lab/assets/a1/X1_URDF_V1_1"
+-DEFAULT_URDF = A1_ASSET_ROOT / "urdf/X1_URDF_V1_1.urdf"
+-DEFAULT_MESHDIR = A1_ASSET_ROOT / "meshes"
+-DEFAULT_SCENE_XML = Path(__file__).resolve().parent / "scene/a1_tt_scene.xml"
+-
+-ROBOT_TABLE_POS = np.array([-1.8, 0.76, 0.0282], dtype=np.float64)
+ BALL_RADIUS = 0.02
+ TABLE_HEIGHT = 0.76
+ PHYSICS_DT = 0.002
+@@ -37,6 +33,294 @@ PHYSICS_DT = 0.002
+ 
+ RIGHT_ARM_JOINTS = [f"r{i}" for i in range(1, 8)]
+ 
++OLD_V1_1_RIGHT_Q = {
++    "r1": 0.569,
++    "r2": -0.692,
++    "r3": 0.717,
++    "r4": 1.13,
++    "r5": -1.24,
++    "r6": 0.0314,
++    "r7": 0.772,
++}
++
++BACKHAND_READY_RIGHT_Q = {
++    "r1": 1.769,
++    "r2": -0.762,
++    "r3": -1.863,
++    "r4": 1.445,
++    "r5": 0.206,
++    "r6": -0.827,
++    "r7": 1.043,
++}
++
++LOW_ARM_BACKHAND_READY_RIGHT_Q = {
++    "r1": 1.450,
++    "r2": -0.762,
++    "r3": -2.050,
++    "r4": 1.445,
++    "r5": 0.206,
++    "r6": -0.827,
++    "r7": 1.043,
++}
++
++
++def _qpos(right_q: dict[str, float], *, sj: float) -> dict[str, float]:
++    return {
++        "sj": sj,
++        **right_q,
++        "l1": 0.0,
++        "l2": 0.0,
++        "l3": 0.0,
++        "l4": 0.0,
++        "l5": 0.0,
++        "l6": 0.0,
++        "l7": 0.0,
++        "t01": 0.0,
++        "t02": 0.0,
++        "lun_r": 0.0,
++        "lun_l": 0.0,
++        "wxl_1_2": 0.0,
++        "wxl_1_1": 0.0,
++        "wxl_2_2": 0.0,
++        "wxl_2_1": 0.0,
++        "wxl_3_2": 0.0,
++        "wxl_3_1": 0.0,
++        "wxl_4_2": 0.0,
++        "wxl_4_1": 0.0,
++    }
++
++
++@dataclass(frozen=True)
++class A1SceneProfile:
++    name: str
++    asset_root: Path
++    urdf: Path
++    meshdir: Path
++    scene_xml: Path
++    robot_table_pos: np.ndarray
++    default_qpos: dict[str, float]
++    hit_plane_x: float
++    home_y: float
++    paddle_y_offset: float
++    paddle_offset: np.ndarray
++    pred_sentinel: np.ndarray
++    hit_target_y_range: tuple[float, float] = (0.0, 0.55)
++    hit_target_z_range: tuple[float, float] = (0.90, 1.25)
++    serve_bounce_x_range: tuple[float, float] = (-1.24, -0.96)
++    serve_bounce_vz_range: tuple[float, float] = (1.60, 2.10)
++    serve_y_center: float = 0.12
++    serve_y_half: float = 0.04
++    hit_body_height: float = 0.028
++    ball_contact_margin: float = 0.06
++
++
++_SCENE_DIR = Path(__file__).resolve().parent / "scene"
++_A1_ASSETS = PINGPONG_TTRL / "legged_lab/assets/a1"
++_V1_1_ASSET_ROOT = _A1_ASSETS / "X1_URDF_V1_1"
++_V1_3_ASSET_ROOT = _A1_ASSETS / "X1_URDF_V1_3"
++
++PROFILES = {
++    # Legacy v13/default sim2sim profile. Kept stable for old scripts that did
++    # not target the compact 10999 backhand policy.
++    "old_v1_1": A1SceneProfile(
++        name="old_v1_1",
++        asset_root=_V1_1_ASSET_ROOT,
++        urdf=_V1_1_ASSET_ROOT / "urdf/X1_URDF_V1_1.urdf",
++        meshdir=_V1_1_ASSET_ROOT / "meshes",
++        scene_xml=_SCENE_DIR / "a1_tt_scene.xml",
++        robot_table_pos=np.array([-1.8, 0.76, 0.0282], dtype=np.float64),
++        default_qpos=_qpos(OLD_V1_1_RIGHT_Q, sj=-0.1139),
++        hit_plane_x=-1.60,
++        home_y=0.76,
++        paddle_y_offset=-0.66,
++        paddle_offset=np.array([0.0, 0.0, 0.085], dtype=np.float64),
++        pred_sentinel=np.array([-1.60, 0.10, 0.228], dtype=np.float32),
++    ),
++    # Exact old 10999 deploy package geometry:
++    # a1_tt_backhand_real_v2 + X1_URDF_V1_1_sj_fixed + implicit high-gain actor.
++    "model_10999": A1SceneProfile(
++        name="model_10999",
++        asset_root=_V1_1_ASSET_ROOT,
++        urdf=_V1_1_ASSET_ROOT / "urdf/X1_URDF_V1_1_sj_fixed.urdf",
++        meshdir=_V1_1_ASSET_ROOT / "meshes",
++        scene_xml=_SCENE_DIR / "a1_tt_scene_model_10999.xml",
++        robot_table_pos=np.array([-1.8, 0.76, 0.0282], dtype=np.float64),
++        default_qpos=_qpos(BACKHAND_READY_RIGHT_Q, sj=0.0),
++        hit_plane_x=-1.43,
++        home_y=0.76,
++        paddle_y_offset=-0.03,
++        paddle_offset=np.array([0.0, 0.0, 0.085], dtype=np.float64),
++        pred_sentinel=np.array([-1.43, 0.64, 1.11], dtype=np.float32),
++        hit_target_y_range=(0.58, 0.70),
++        hit_target_z_range=(1.04, 1.18),
++    ),
++    # Isolation profile requested by mentor: current backhand policy geometry
++    # and action baseline, but with the old URDF asset.
++    "old_v1_1_backhand": A1SceneProfile(
++        name="old_v1_1_backhand",
++        asset_root=_V1_1_ASSET_ROOT,
++        urdf=_V1_1_ASSET_ROOT / "urdf/X1_URDF_V1_1.urdf",
++        meshdir=_V1_1_ASSET_ROOT / "meshes",
++        scene_xml=_SCENE_DIR / "a1_tt_scene_old_v1_1_backhand.xml",
++        robot_table_pos=np.array([-1.8, 0.0, 0.0282], dtype=np.float64),
++        default_qpos=_qpos(BACKHAND_READY_RIGHT_Q, sj=0.0),
++        hit_plane_x=-1.159,
++        home_y=0.0,
++        paddle_y_offset=-0.03,
++        paddle_offset=np.array([0.0, 0.0, 0.085], dtype=np.float64),
++        pred_sentinel=np.array([-1.159, 0.0675, 1.12], dtype=np.float32),
++        hit_target_y_range=(0.00, 0.135),
++        hit_target_z_range=(1.08, 1.16),
++        serve_bounce_x_range=(-0.969, -0.689),
++        serve_bounce_vz_range=(1.50, 1.80),
++        serve_y_center=0.055,
++    ),
++    # Frozen profile for the 2026-07-29_12-19-54 model_2100.pt checkpoint.
++    # Its env.yaml was produced before the later hit-plane shift from -1.279 to
++    # -1.159, so keep these numbers separate from the current training profile.
++    "old_v1_1_backhand_2100": A1SceneProfile(
++        name="old_v1_1_backhand_2100",
++        asset_root=_V1_1_ASSET_ROOT,
++        urdf=_V1_1_ASSET_ROOT / "urdf/X1_URDF_V1_1.urdf",
++        meshdir=_V1_1_ASSET_ROOT / "meshes",
++        scene_xml=_SCENE_DIR / "a1_tt_scene_old_v1_1_backhand_2100.xml",
++        robot_table_pos=np.array([-1.8, 0.0, 0.0282], dtype=np.float64),
++        default_qpos=_qpos(BACKHAND_READY_RIGHT_Q, sj=0.0),
++        hit_plane_x=-1.279,
++        home_y=0.0,
++        paddle_y_offset=-0.03,
++        paddle_offset=np.array([0.0, 0.0, 0.085], dtype=np.float64),
++        pred_sentinel=np.array([-1.279, 0.066, 1.22], dtype=np.float32),
++        hit_target_y_range=(0.005, 0.127),
++        hit_target_z_range=(1.12, 1.32),
++        serve_bounce_x_range=(-1.089, -0.809),
++        serve_bounce_vz_range=(1.95, 2.35),
++        serve_y_center=0.045,
++    ),
++    # Current IsaacLab a1_tt_backhand_real_v7 profile: V1_3 URDF/USD-derived
++    # geometry, centered base, and the backhand ready action baseline.
++    "v1_3_backhand": A1SceneProfile(
++        name="v1_3_backhand",
++        asset_root=_V1_3_ASSET_ROOT,
++        urdf=_V1_3_ASSET_ROOT / "urdf/X1_URDF_V1_3.urdf",
++        meshdir=_V1_3_ASSET_ROOT / "meshes",
++        scene_xml=_SCENE_DIR / "a1_tt_scene_v1_3_backhand.xml",
++        robot_table_pos=np.array([-1.8, 0.0, 0.0282], dtype=np.float64),
++        default_qpos=_qpos(BACKHAND_READY_RIGHT_Q, sj=0.0),
++        hit_plane_x=-1.159,
++        home_y=0.0,
++        paddle_y_offset=-0.03,
++        paddle_offset=np.array([0.0, 0.0, 0.0], dtype=np.float64),
++        pred_sentinel=np.array([-1.159, 0.0675, 1.12], dtype=np.float32),
++        hit_target_y_range=(0.00, 0.135),
++        hit_target_z_range=(1.08, 1.16),
++        serve_bounce_x_range=(-0.969, -0.689),
++        serve_bounce_vz_range=(1.50, 1.80),
++        serve_y_center=0.055,
++    ),
++    "v1_3_backhand_2100": A1SceneProfile(
++        name="v1_3_backhand_2100",
++        asset_root=_V1_3_ASSET_ROOT,
++        urdf=_V1_3_ASSET_ROOT / "urdf/X1_URDF_V1_3.urdf",
++        meshdir=_V1_3_ASSET_ROOT / "meshes",
++        scene_xml=_SCENE_DIR / "a1_tt_scene_v1_3_backhand_2100.xml",
++        robot_table_pos=np.array([-1.8, 0.0, 0.0282], dtype=np.float64),
++        default_qpos=_qpos(BACKHAND_READY_RIGHT_Q, sj=0.0),
++        hit_plane_x=-1.279,
++        home_y=0.0,
++        paddle_y_offset=-0.03,
++        paddle_offset=np.array([0.0, 0.0, 0.0], dtype=np.float64),
++        pred_sentinel=np.array([-1.279, 0.066, 1.22], dtype=np.float32),
++        hit_target_y_range=(0.005, 0.127),
++        hit_target_z_range=(1.12, 1.32),
++        serve_bounce_x_range=(-1.089, -0.809),
++        serve_bounce_vz_range=(1.95, 2.35),
++        serve_y_center=0.045,
++    ),
++    # Current low-arm candidate:
++    # a1_tt_backhand_real_v7_low_arm_ready_push_run1/
++    # 2026-07-30_14-56-45_scratch_backhand_damiao_mit_3k_easy_contact_curriculum/model_2100.pt.
++    # Keep this separate from the older 2026-07-29 model_2100 profile; both the
++    # ready pose and serve/hit geometry changed.
++    "v1_3_backhand_low_arm_2100": A1SceneProfile(
++        name="v1_3_backhand_low_arm_2100",
++        asset_root=_V1_3_ASSET_ROOT,
++        urdf=_V1_3_ASSET_ROOT / "urdf/X1_URDF_V1_3.urdf",
++        meshdir=_V1_3_ASSET_ROOT / "meshes",
++        scene_xml=_SCENE_DIR / "a1_tt_scene_v1_3_backhand_low_arm_2100.xml",
++        robot_table_pos=np.array([-1.8, 0.0, 0.0282], dtype=np.float64),
++        default_qpos=_qpos(LOW_ARM_BACKHAND_READY_RIGHT_Q, sj=0.0),
++        hit_plane_x=-1.203,
++        home_y=0.0,
++        paddle_y_offset=-0.03,
++        paddle_offset=np.array([0.0, 0.0, 0.0], dtype=np.float64),
++        pred_sentinel=np.array([-1.203, 0.041, 0.92], dtype=np.float32),
++        hit_target_y_range=(-0.025, 0.107),
++        hit_target_z_range=(0.86, 0.98),
++        serve_bounce_x_range=(-1.013, -0.733),
++        serve_bounce_vz_range=(0.0, 0.45),
++        serve_y_center=0.041,
++        serve_y_half=0.02,
++        ball_contact_margin=0.015,
++    ),
++    # Current 2026-07-31/08-01 scratch candidate:
++    # a1_tt_backhand_real_v7_hitplane020_scratch_run1/model_9700.pt.
++    # Same low-arm V1_3 geometry as the 2100 profile, but the hit plane was
++    # moved 4 cm closer to the robot to reduce over-reaching.
++    "v1_3_backhand_low_arm_hitplane020": A1SceneProfile(
++        name="v1_3_backhand_low_arm_hitplane020",
++        asset_root=_V1_3_ASSET_ROOT,
++        urdf=_V1_3_ASSET_ROOT / "urdf/X1_URDF_V1_3.urdf",
++        meshdir=_V1_3_ASSET_ROOT / "meshes",
++        scene_xml=_SCENE_DIR / "a1_tt_scene_v1_3_backhand_low_arm_hitplane020.xml",
++        robot_table_pos=np.array([-1.8, 0.0, 0.0282], dtype=np.float64),
++        default_qpos=_qpos(LOW_ARM_BACKHAND_READY_RIGHT_Q, sj=0.0),
++        hit_plane_x=-1.243,
++        home_y=0.0,
++        paddle_y_offset=-0.03,
++        paddle_offset=np.array([0.0, 0.0, 0.0], dtype=np.float64),
++        pred_sentinel=np.array([-1.243, 0.041, 0.92], dtype=np.float32),
++        hit_target_y_range=(-0.025, 0.107),
++        hit_target_z_range=(0.86, 0.98),
++        serve_bounce_x_range=(-1.053, -0.773),
++        serve_bounce_vz_range=(0.0, 0.45),
++        serve_y_center=0.041,
++        serve_y_half=0.02,
++        ball_contact_margin=0.015,
++    ),
++}
++
++
++def _select_profile() -> A1SceneProfile:
++    name = os.environ.get("A1_SIM2SIM_PROFILE", "old_v1_1")
++    try:
++        return PROFILES[name]
++    except KeyError as exc:
++        raise ValueError(
++            f"unknown A1_SIM2SIM_PROFILE={name!r}; expected one of {sorted(PROFILES)}"
++        ) from exc
++
++
++ACTIVE_PROFILE = _select_profile()
++A1_ASSET_ROOT = ACTIVE_PROFILE.asset_root
++DEFAULT_URDF = ACTIVE_PROFILE.urdf
++DEFAULT_MESHDIR = ACTIVE_PROFILE.meshdir
++DEFAULT_SCENE_XML = ACTIVE_PROFILE.scene_xml
++ROBOT_TABLE_POS = ACTIVE_PROFILE.robot_table_pos.copy()
++DEFAULT_QPOS = dict(ACTIVE_PROFILE.default_qpos)
++HIT_PLANE_X = ACTIVE_PROFILE.hit_plane_x
++HOME_Y = ACTIVE_PROFILE.home_y
++PADDLE_Y_OFFSET = ACTIVE_PROFILE.paddle_y_offset
++PADDLE_OFFSET = ACTIVE_PROFILE.paddle_offset.copy()
++HIT_BODY_HEIGHT = ACTIVE_PROFILE.hit_body_height
++PRED_SENTINEL = ACTIVE_PROFILE.pred_sentinel.copy()
++HIT_TARGET_Y_RANGE = ACTIVE_PROFILE.hit_target_y_range
++HIT_TARGET_Z_RANGE = ACTIVE_PROFILE.hit_target_z_range
++SERVE_BOUNCE_X_RANGE = ACTIVE_PROFILE.serve_bounce_x_range
++SERVE_BOUNCE_VZ_RANGE = ACTIVE_PROFILE.serve_bounce_vz_range
++SERVE_Y_CENTER = ACTIVE_PROFILE.serve_y_center
++SERVE_Y_HALF = ACTIVE_PROFILE.serve_y_half
++
+ # DAMIAO command envelope from h1_pingpong/src/armcontrol:
+ # h1_pingpong/src/armcontrol/src/inference_arm_control_node.cpp initializes the
+ # A1 right arm as r1-r3 DM4340_48V and r4-r7 DM4310_48V. These ranges are not
+@@ -46,10 +330,10 @@ RIGHT_ARM_EFFORT_LIMITS = {
+     "r1": 28.0,
+     "r2": 28.0,
+     "r3": 28.0,
+-    "r4": 10.0,
+-    "r5": 10.0,
+-    "r6": 10.0,
+-    "r7": 10.0,
++    "r4": 8.0,
++    "r5": 8.0,
++    "r6": 8.0,
++    "r7": 8.0,
+ }
+ RIGHT_ARM_ARMATURE = {
+     "r1": 0.032,
+@@ -66,38 +350,6 @@ DEFAULT_JOINT_FRICTIONLOSS = 0.0
+ RIGHT_ARM_DAMPING = 0.02
+ RIGHT_ARM_FRICTIONLOSS = 0.0
+ 
+-DEFAULT_QPOS = {
+-    # v13 training matches the measured real r1 centerline height of 1.15 m.
+-    # X1_URDF_V1_1 gives sj ~= 1.15 - (0.0282 + 1.2107 + 0.025) = -0.1139.
+-    "sj": -0.1139,
+-    "r1": 0.569,
+-    "r2": -0.692,
+-    "r3": 0.717,
+-    "r4": 1.13,
+-    "r5": -1.24,
+-    "r6": 0.0314,
+-    "r7": 0.772,
+-    "l1": 0.0,
+-    "l2": 0.0,
+-    "l3": 0.0,
+-    "l4": 0.0,
+-    "l5": 0.0,
+-    "l6": 0.0,
+-    "l7": 0.0,
+-    "t01": 0.0,
+-    "t02": 0.0,
+-    "lun_r": 0.0,
+-    "lun_l": 0.0,
+-    "wxl_1_2": 0.0,
+-    "wxl_1_1": 0.0,
+-    "wxl_2_2": 0.0,
+-    "wxl_2_1": 0.0,
+-    "wxl_3_2": 0.0,
+-    "wxl_3_1": 0.0,
+-    "wxl_4_2": 0.0,
+-    "wxl_4_1": 0.0,
+-}
+-
+ 
+ def _fmt(value: float) -> str:
+     return f"{float(value):.12g}"
+@@ -257,6 +509,17 @@ def _decorate_paddle_contact(root: ET.Element) -> None:
+     raise KeyError("x1_paddle geom missing from generated MJCF")
+ 
+ 
++def _disable_robot_mesh_collisions(robot_root: ET.Element) -> None:
++    """Match IsaacLab's no-self-collision training setup for robot meshes."""
++    for geom in robot_root.iter("geom"):
++        if geom.get("name") == "paddle_blade":
++            geom.set("contype", "1")
++            geom.set("conaffinity", "1")
++        else:
++            geom.set("contype", "0")
++            geom.set("conaffinity", "0")
++
++
+ def _append_table_tennis_scene(worldbody: ET.Element) -> None:
+     ET.SubElement(
+         worldbody,
+@@ -388,7 +651,7 @@ def _add_contact_pairs(root: ET.Element) -> None:
+             "geom2": "table_top",
+             "solref": "-490000 -2",
+             "solimp": "0.95 0.99 0.001",
+-            "margin": "0.06",
++            "margin": _fmt(ACTIVE_PROFILE.ball_contact_margin),
+         },
+     )
+     ET.SubElement(
+@@ -399,7 +662,7 @@ def _add_contact_pairs(root: ET.Element) -> None:
+             "geom2": "paddle_blade",
+             "solref": "-200000 -5",
+             "solimp": "0.95 0.99 0.001",
+-            "margin": "0.06",
++            "margin": _fmt(ACTIVE_PROFILE.ball_contact_margin),
+         },
+     )
+     _insert_after(root, "actuator", contact)
+@@ -452,9 +715,10 @@ def build_scene_xml(
+     worldbody = root.find("worldbody")
+     if worldbody is None:
+         raise RuntimeError("generated MJCF has no worldbody")
+-    _wrap_robot(worldbody)
++    robot_root = _wrap_robot(worldbody)
+     _decorate_joints(root)
+     _decorate_paddle_contact(root)
++    _disable_robot_mesh_collisions(robot_root)
+     _append_table_tennis_scene(worldbody)
+     _add_actuators(root)
+     _add_contact_pairs(root)
+@@ -466,9 +730,11 @@ def build_scene_xml(
+     return out_path
+ 
+ 
+-def load_scene(scene_xml: Path | str | None = DEFAULT_SCENE_XML) -> tuple[mujoco.MjModel, mujoco.MjData, Path]:
++def load_scene(scene_xml: Path | str | None = None) -> tuple[mujoco.MjModel, mujoco.MjData, Path]:
+     if scene_xml is None:
+-        xml_path = build_scene_xml(out_path=Path(tempfile.gettempdir()) / "a1_h1_tt_scene.xml")
++        xml_path = build_scene_xml(
++            out_path=Path(tempfile.gettempdir()) / f"a1_h1_tt_scene_{ACTIVE_PROFILE.name}.xml"
++        )
+     else:
+         xml_path = Path(scene_xml)
+         if not xml_path.exists():
+diff --git a/deploy/robots/a1_h1/sim2sim/ball_gate.py b/deploy/robots/a1_h1/sim2sim/ball_gate.py
+index 50dc5b9..e1ba88c 100644
+--- a/deploy/robots/a1_h1/sim2sim/ball_gate.py
++++ b/deploy/robots/a1_h1/sim2sim/ball_gate.py
+@@ -7,7 +7,7 @@ from dataclasses import dataclass
+ import numpy as np
+ 
+ from policy_io import HIT_PLANE_X
+-from serve import G, Z_BOUNCE
++from serve import BALL_DRAG_K, G, Z_BOUNCE
+ 
+ 
+ @dataclass
+@@ -146,4 +146,8 @@ class BallValidityGate:
+         if not positive:
+             return float("nan")
+         t = max(positive)
+-        return float(pos[0] + vel[0] * t)
++        if BALL_DRAG_K > 1.0e-8:
++            dx = np.sign(vel[0]) * np.log1p(BALL_DRAG_K * abs(vel[0]) * t) / BALL_DRAG_K
++        else:
++            dx = vel[0] * t
++        return float(pos[0] + dx)
+diff --git a/deploy/robots/a1_h1/sim2sim/policy_io.py b/deploy/robots/a1_h1/sim2sim/policy_io.py
+index e40daef..14e51bc 100644
+--- a/deploy/robots/a1_h1/sim2sim/policy_io.py
++++ b/deploy/robots/a1_h1/sim2sim/policy_io.py
+@@ -9,7 +9,22 @@ import mujoco
+ import numpy as np
+ import onnxruntime as ort
+ 
+-from a1_scene import DEFAULT_QPOS, RIGHT_ARM_JOINTS, ROBOT_TABLE_POS, body_id, joint_dof_addr, joint_qpos_addr
++from a1_scene import (
++    DEFAULT_QPOS,
++    HIT_BODY_HEIGHT,
++    HIT_PLANE_X,
++    HIT_TARGET_Y_RANGE,
++    HIT_TARGET_Z_RANGE,
++    HOME_Y,
++    PADDLE_Y_OFFSET,
++    PADDLE_OFFSET,
++    PRED_SENTINEL,
++    RIGHT_ARM_JOINTS,
++    ROBOT_TABLE_POS,
++    body_id,
++    joint_dof_addr,
++    joint_qpos_addr,
++)
+ 
+ 
+ def guess_lgy_root() -> Path:
+@@ -34,109 +49,76 @@ FRAME_SIZE = 39
+ HISTORY = 5
+ OBS_SIZE = FRAME_SIZE * HISTORY
+ 
+-KP = np.array([300.0, 300.0, 300.0, 120.0, 120.0, 120.0, 120.0], dtype=np.float64)
+-KD = np.array([3.5, 3.5, 3.5, 1.0, 1.0, 1.0, 1.0], dtype=np.float64)
+-EFFORT = np.array([28.0, 28.0, 28.0, 28.0, 8.0, 8.0, 8.0], dtype=np.float64)
++KP = np.array([300.0, 300.0, 300.0, 120.0, 120.0, 120.0, 60.0], dtype=np.float64)
++KD = np.array([3.5, 3.5, 3.5, 1.0, 1.0, 1.0, 0.5], dtype=np.float64)
++EFFORT = np.array([28.0, 28.0, 28.0, 8.0, 8.0, 8.0, 8.0], dtype=np.float64)
+ VEL_LIMIT = np.array([10.0, 10.0, 10.0, 30.0, 30.0, 30.0, 30.0], dtype=np.float64)
+ # h1_pingpong/src/armcontrol/src/inference_arm_control_node.cpp initializes the
+ # A1 right arm as r1-r3 DM4340_48V and r4-r7 DM4310_48V. These are DAMIAO
+ # command/feedback ranges, not a calibrated motor dynamics model.
+-DAMIAO_EFFORT = np.array([28.0, 28.0, 28.0, 28.0, 8.0, 8.0, 8.0], dtype=np.float64)
++DAMIAO_EFFORT = np.array([28.0, 28.0, 28.0, 8.0, 8.0, 8.0, 8.0], dtype=np.float64)
+ DAMIAO_DQ_LIMIT = np.array([10.0, 10.0, 10.0, 30.0, 30.0, 30.0, 30.0], dtype=np.float64)
+ # Actual Isaac play velocity envelope measured under model_800 with the 28/8Nm
+ # effort limits. This is a deploy-visual servo cap, not a motor specification.
+ ISAAC_PLAY_SERVO_VEL = np.array([1.0, 1.2, 1.8, 1.6, 4.0, 3.2, 8.0], dtype=np.float64)
+ BRIDGE_MAX_DELTA_PER_TICK = np.array([0.020, 0.024, 0.036, 0.032, 0.080, 0.064, 0.160], dtype=np.float64)
+ REAL_RESPONSE_MAX_DELTA_PER_TICK = np.array([0.05, 0.05, 0.05, 0.10, 0.10, 0.10, 0.10], dtype=np.float64)
++# Fitted from mentor's 2026-07-29 backhand real-robot chirp data and validated
++# against the matching step data. The old FixStand/0714 response was too fast
++# for r5/r7 and used an artificial 80 ms deterministic delay in sim2sim.
+ REAL_RESPONSE_U_MEAN = np.array(
+-    [
+-        0.5683523841788314,
+-        -0.6892612481040505,
+-        0.7196804487882763,
+-        1.1293556605846493,
+-        -1.2407980020381792,
+-        0.030473524919208673,
+-        0.7714033875755423,
+-    ],
++    [1.7700659393737623, -0.7609315193334025, -1.862263833851564, 1.4460611991561492,
++     0.20699718244975998, -0.8260044098093582, 1.0440311471658599],
+     dtype=np.float64,
+ )
+ REAL_RESPONSE_FN_HZ = np.array(
+-    [
+-        4.974636627849852,
+-        3.4161507054849762,
+-        4.967641307013087,
+-        4.341336283530257,
+-        15.30971682198707,
+-        8.223759975617558,
+-        18.61140865177779,
+-    ],
++    [3.081469882952914, 3.110360258230149, 3.5084746761876504, 3.938078474900925,
++     8.393387809118405, 6.081603320508635, 6.2167388827512085],
+     dtype=np.float64,
+ )
+ REAL_RESPONSE_ZETA = np.array(
+-    [
+-        0.4941346530768593,
+-        0.3701409158816248,
+-        0.47587293666159597,
+-        0.22981041868709606,
+-        0.7941795710126007,
+-        0.565832498155223,
+-        1.3208910165925782,
+-    ],
++    [0.29001527380439157, 0.45573251210433835, 0.5090613481505404, 0.4438206941118423,
++     0.6423265474666591, 0.5161814994035029, 0.5346367478112269],
+     dtype=np.float64,
+ )
+ REAL_RESPONSE_DELAY_S = np.array(
+-    [
+-        0.001999999999997056,
+-        0.005352908841469569,
+-        0.008116843219232367,
+-        0.018006420135349824,
+-        0.017563104629677986,
+-        0.013993930820317215,
+-        0.014997124673895237,
+-    ],
++    [3.4518349565248606e-09, 2.5026306975070193e-13, 1.5374720497906557e-11,
++     0.006037572727162875, 0.01121360625256748, 0.00642196457222213, 0.021843507909910763],
+     dtype=np.float64,
+ )
+ REAL_RESPONSE_GAIN = np.array(
+-    [
+-        0.9898595325716487,
+-        0.9609492557382776,
+-        1.0032869565726132,
+-        1.0027218616565117,
+-        0.9998451719960618,
+-        1.0020846023179375,
+-        1.0005302866606762,
+-    ],
++    [0.8151195546881129, 1.0022953758506237, 0.9527639884101302, 1.0525053363155508,
++     1.0103665491921643, 0.9716496094155513, 0.9455371267034796],
+     dtype=np.float64,
+ )
+ REAL_RESPONSE_BIAS_RAD = np.array(
+-    [
+-        -0.015168034936686725,
+-        0.018117660993894003,
+-        -0.001476035439111456,
+-        -0.03152619331089834,
+-        -0.0003882480267090038,
+-        0.0010492923888134296,
+-        -0.00023117043260922898,
+-    ],
++    [-0.022742565653490976, -0.001145840134567977, -0.01281695940028782,
++     0.001689992587619038, -0.006230753796553995, 0.00217495010862645, -0.0004602019305564031],
+     dtype=np.float64,
+ )
+ DEFAULT_RIGHT_Q = np.array([DEFAULT_QPOS[j] for j in RIGHT_ARM_JOINTS], dtype=np.float64)
+ 
+ # Training-matched DamiaoMIT constants (A1_TT_REAL_TORQUE_ONLY_CFG).
+ # r1-r3 = DM4340_48V (idx<3), r4-r7 = DM4310_48V (idx>=3).
+-DAMIAO_MIT_KP = np.array([300.0, 300.0, 300.0, 120.0, 120.0, 120.0, 120.0], dtype=np.float64)
+-DAMIAO_MIT_KD = np.array([3.5, 3.5, 3.5, 1.0, 1.0, 1.0, 1.0], dtype=np.float64)
++DAMIAO_MIT_KP = np.array([300.0, 300.0, 300.0, 120.0, 120.0, 120.0, 60.0], dtype=np.float64)
++DAMIAO_MIT_KD = np.array([3.5, 3.5, 3.5, 1.0, 1.0, 1.0, 0.5], dtype=np.float64)
+ # effort r1-3=28, r4-7=8 (training _EFFORT: idx<3 -> 28 else 8).
+ DAMIAO_MIT_EFFORT = np.array([28.0, 28.0, 28.0, 8.0, 8.0, 8.0, 8.0], dtype=np.float64)
+-# velocity_limit training _VEL: idx<3 -> 8 else 20.
+-DAMIAO_MIT_VEL = np.array([8.0, 8.0, 8.0, 20.0, 20.0, 20.0, 20.0], dtype=np.float64)
++# 0729 backhand real logs: step max actual_dq was about
++# [2.8, 2.4, 3.4, 3.9, 5.2, 3.9, 6.5] rad/s. Keep margin for policy
++# transients while preventing the old 20 rad/s distal no-load limit from
++# producing high-frequency MuJoCo swings.
++DAMIAO_MIT_VEL = np.array([4.0, 4.0, 5.0, 6.0, 8.0, 6.0, 9.0], dtype=np.float64)
+ DAMIAO_MIT_BRAKE_EFFORT = DAMIAO_MIT_EFFORT.copy()
+ 
+-HIT_PLANE_X = -1.60
+-HOME_Y = 0.76
+-PADDLE_Y_OFFSET = -0.66
+-HIT_BODY_HEIGHT = 0.028
+-PRED_SENTINEL = np.array([HIT_PLANE_X, HOME_Y + PADDLE_Y_OFFSET, HIT_BODY_HEIGHT + 0.2], dtype=np.float32)
++
++def project_prediction_to_target_geometry(pred: np.ndarray) -> np.ndarray:
++    """Match IsaacLab's actor-facing hit-target projection for sim2sim."""
++    out = np.asarray(pred, dtype=np.float32).reshape(3).copy()
++    out[0] = np.float32(HIT_PLANE_X)
++    out[1] = np.clip(out[1], HIT_TARGET_Y_RANGE[0], HIT_TARGET_Y_RANGE[1])
++    out[2] = np.clip(out[2], HIT_TARGET_Z_RANGE[0], HIT_TARGET_Z_RANGE[1])
++    return out
+ 
+ 
+ def damiao_clip_effort(tau, dq, vel_limit, effort_limit, brake_effort_limit):
+@@ -218,6 +200,7 @@ class FittedSecondOrderActionResponse:
+         self.x_rel = np.zeros(7, dtype=np.float64)
+         self.v_rel = np.zeros(7, dtype=np.float64)
+         self.response = np.asarray(initial_joint_pos, dtype=np.float64).reshape(7).copy()
++        self.response_velocity = np.zeros(7, dtype=np.float64)
+         self.reset(initial_joint_pos)
+ 
+     def reset(self, joint_pos: np.ndarray) -> np.ndarray:
+@@ -229,6 +212,7 @@ class FittedSecondOrderActionResponse:
+         self.delay_buffer[:] = steady_raw_command
+         self.delay_index = 0
+         self.response = joint_pos.copy()
++        self.response_velocity.fill(0.0)
+         return self.response.copy()
+ 
+     def _delayed_command(self, command: np.ndarray) -> np.ndarray:
+@@ -253,6 +237,7 @@ class FittedSecondOrderActionResponse:
+         self.v_rel += accel * dt
+         self.x_rel += self.v_rel * dt
+         self.response = self.u_mean + self.bias + self.gain * self.x_rel
++        self.response_velocity = self.gain * self.v_rel
+         return self.response.copy()
+ 
+ 
+@@ -344,7 +329,7 @@ class A1PolicyIO:
+         pred[2] += -0.5 * 9.81 * t * t
+         if pred[2] < 0.2 or pred[2] > 2.0:
+             return PRED_SENTINEL.copy()
+-        return pred.astype(np.float32)
++        return project_prediction_to_target_geometry(pred)
+ 
+     def plausible_prediction(self, pred: np.ndarray) -> bool:
+         y_center = HOME_Y + PADDLE_Y_OFFSET
+@@ -359,9 +344,7 @@ class A1PolicyIO:
+         if self.predictor is not None:
+             pred = self.predictor(ball_pos, valid_ball)
+             if pred is not None and self.plausible_prediction(pred):
+-                pred = pred.copy()
+-                pred[0] = np.clip(pred[0], HIT_PLANE_X, HIT_PLANE_X)
+-                return pred.astype(np.float32)
++                return project_prediction_to_target_geometry(pred)
+             return PRED_SENTINEL.copy()
+         return self.analytic_prediction(ball_pos, ball_vel, valid_ball)
+ 
+@@ -458,16 +441,21 @@ class A1PolicyIO:
+         self.data.qfrc_applied[self.dof_addr] += tau
+         return tau
+ 
+-    def apply_damiao_mit(self, dt: float) -> np.ndarray:
++    def apply_damiao_mit(self, dt: float, desired_vel: np.ndarray | None = None) -> np.ndarray:
+         """Faithful mujoco replica of the training DamiaoMIT torque chain.
+ 
+         Mirrors DamiaoMIT.compute for A1_TT_REAL_TORQUE_ONLY_CFG:
+-        slew(_VEL) -> MIT-PD (desired_vel=0, no gravity ff) -> torque-speed clip.
++        motor_q_des -> slew(_VEL) -> MIT-PD -> torque-speed clip.
+         """
+         q = self.data.qpos[self.qpos_addr]
+         dq = self.data.qvel[self.dof_addr]
+-        self.damiao_cmd = damiao_slew(self.damiao_cmd, self.q_des, DAMIAO_MIT_VEL, dt)
+-        tau = DAMIAO_MIT_KP * (self.damiao_cmd - q) + DAMIAO_MIT_KD * (0.0 - dq)
++        desired_vel = (
++            np.zeros(7, dtype=np.float64)
++            if desired_vel is None
++            else np.asarray(desired_vel, dtype=np.float64).reshape(7)
++        )
++        self.damiao_cmd = damiao_slew(self.damiao_cmd, self.motor_q_des, DAMIAO_MIT_VEL, dt)
++        tau = DAMIAO_MIT_KP * (self.damiao_cmd - q) + DAMIAO_MIT_KD * (desired_vel - dq)
+         tau = damiao_clip_effort(tau, dq, DAMIAO_MIT_VEL, DAMIAO_MIT_EFFORT, DAMIAO_MIT_BRAKE_EFFORT)
+         self.data.qfrc_applied[self.dof_addr] += tau
+         return tau
+@@ -524,15 +512,16 @@ class A1PolicyIO:
+         if paddle_bid >= 0:
+             return (
+                 self.data.xpos[paddle_bid].copy()
+-                + self.data.xmat[paddle_bid].reshape(3, 3) @ np.array([0.0, 0.0, 0.085])
++                + self.data.xmat[paddle_bid].reshape(3, 3) @ PADDLE_OFFSET
+             )
+         # MuJoCo collapses the fixed r_paddle joint into Link_r7 when compiling the
+-        # URDF. The fixed joint is xyz=(0,0,0.172), rpy=(pi,0,0); training's local
+-        # paddle offset (0,0,0.085) therefore becomes parent-local (0,0,-0.085).
++        # URDF. The fixed joint is xyz=(0,0,0.172), rpy=(pi,0,0); profile local
++        # paddle offsets therefore need to be expressed in the parent frame here.
+         wrist_bid = body_id(self.model, "Link_r7")
++        parent_offset = np.array([PADDLE_OFFSET[0], -PADDLE_OFFSET[1], -PADDLE_OFFSET[2]], dtype=np.float64)
+         return (
+             self.data.xpos[wrist_bid].copy()
+-            + self.data.xmat[wrist_bid].reshape(3, 3) @ np.array([0.0, 0.0, 0.087])
++            + self.data.xmat[wrist_bid].reshape(3, 3) @ (np.array([0.0, 0.0, 0.172], dtype=np.float64) + parent_offset)
+         )
+ 
+     def _soft_joint_ranges(self) -> tuple[np.ndarray, np.ndarray]:
+diff --git a/deploy/robots/a1_h1/sim2sim/run_a1_tt_sim2sim.py b/deploy/robots/a1_h1/sim2sim/run_a1_tt_sim2sim.py
+index 18cc4ba..3ccf746 100644
+--- a/deploy/robots/a1_h1/sim2sim/run_a1_tt_sim2sim.py
++++ b/deploy/robots/a1_h1/sim2sim/run_a1_tt_sim2sim.py
+@@ -18,7 +18,7 @@ from pathlib import Path
+ import mujoco
+ import numpy as np
+ 
+-from a1_scene import BALL_RADIUS, PHYSICS_DT, ball_addresses, body_id, load_scene, set_ball_state
++from a1_scene import ACTIVE_PROFILE, BALL_RADIUS, PHYSICS_DT, ball_addresses, body_id, load_scene, set_ball_state
+ from ball_gate import BallGateConfig, BallGateOutput, BallValidityGate
+ from policy_io import (
+     A1PolicyIO,
+@@ -27,6 +27,7 @@ from policy_io import (
+     DEFAULT_RIGHT_Q,
+     DAMIAO_DQ_LIMIT,
+     DAMIAO_EFFORT,
++    DAMIAO_MIT_VEL,
+     EFFORT,
+     FittedSecondOrderActionResponse,
+     HIT_PLANE_X,
+@@ -45,6 +46,34 @@ PARKED_BALL_POS = np.array([1.75, 1.35, 0.20], dtype=np.float64)
+ PARKED_BALL_VEL = np.zeros(3, dtype=np.float64)
+ 
+ 
++def velocity_clip_limit_for_mode(actuator_mode: str, no_qvel_clip: bool) -> np.ndarray | None:
++    if no_qvel_clip:
++        return None
++    if actuator_mode == "real_deploy_preview":
++        return DAMIAO_DQ_LIMIT
++    if actuator_mode == "damiao_mit":
++        return DAMIAO_MIT_VEL
++    return VEL_LIMIT
++
++
++def action_for_gate(
++    policy: OnnxPolicy | None,
++    obs: np.ndarray,
++    gate_out: BallGateOutput,
++    *,
++    invalid_ball_action: str,
++) -> np.ndarray:
++    """Return the action sent to the controller after ball-validity gating."""
++    if policy is None:
++        return np.zeros(7, dtype=np.float32)
++    policy_action = policy(obs)
++    if invalid_ball_action == "policy" or gate_out.engaged:
++        return policy_action
++    if invalid_ball_action == "zero":
++        return np.zeros(7, dtype=np.float32)
++    raise ValueError(f"unknown invalid_ball_action={invalid_ball_action!r}")
++
++
+ def _load_initial_joint_state(csv_path: Path | str, time_s: float | None = None) -> tuple[np.ndarray, np.ndarray, float]:
+     path = Path(csv_path)
+     if not path.exists():
+@@ -218,6 +247,11 @@ def _dead_ball(ball_pos: np.ndarray, ball_vel: np.ndarray) -> bool:
+     )
+ 
+ 
++def next_serve_step_after_inactive(control_step: int, pause_steps: int) -> int:
++    """Return the first control step allowed to start a new serve after a dead ball."""
++    return int(control_step) + max(1, int(pause_steps))
++
++
+ def run(args: argparse.Namespace) -> dict:
+     if args.dynamic_pd and args.actuator_mode == "isaac_approx":
+         args.actuator_mode = "torque_chain"
+@@ -276,6 +310,7 @@ def run(args: argparse.Namespace) -> dict:
+ 
+     ball_active = False
+     hit_counted = False
++    next_serve_step: int | None = None
+     static_ball = None if args.static_ball is None else np.asarray(args.static_ball, dtype=np.float64)
+     trajectory_cycle = -1
+     trajectory_source_ball = -1
+@@ -305,6 +340,7 @@ def run(args: argparse.Namespace) -> dict:
+         "max_abs_limited_qdes_delta": 0.0,
+         "max_abs_motor_qdes_delta": 0.0,
+         "max_abs_motor_qdes_speed": 0.0,
++        "profile": ACTIVE_PROFILE.name,
+         "xml": str(xml_path),
+         "last_hit_step": -1,
+         "last_hit_source": "",
+@@ -343,22 +379,28 @@ def run(args: argparse.Namespace) -> dict:
+         return DAMIAO_EFFORT if args.actuator_mode == "real_deploy_preview" else EFFORT
+ 
+     def velocity_limit() -> np.ndarray | None:
+-        if args.no_qvel_clip or args.actuator_mode == "damiao_mit":
+-            return None
+-        if args.actuator_mode == "real_deploy_preview":
+-            return DAMIAO_DQ_LIMIT
+-        return VEL_LIMIT
++        return velocity_clip_limit_for_mode(args.actuator_mode, args.no_qvel_clip)
+ 
+     def start_serve() -> None:
+-        nonlocal ball_active, hit_counted
++        nonlocal ball_active, hit_counted, next_serve_step
+         p, v = serve.sample()
+         set_ball_state(model, data, p, v)
+         io.reset_ball_history()
+         gate.reset()
+         ball_active = True
+         hit_counted = False
++        next_serve_step = None
+         stats["serves"] += 1
+ 
++    def schedule_next_serve() -> None:
++        nonlocal next_serve_step
++        if trajectory is not None or static_ball is not None or args.no_serve:
++            return
++        next_serve_step = next_serve_step_after_inactive(
++            stats["control_steps"],
++            args.serve_pause_steps,
++        )
++
+     def park_ball() -> None:
+         nonlocal ball_active, hit_counted
+         set_ball_state(model, data, PARKED_BALL_POS, PARKED_BALL_VEL)
+@@ -366,6 +408,7 @@ def run(args: argparse.Namespace) -> dict:
+         gate.reset()
+         ball_active = False
+         hit_counted = False
++        schedule_next_serve()
+ 
+     def set_static_ball() -> None:
+         nonlocal ball_active, hit_counted
+@@ -440,12 +483,14 @@ def run(args: argparse.Namespace) -> dict:
+ 
+     def control_tick() -> BallGateOutput:
+         stats["control_steps"] += 1
++        scheduled_serve_due = next_serve_step is not None and stats["control_steps"] >= next_serve_step
++        periodic_serve_due = next_serve_step is None and serve.due(stats["control_steps"])
+         if (
+             trajectory is None
+             and not args.no_serve
+             and static_ball is None
+             and not ball_active
+-            and serve.due(stats["control_steps"])
++            and (scheduled_serve_due or periodic_serve_due)
+         ):
+             start_serve()
+         ball_pos = data.xpos[ball_bid].copy()
+@@ -454,7 +499,12 @@ def run(args: argparse.Namespace) -> dict:
+         if gate_out.engaged:
+             stats["valid_frames"] += 1
+         obs = io.observe(ball_pos, ball_vel, valid_ball=gate_out.engaged)
+-        action = np.zeros(7, dtype=np.float32) if policy is None else policy(obs)
++        action = action_for_gate(
++            policy,
++            obs,
++            gate_out,
++            invalid_ball_action=args.invalid_ball_action,
++        )
+         prev_q_des = io.q_des.copy()
+         apply_qdes_limit = args.bridge_qdes_limit or args.real_response_model
+         max_delta = max_delta_per_tick if apply_qdes_limit else None
+@@ -581,7 +631,8 @@ def run(args: argparse.Namespace) -> dict:
+             float(np.max(np.abs(motor_delta)) / PHYSICS_DT),
+         )
+         if args.actuator_mode == "damiao_mit":
+-            tau = io.apply_damiao_mit(PHYSICS_DT)
++            desired_vel = response_model.response_velocity if response_model is not None else None
++            tau = io.apply_damiao_mit(PHYSICS_DT, desired_vel=desired_vel)
+         elif args.actuator_mode in ("torque_chain", "real_deploy_preview"):
+             tau = io.apply_mit_pd(effort_limit())
+         elif args.actuator_mode == "direct_response":
+@@ -648,6 +699,7 @@ def run(args: argparse.Namespace) -> dict:
+                 control_tick()
+         print(
+             "[a1_sim2sim] headless "
++            f"profile={ACTIVE_PROFILE.name} "
+             f"control_steps={stats['control_steps']} serves={stats['serves']} hits={stats['hits']} "
+             f"valid_frames={stats['valid_frames']} "
+             f"max_abs_action={stats['max_abs_action']:.2f} "
+@@ -677,6 +729,7 @@ def run(args: argparse.Namespace) -> dict:
+         )
+     if args.trace_csv is not None:
+         print(f"[a1_sim2sim] live trace: {args.trace_csv}")
++    print(f"[a1_sim2sim] profile={ACTIVE_PROFILE.name}")
+     print(f"[a1_sim2sim] scene: {xml_path}")
+     try:
+         with mj_viewer.launch_passive(model, data) as viewer:
+@@ -714,6 +767,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+     ap.add_argument("--policy", type=Path, default=DEFAULT_POLICY)
+     ap.add_argument("--headless-steps", type=int, default=0, help="Run N 50Hz control steps without viewer.")
+     ap.add_argument("--serve-interval", type=int, default=250, help="Serve period in 50Hz control steps.")
++    ap.add_argument(
++        "--serve-pause-steps",
++        type=int,
++        default=1,
++        help="Control-step pause after a dead/parked ball before the next serve. Default 1 matches training-style immediate ball reset.",
++    )
+     ap.add_argument("--no-serve", action="store_true", help="Keep the ball parked and never start serves.")
+     ap.add_argument(
+         "--static-ball",
+@@ -738,6 +797,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+     ap.add_argument("--servo-tau", type=float, default=0.25, help="First-order visual servo time constant in seconds.")
+     ap.add_argument("--fast-servo", action="store_true", help="Use the training hard velocity limits for the visual servo.")
+     ap.add_argument("--bridge-qdes-limit", action="store_true", help="Apply the sim2real bridge max_delta_per_tick limit to policy q_des.")
++    ap.add_argument(
++        "--invalid-ball-action",
++        choices=["zero", "policy"],
++        default="zero",
++        help=(
++            "Action source when the ball gate is invalid. 'zero' sends the ready-pose action "
++            "instead of letting no-ball/sentinel observations trigger extra swings; 'policy' "
++            "keeps the legacy raw-policy behavior."
++        ),
++    )
+     ap.add_argument(
+         "--real-response-model",
+         action="store_true",
+diff --git a/deploy/robots/a1_h1/sim2sim/scene/a1_tt_scene.xml b/deploy/robots/a1_h1/sim2sim/scene/a1_tt_scene.xml
+index fedc266..ac61704 100644
+--- a/deploy/robots/a1_h1/sim2sim/scene/a1_tt_scene.xml
++++ b/deploy/robots/a1_h1/sim2sim/scene/a1_tt_scene.xml
+@@ -126,19 +126,19 @@
+               <geom type="mesh" rgba="0.898039 0.917647 0.929412 1" mesh="Link_r3" />
+               <body name="Link_r4" pos="0.000100454 0 0.112" quat="0.5 0.5 0.5 0.5">
+                 <inertial pos="2.42491e-07 0.0713398 -0.00581847" quat="0.320776 0.63017 -0.630149 0.32078" mass="0.490016" diaginertia="0.000296668 0.000269915 0.000223875" />
+-                <joint name="r4" pos="0 0 0" axis="0 0 -1" range="-1.92 1.92" armature="0.0018" damping="0.02" frictionloss="0" actuatorfrcrange="-10 10" />
++                <joint name="r4" pos="0 0 0" axis="0 0 -1" range="-1.92 1.92" armature="0.0018" damping="0.02" frictionloss="0" actuatorfrcrange="-8 8" />
+                 <geom type="mesh" rgba="1 1 1 1" mesh="Link_r4" />
+                 <body name="Link_r5" pos="0 0.111 -0.000100454" quat="0.707107 -0.707107 0 0">
+                   <inertial pos="0.000851641 9.37864e-05 0.0873055" quat="0.999746 -0.0224734 -0.00150532 -0.000642835" mass="0.49731" diaginertia="0.000369458 0.000354314 0.000225287" />
+-                  <joint name="r5" pos="0 0 0" axis="0 0 1" range="-2.76 2.76" armature="0.0018" damping="0.02" frictionloss="0" actuatorfrcrange="-10 10" />
++                  <joint name="r5" pos="0 0 0" axis="0 0 1" range="-2.76 2.76" armature="0.0018" damping="0.02" frictionloss="0" actuatorfrcrange="-8 8" />
+                   <geom type="mesh" rgba="0.898039 0.917647 0.929412 1" mesh="Link_r5" />
+                   <body name="Link_r6" pos="0 0 0.11" quat="0.707107 0.707107 0 0">
+                     <inertial pos="-7.8937e-06 0.0704028 0.00479689" quat="0.816593 0.577208 -0.000592806 0.00231074" mass="0.501956" diaginertia="0.000421499 0.000356036 0.000252516" />
+-                    <joint name="r6" pos="0 0 0" axis="0 0 1" range="-1.57 1.57" armature="0.0018" damping="0.02" frictionloss="0" actuatorfrcrange="-10 10" />
++                    <joint name="r6" pos="0 0 0" axis="0 0 1" range="-1.57 1.57" armature="0.0018" damping="0.02" frictionloss="0" actuatorfrcrange="-8 8" />
+                     <geom type="mesh" rgba="0.898039 0.917647 0.929412 1" mesh="Link_r6" />
+                     <body name="Link_r7" pos="0 0.112 0" quat="0 0 0.707107 0.707107">
+                       <inertial pos="-2.67064e-11 -0.159323 0.000218795" quat="0.496399 0.503575 -0.503575 0.496399" mass="0.237751" diaginertia="0.000911292 0.000816525 0.000341918" />
+-                      <joint name="r7" pos="0 0 0" axis="0 0 1" range="-2.76 2.76" armature="0.0018" damping="0.02" frictionloss="0" actuatorfrcrange="-10 10" />
++                      <joint name="r7" pos="0 0 0" axis="0 0 1" range="-2.76 2.76" armature="0.0018" damping="0.02" frictionloss="0" actuatorfrcrange="-8 8" />
+                       <geom type="mesh" rgba="0.898039 0.917647 0.929412 1" mesh="Link_r7" />
+                       <geom pos="0 0 0.172" quat="1.32679e-06 1 0 0" type="mesh" rgba="0.6 0.05 0.05 1" mesh="x1_paddle" name="paddle_blade" contype="1" conaffinity="1" friction="0.6 0.005 0.0001" solref="0.002 1" solimp="0.95 0.99 0.001" />
+                     </body>
+@@ -202,10 +202,10 @@
+     <motor name="r1_motor" joint="r1" ctrllimited="true" ctrlrange="-28 28" />
+     <motor name="r2_motor" joint="r2" ctrllimited="true" ctrlrange="-28 28" />
+     <motor name="r3_motor" joint="r3" ctrllimited="true" ctrlrange="-28 28" />
+-    <motor name="r4_motor" joint="r4" ctrllimited="true" ctrlrange="-10 10" />
+-    <motor name="r5_motor" joint="r5" ctrllimited="true" ctrlrange="-10 10" />
+-    <motor name="r6_motor" joint="r6" ctrllimited="true" ctrlrange="-10 10" />
+-    <motor name="r7_motor" joint="r7" ctrllimited="true" ctrlrange="-10 10" />
++    <motor name="r4_motor" joint="r4" ctrllimited="true" ctrlrange="-8 8" />
++    <motor name="r5_motor" joint="r5" ctrllimited="true" ctrlrange="-8 8" />
++    <motor name="r6_motor" joint="r6" ctrllimited="true" ctrlrange="-8 8" />
++    <motor name="r7_motor" joint="r7" ctrllimited="true" ctrlrange="-8 8" />
+   </actuator>
+   <contact>
+     <pair geom1="ball_geom" geom2="table_top" solref="-490000 -2" solimp="0.95 0.99 0.001" margin="0.06" />
+diff --git a/deploy/robots/a1_h1/sim2sim/serve.py b/deploy/robots/a1_h1/sim2sim/serve.py
+index 03cb363..a3a02fa 100644
+--- a/deploy/robots/a1_h1/sim2sim/serve.py
++++ b/deploy/robots/a1_h1/sim2sim/serve.py
+@@ -4,16 +4,36 @@ from __future__ import annotations
+ 
+ import numpy as np
+ 
++from a1_scene import SERVE_BOUNCE_VZ_RANGE, SERVE_BOUNCE_X_RANGE, SERVE_Y_CENTER as PROFILE_SERVE_Y_CENTER, SERVE_Y_HALF
++
+ 
+ SERVE_LAUNCH = np.array([1.35, 0.0, 1.03], dtype=np.float64)
+ G = 9.81
+ Z_BOUNCE = 0.78
+-# Match Pingpong_TTRL a1_tt_v11 easy serve. The policy was trained with the
+-# first bounce deep on the robot half, not close to the table center.
+-BOUNCE_X = (-1.24, -0.96)
+-BOUNCE_VZ = (1.60, 2.10)
+-SERVE_Y_CENTER = 0.12
+-SERVE_Y_HALF = 0.04
++BALL_RADIUS = 0.02
++BALL_MASS = 0.0034
++AIR_DENSITY = 1.225
++DRAG_COEFF = 0.4378
++BALL_DRAG_K = 0.5 * AIR_DENSITY * DRAG_COEFF * (np.pi * BALL_RADIUS ** 2) / BALL_MASS
++BOUNCE_X = SERVE_BOUNCE_X_RANGE
++BOUNCE_VZ = SERVE_BOUNCE_VZ_RANGE
++SERVE_Y_CENTER = PROFILE_SERVE_Y_CENTER
++
++
++def horizontal_velocity_for_drag_displacement(
++    displacement: float | np.ndarray,
++    duration: float | np.ndarray,
++    drag_k: float = BALL_DRAG_K,
++) -> np.ndarray:
++    """Invert s(T)=sign(v)/k*log(1+k*|v|*T), matching Isaac training serves."""
++    displacement = np.asarray(displacement, dtype=np.float64)
++    duration = np.maximum(np.asarray(duration, dtype=np.float64), 1.0e-6)
++    no_drag = displacement / duration
++    if drag_k <= 1.0e-8:
++        return no_drag
++    return np.sign(displacement) * np.expm1(np.clip(drag_k * np.abs(displacement), None, 20.0)) / (
++        drag_k * duration
++    )
+ 
+ 
+ class Serve:
+@@ -29,6 +49,6 @@ class Serve:
+         y_b = SERVE_Y_CENTER + self.rng.uniform(-SERVE_Y_HALF, SERVE_Y_HALF)
+         vz = self.rng.uniform(*BOUNCE_VZ)
+         t_b = (vz + np.sqrt(vz * vz + 2.0 * G * (SERVE_LAUNCH[2] - Z_BOUNCE))) / G
+-        vx = (x_b - SERVE_LAUNCH[0]) / t_b
+-        vy = y_b / t_b
++        vx = horizontal_velocity_for_drag_displacement(x_b - SERVE_LAUNCH[0], t_b)
++        vy = horizontal_velocity_for_drag_displacement(y_b - SERVE_LAUNCH[1], t_b)
+         return SERVE_LAUNCH.copy(), np.array([vx, vy, vz], dtype=np.float64)
+diff --git a/deploy/robots/a1_h1/sim2sim/test_a1_sim2sim.py b/deploy/robots/a1_h1/sim2sim/test_a1_sim2sim.py
+index ae4943b..1846467 100644
+--- a/deploy/robots/a1_h1/sim2sim/test_a1_sim2sim.py
++++ b/deploy/robots/a1_h1/sim2sim/test_a1_sim2sim.py
+@@ -1,16 +1,33 @@
+ import numpy as np
+ import mujoco
+ from pathlib import Path
++import json
++import os
++import pytest
++import subprocess
+ import sys
++import xml.etree.ElementTree as ET
+ 
+ sys.path.insert(0, str(Path(__file__).resolve().parent))
+ 
+-from a1_scene import PHYSICS_DT, RIGHT_ARM_EFFORT_LIMITS, RIGHT_ARM_JOINTS, ball_addresses, build_scene_xml, load_scene
+-from ball_gate import BallValidityGate
++from a1_scene import (
++    DEFAULT_SCENE_XML,
++    PHYSICS_DT,
++    PROFILES,
++    RIGHT_ARM_EFFORT_LIMITS,
++    RIGHT_ARM_JOINTS,
++    ball_addresses,
++    build_scene_xml,
++    load_scene,
++)
++from ball_gate import BallGateOutput, BallValidityGate
+ from policy_io import PRED_SENTINEL
+ from policy_io import (
+     A1PolicyIO,
+     BRIDGE_MAX_DELTA_PER_TICK,
++    DAMIAO_MIT_KD,
++    DAMIAO_MIT_KP,
++    DAMIAO_MIT_VEL,
+     DEFAULT_POLICY,
+     DEFAULT_RIGHT_Q,
+     EFFORT,
+@@ -18,13 +35,235 @@ from policy_io import (
+     OBS_SIZE,
+     OnnxPolicy,
+     REAL_RESPONSE_MAX_DELTA_PER_TICK,
++    REAL_RESPONSE_DELAY_S,
++    REAL_RESPONSE_FN_HZ,
+ )
+-from run_a1_tt_sim2sim import parse_args, run
+-from serve import BOUNCE_X, BOUNCE_VZ, SERVE_Y_CENTER, SERVE_Y_HALF, Serve
+-
+-
+-def test_scene_loads_with_robot_table_and_ball():
+-    xml_path = build_scene_xml()
++from run_a1_tt_sim2sim import (
++    action_for_gate,
++    next_serve_step_after_inactive,
++    parse_args,
++    run,
++    velocity_clip_limit_for_mode,
++)
++from serve import BALL_DRAG_K, BOUNCE_X, BOUNCE_VZ, SERVE_LAUNCH, SERVE_Y_CENTER, SERVE_Y_HALF, Serve
++
++
++def test_scene_profiles_include_v1_3_backhand_geometry():
++    from a1_scene import PROFILES, ACTIVE_PROFILE
++
++    assert ACTIVE_PROFILE.name == "old_v1_1"
++    assert "old_v1_1" in PROFILES
++    assert "model_10999" in PROFILES
++    assert "old_v1_1_backhand" in PROFILES
++    assert "old_v1_1_backhand_2100" in PROFILES
++    assert "v1_3_backhand" in PROFILES
++    assert "v1_3_backhand_2100" in PROFILES
++    assert "v1_3_backhand_low_arm_2100" in PROFILES
++    assert "v1_3_backhand_low_arm_hitplane020" in PROFILES
++
++    model_10999 = PROFILES["model_10999"]
++    assert model_10999.urdf.name == "X1_URDF_V1_1_sj_fixed.urdf"
++    np.testing.assert_allclose(model_10999.robot_table_pos, [-1.8, 0.76, 0.0282])
++    assert model_10999.hit_plane_x == -1.43
++    assert model_10999.home_y == 0.76
++    assert model_10999.paddle_y_offset == -0.03
++    np.testing.assert_allclose(model_10999.paddle_offset, [0.0, 0.0, 0.085])
++    np.testing.assert_allclose(model_10999.pred_sentinel, [-1.43, 0.64, 1.11])
++    np.testing.assert_allclose(
++        [model_10999.default_qpos[j] for j in RIGHT_ARM_JOINTS],
++        [1.769, -0.762, -1.863, 1.445, 0.206, -0.827, 1.043],
++    )
++
++    old_backhand = PROFILES["old_v1_1_backhand"]
++    assert old_backhand.urdf.name == "X1_URDF_V1_1.urdf"
++    np.testing.assert_allclose(old_backhand.robot_table_pos, [-1.8, 0.0, 0.0282])
++    assert old_backhand.hit_plane_x == -1.159
++    np.testing.assert_allclose(old_backhand.paddle_offset, [0.0, 0.0, 0.085])
++    np.testing.assert_allclose(
++        [old_backhand.default_qpos[j] for j in RIGHT_ARM_JOINTS],
++        [1.769, -0.762, -1.863, 1.445, 0.206, -0.827, 1.043],
++    )
++
++    new_profile = PROFILES["v1_3_backhand"]
++    assert new_profile.urdf.name == "X1_URDF_V1_3.urdf"
++    assert "X1_URDF_V1_3" in str(new_profile.meshdir)
++    np.testing.assert_allclose(new_profile.robot_table_pos, [-1.8, 0.0, 0.0282])
++    assert new_profile.hit_plane_x == -1.159
++    assert new_profile.home_y == 0.0
++    assert new_profile.paddle_y_offset == -0.03
++    np.testing.assert_allclose(new_profile.paddle_offset, [0.0, 0.0, 0.0])
++    np.testing.assert_allclose(
++        [new_profile.default_qpos[j] for j in RIGHT_ARM_JOINTS],
++        [1.769, -0.762, -1.863, 1.445, 0.206, -0.827, 1.043],
++    )
++
++    ckpt_2100 = PROFILES["v1_3_backhand_2100"]
++    assert ckpt_2100.urdf.name == "X1_URDF_V1_3.urdf"
++    assert ckpt_2100.hit_plane_x == -1.279
++    np.testing.assert_allclose(ckpt_2100.paddle_offset, [0.0, 0.0, 0.0])
++    np.testing.assert_allclose(ckpt_2100.pred_sentinel, [-1.279, 0.066, 1.22])
++    assert ckpt_2100.serve_bounce_x_range == (-1.089, -0.809)
++    assert ckpt_2100.serve_bounce_vz_range == (1.95, 2.35)
++    assert ckpt_2100.serve_y_center == 0.045
++
++
++def test_v1_3_low_arm_2100_profile_matches_current_training_snapshot():
++    from a1_scene import PROFILES
++
++    low_arm = PROFILES["v1_3_backhand_low_arm_2100"]
++    assert low_arm.urdf.name == "X1_URDF_V1_3.urdf"
++    np.testing.assert_allclose(
++        [low_arm.default_qpos[j] for j in RIGHT_ARM_JOINTS],
++        [1.45, -0.762, -2.05, 1.445, 0.206, -0.827, 1.043],
++    )
++    assert low_arm.hit_plane_x == -1.203
++    np.testing.assert_allclose(low_arm.paddle_offset, [0.0, 0.0, 0.0])
++    np.testing.assert_allclose(low_arm.pred_sentinel, [-1.203, 0.041, 0.92], atol=1e-7)
++    assert low_arm.hit_target_y_range == (-0.025, 0.107)
++    assert low_arm.hit_target_z_range == (0.86, 0.98)
++    assert low_arm.serve_bounce_x_range == (-1.013, -0.733)
++    assert low_arm.serve_bounce_vz_range == (0.0, 0.45)
++    assert low_arm.serve_y_center == 0.041
++    assert low_arm.serve_y_half == 0.02
++
++
++def test_v1_3_profile_reaches_policy_io_at_import_time():
++    env = os.environ.copy()
++    env["A1_SIM2SIM_PROFILE"] = "v1_3_backhand"
++    script = """
++import json
++import a1_scene
++import policy_io
++print(json.dumps({
++    "profile": a1_scene.ACTIVE_PROFILE.name,
++    "urdf": a1_scene.DEFAULT_URDF.name,
++    "meshdir": str(a1_scene.DEFAULT_MESHDIR),
++    "robot_table_pos": a1_scene.ROBOT_TABLE_POS.tolist(),
++    "default_right_q": policy_io.DEFAULT_RIGHT_Q.tolist(),
++    "hit_plane_x": policy_io.HIT_PLANE_X,
++    "hit_target_y_range": list(policy_io.HIT_TARGET_Y_RANGE),
++    "hit_target_z_range": list(policy_io.HIT_TARGET_Z_RANGE),
++    "home_y": policy_io.HOME_Y,
++    "paddle_y_offset": policy_io.PADDLE_Y_OFFSET,
++    "paddle_offset": policy_io.PADDLE_OFFSET.tolist(),
++    "pred_sentinel": policy_io.PRED_SENTINEL.tolist(),
++}))
++"""
++    out = subprocess.check_output([sys.executable, "-c", script], cwd=Path(__file__).resolve().parent, env=env)
++    data = json.loads(out.decode())
++    assert data["profile"] == "v1_3_backhand"
++    assert data["urdf"] == "X1_URDF_V1_3.urdf"
++    assert "X1_URDF_V1_3" in data["meshdir"]
++    np.testing.assert_allclose(data["robot_table_pos"], [-1.8, 0.0, 0.0282])
++    np.testing.assert_allclose(data["default_right_q"], [1.769, -0.762, -1.863, 1.445, 0.206, -0.827, 1.043])
++    assert data["hit_plane_x"] == -1.159
++    np.testing.assert_allclose(data["hit_target_y_range"], [0.00, 0.135])
++    np.testing.assert_allclose(data["hit_target_z_range"], [1.08, 1.16])
++    assert data["home_y"] == 0.0
++    assert data["paddle_y_offset"] == -0.03
++    np.testing.assert_allclose(data["paddle_offset"], [0.0, 0.0, 0.0])
++    np.testing.assert_allclose(data["pred_sentinel"], [-1.159, 0.0675, 1.12], atol=1e-7)
++
++
++def test_v1_3_2100_profile_reaches_policy_and_serve_at_import_time():
++    env = os.environ.copy()
++    env["A1_SIM2SIM_PROFILE"] = "v1_3_backhand_2100"
++    script = """
++import json
++import a1_scene
++import policy_io
++import serve
++print(json.dumps({
++    "profile": a1_scene.ACTIVE_PROFILE.name,
++    "hit_plane_x": policy_io.HIT_PLANE_X,
++    "pred_sentinel": policy_io.PRED_SENTINEL.tolist(),
++    "bounce_x": list(serve.BOUNCE_X),
++    "bounce_vz": list(serve.BOUNCE_VZ),
++    "serve_y_center": serve.SERVE_Y_CENTER,
++}))
++"""
++    out = subprocess.check_output([sys.executable, "-c", script], cwd=Path(__file__).resolve().parent, env=env)
++    data = json.loads(out.decode())
++    assert data["profile"] == "v1_3_backhand_2100"
++    assert data["hit_plane_x"] == -1.279
++    np.testing.assert_allclose(data["pred_sentinel"], [-1.279, 0.066, 1.22], atol=1e-7)
++    np.testing.assert_allclose(data["bounce_x"], [-1.089, -0.809])
++    np.testing.assert_allclose(data["bounce_vz"], [1.95, 2.35])
++    assert data["serve_y_center"] == 0.045
++
++
++def test_v1_3_low_arm_2100_profile_reaches_policy_and_serve_at_import_time():
++    env = os.environ.copy()
++    env["A1_SIM2SIM_PROFILE"] = "v1_3_backhand_low_arm_2100"
++    script = """
++import json
++import a1_scene
++import policy_io
++import serve
++print(json.dumps({
++    "profile": a1_scene.ACTIVE_PROFILE.name,
++    "default_right_q": policy_io.DEFAULT_RIGHT_Q.tolist(),
++    "hit_plane_x": policy_io.HIT_PLANE_X,
++    "hit_target_y_range": list(policy_io.HIT_TARGET_Y_RANGE),
++    "hit_target_z_range": list(policy_io.HIT_TARGET_Z_RANGE),
++    "pred_sentinel": policy_io.PRED_SENTINEL.tolist(),
++    "bounce_x": list(serve.BOUNCE_X),
++    "bounce_vz": list(serve.BOUNCE_VZ),
++    "serve_y_center": serve.SERVE_Y_CENTER,
++    "serve_y_half": serve.SERVE_Y_HALF,
++}))
++"""
++    out = subprocess.check_output([sys.executable, "-c", script], cwd=Path(__file__).resolve().parent, env=env)
++    data = json.loads(out.decode())
++    assert data["profile"] == "v1_3_backhand_low_arm_2100"
++    np.testing.assert_allclose(data["default_right_q"], [1.45, -0.762, -2.05, 1.445, 0.206, -0.827, 1.043])
++    assert data["hit_plane_x"] == -1.203
++    np.testing.assert_allclose(data["hit_target_y_range"], [-0.025, 0.107])
++    np.testing.assert_allclose(data["hit_target_z_range"], [0.86, 0.98])
++    np.testing.assert_allclose(data["pred_sentinel"], [-1.203, 0.041, 0.92], atol=1e-7)
++    np.testing.assert_allclose(data["bounce_x"], [-1.013, -0.733])
++    np.testing.assert_allclose(data["bounce_vz"], [0.0, 0.45])
++    assert data["serve_y_center"] == 0.041
++    assert data["serve_y_half"] == 0.02
++
++
++def test_v1_3_low_arm_hitplane020_profile_reaches_policy_and_serve_at_import_time():
++    env = os.environ.copy()
++    env["A1_SIM2SIM_PROFILE"] = "v1_3_backhand_low_arm_hitplane020"
++    script = """
++import json
++import a1_scene
++import policy_io
++import serve
++print(json.dumps({
++    "profile": a1_scene.ACTIVE_PROFILE.name,
++    "default_right_q": policy_io.DEFAULT_RIGHT_Q.tolist(),
++    "hit_plane_x": policy_io.HIT_PLANE_X,
++    "hit_target_y_range": list(policy_io.HIT_TARGET_Y_RANGE),
++    "hit_target_z_range": list(policy_io.HIT_TARGET_Z_RANGE),
++    "pred_sentinel": policy_io.PRED_SENTINEL.tolist(),
++    "bounce_x": list(serve.BOUNCE_X),
++    "bounce_vz": list(serve.BOUNCE_VZ),
++    "serve_y_center": serve.SERVE_Y_CENTER,
++    "serve_y_half": serve.SERVE_Y_HALF,
++}))
++"""
++    out = subprocess.check_output([sys.executable, "-c", script], cwd=Path(__file__).resolve().parent, env=env)
++    data = json.loads(out.decode())
++    assert data["profile"] == "v1_3_backhand_low_arm_hitplane020"
++    np.testing.assert_allclose(data["default_right_q"], [1.45, -0.762, -2.05, 1.445, 0.206, -0.827, 1.043])
++    assert data["hit_plane_x"] == -1.243
++    np.testing.assert_allclose(data["hit_target_y_range"], [-0.025, 0.107])
++    np.testing.assert_allclose(data["hit_target_z_range"], [0.86, 0.98])
++    np.testing.assert_allclose(data["pred_sentinel"], [-1.243, 0.041, 0.92], atol=1e-7)
++    np.testing.assert_allclose(data["bounce_x"], [-1.053, -0.773])
++    np.testing.assert_allclose(data["bounce_vz"], [0.0, 0.45])
++    assert data["serve_y_center"] == 0.041
++    assert data["serve_y_half"] == 0.02
++
++
++def test_scene_loads_with_robot_table_and_ball(tmp_path):
++    xml_path = build_scene_xml(out_path=tmp_path / "a1_tt_scene.xml")
+     model = mujoco.MjModel.from_xml_path(str(xml_path))
+     names = {mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, i) for i in range(model.nbody)}
+     assert {"a1_root", "Link_r7", "table", "ball"}.issubset(names)
+@@ -36,8 +275,34 @@ def test_scene_loads_with_robot_table_and_ball():
+     ball_addresses(model)
+ 
+ 
+-def test_generated_mjcf_has_motor_metadata():
+-    xml_path = build_scene_xml()
++def test_generated_mjcf_matches_training_robot_collision_setup(tmp_path):
++    xml_path = build_scene_xml(out_path=tmp_path / "a1_tt_scene.xml")
++    root = ET.parse(xml_path).getroot()
++    robot_root = root.find(".//body[@name='a1_root']")
++    assert robot_root is not None
++
++    paddle_count = 0
++    for geom in robot_root.iter("geom"):
++        if geom.get("name") == "paddle_blade":
++            paddle_count += 1
++            assert geom.get("contype") == "1"
++            assert geom.get("conaffinity") == "1"
++        else:
++            assert geom.get("contype") == "0"
++            assert geom.get("conaffinity") == "0"
++    assert paddle_count == 1
++
++    model, data, _ = load_scene(xml_path)
++    mujoco.mj_forward(model, data)
++    assert data.ncon == 0
++
++
++def test_low_arm_profile_uses_small_ball_contact_margin():
++    assert PROFILES["v1_3_backhand_low_arm_2100"].ball_contact_margin == pytest.approx(0.015)
++
++
++def test_generated_mjcf_has_motor_metadata(tmp_path):
++    xml_path = build_scene_xml(out_path=tmp_path / "a1_tt_scene.xml")
+     model = mujoco.MjModel.from_xml_path(str(xml_path))
+     assert model.nu == len(RIGHT_ARM_JOINTS)
+     for joint in RIGHT_ARM_JOINTS:
+@@ -49,16 +314,108 @@ def test_generated_mjcf_has_motor_metadata():
+         assert model.dof_damping[dof] > 0.0
+ 
+ 
++def test_checked_in_default_mjcf_has_current_motor_metadata():
++    root = ET.parse(DEFAULT_SCENE_XML).getroot()
++    for joint in RIGHT_ARM_JOINTS:
++        effort = RIGHT_ARM_EFFORT_LIMITS[joint]
++        joint_node = root.find(f".//joint[@name='{joint}']")
++        assert joint_node is not None
++        assert joint_node.get("actuatorfrcrange") == f"{-effort:.12g} {effort:.12g}"
++        motor_node = root.find(f".//motor[@name='{joint}_motor']")
++        assert motor_node is not None
++        assert motor_node.get("ctrlrange") == f"{-effort:.12g} {effort:.12g}"
++
++
+ def test_policy_obs_and_action_shape():
+     model, data, _ = load_scene()
+     io = A1PolicyIO(model, data)
+     obs = io.observe(np.array([1.0, 0.0, 1.0]), np.array([-3.0, 0.0, 1.0]))
+     assert obs.shape == (OBS_SIZE,)
++    if not DEFAULT_POLICY.exists():
++        pytest.skip(f"default exported policy not found: {DEFAULT_POLICY}")
+     policy = OnnxPolicy(DEFAULT_POLICY)
+     action = policy(obs)
+     assert action.shape == (7,)
+ 
+ 
++def test_damiao_constants_use_0729_backhand_real_fit():
++    np.testing.assert_allclose(DAMIAO_MIT_KP, [300.0, 300.0, 300.0, 120.0, 120.0, 120.0, 60.0])
++    np.testing.assert_allclose(DAMIAO_MIT_KD, [3.5, 3.5, 3.5, 1.0, 1.0, 1.0, 0.5])
++    np.testing.assert_allclose(DAMIAO_MIT_VEL, [4.0, 4.0, 5.0, 6.0, 8.0, 6.0, 9.0])
++    assert not np.allclose(REAL_RESPONSE_DELAY_S, np.full(7, 0.08))
++    assert np.all(REAL_RESPONSE_DELAY_S >= 0.0)
++    assert np.all(REAL_RESPONSE_FN_HZ > 0.0)
++
++
++def test_invalid_ball_zero_action_gate_masks_policy_output():
++    class FakePolicy:
++        def __call__(self, obs):
++            return np.arange(1, 8, dtype=np.float32)
++
++    obs = np.zeros(OBS_SIZE, dtype=np.float32)
++    invalid = BallGateOutput(
++        live=False,
++        engaged=False,
++        reason="paddle_hit",
++        first_bounce_x=float("nan"),
++        own_bounces=0,
++        hit_seen=True,
++    )
++    action = action_for_gate(FakePolicy(), obs, invalid, invalid_ball_action="zero")
++    np.testing.assert_allclose(action, np.zeros(7, dtype=np.float32))
++
++
++def test_valid_ball_zero_action_gate_keeps_policy_output():
++    class FakePolicy:
++        def __call__(self, obs):
++            return np.arange(1, 8, dtype=np.float32)
++
++    obs = np.zeros(OBS_SIZE, dtype=np.float32)
++    valid = BallGateOutput(
++        live=True,
++        engaged=True,
++        reason="valid",
++        first_bounce_x=-0.9,
++        own_bounces=1,
++        hit_seen=False,
++    )
++    action = action_for_gate(FakePolicy(), obs, valid, invalid_ball_action="zero")
++    np.testing.assert_allclose(action, np.arange(1, 8, dtype=np.float32))
++
++
++def test_invalid_ball_policy_action_gate_preserves_legacy_policy_output():
++    class FakePolicy:
++        def __call__(self, obs):
++            return np.arange(1, 8, dtype=np.float32)
++
++    obs = np.zeros(OBS_SIZE, dtype=np.float32)
++    invalid = BallGateOutput(
++        live=False,
++        engaged=False,
++        reason="out_volume",
++        first_bounce_x=float("nan"),
++        own_bounces=0,
++        hit_seen=False,
++    )
++    action = action_for_gate(FakePolicy(), obs, invalid, invalid_ball_action="policy")
++    np.testing.assert_allclose(action, np.arange(1, 8, dtype=np.float32))
++
++
++def test_mjcf_motor_metadata_matches_training_damiao_effort_limits():
++    np.testing.assert_allclose(
++        [RIGHT_ARM_EFFORT_LIMITS[joint] for joint in RIGHT_ARM_JOINTS],
++        [28.0, 28.0, 28.0, 8.0, 8.0, 8.0, 8.0],
++    )
++
++
++def test_damiao_mode_uses_real_velocity_clip_unless_explicitly_disabled():
++    np.testing.assert_allclose(
++        velocity_clip_limit_for_mode("damiao_mit", no_qvel_clip=False),
++        DAMIAO_MIT_VEL,
++    )
++    assert velocity_clip_limit_for_mode("damiao_mit", no_qvel_clip=True) is None
++
++
+ def test_mit_pd_torque_is_clipped_to_motor_limits():
+     model, data, _ = load_scene()
+     io = A1PolicyIO(model, data)
+@@ -102,12 +459,30 @@ def test_serve_bounce_sampler_ranges():
+         assert BOUNCE_VZ[0] <= vel[2] <= BOUNCE_VZ[1]
+         # Reconstruct sampled bounce y from launch vy and time-to-bounce.
+         t_b = (vel[2] + np.sqrt(vel[2] * vel[2] + 2.0 * 9.81 * (1.03 - 0.78))) / 9.81
+-        x_b = 1.35 + vel[0] * t_b
+-        y_b = vel[1] * t_b
++        x_b = 1.35 + np.sign(vel[0]) * np.log1p(BALL_DRAG_K * abs(vel[0]) * t_b) / BALL_DRAG_K
++        y_b = np.sign(vel[1]) * np.log1p(BALL_DRAG_K * abs(vel[1]) * t_b) / BALL_DRAG_K
+         assert BOUNCE_X[0] <= x_b <= BOUNCE_X[1]
+         assert SERVE_Y_CENTER - SERVE_Y_HALF <= y_b <= SERVE_Y_CENTER + SERVE_Y_HALF
+ 
+ 
++def test_serve_sampler_inverts_horizontal_drag_like_isaac_training():
++    s = Serve(rng=np.random.default_rng(0))
++    for _ in range(200):
++        pos, vel = s.sample()
++        t_b = (vel[2] + np.sqrt(vel[2] * vel[2] + 2.0 * 9.81 * (SERVE_LAUNCH[2] - 0.78))) / 9.81
++
++        def drag_displacement(v0: float, duration: float) -> float:
++            return np.sign(v0) * np.log1p(BALL_DRAG_K * abs(v0) * duration) / BALL_DRAG_K
++
++        x_b = float(pos[0] + drag_displacement(float(vel[0]), float(t_b)))
++        y_b = float(pos[1] + drag_displacement(float(vel[1]), float(t_b)))
++        assert BOUNCE_X[0] <= x_b <= BOUNCE_X[1]
++        assert SERVE_Y_CENTER - SERVE_Y_HALF <= y_b <= SERVE_Y_CENTER + SERVE_Y_HALF
++
++        no_drag_x = float(pos[0] + vel[0] * t_b)
++        assert not np.isclose(no_drag_x, x_b, atol=1e-4)
++
++
+ def test_ball_gate_accepts_valid_serve_and_rejects_invalid_ball():
+     gate = BallValidityGate()
+     pos, vel = Serve(rng=np.random.default_rng(1)).sample()
+@@ -130,6 +505,21 @@ def test_invalid_ball_observation_uses_home_sentinel():
+     assert np.allclose(newest[33:36], PRED_SENTINEL)
+ 
+ 
++def test_prediction_is_projected_to_profile_hit_target_geometry():
++    from policy_io import (
++        HIT_PLANE_X,
++        HIT_TARGET_Y_RANGE,
++        HIT_TARGET_Z_RANGE,
++        project_prediction_to_target_geometry,
++    )
++
++    pred = project_prediction_to_target_geometry(np.array([-2.0, 10.0, -1.0], dtype=np.float32))
++
++    assert pred[0] == HIT_PLANE_X
++    assert pred[1] == HIT_TARGET_Y_RANGE[1]
++    assert pred[2] == HIT_TARGET_Z_RANGE[0]
++
++
+ def test_short_headless_rollout_without_policy():
+     args = parse_args([])
+     args.headless_steps = 5
+@@ -140,6 +530,12 @@ def test_short_headless_rollout_without_policy():
+     assert stats["max_abs_tau"] <= 28.0 + 1e-6
+ 
+ 
++def test_dead_ball_schedules_next_serve_without_long_no_ball_gap():
++    assert next_serve_step_after_inactive(control_step=14, pause_steps=0) == 15
++    assert next_serve_step_after_inactive(control_step=14, pause_steps=1) == 15
++    assert next_serve_step_after_inactive(control_step=14, pause_steps=12) == 26
++
++
+ def test_damiao_clip_effort_torque_speed_envelope():
+     from policy_io import damiao_clip_effort
+     vel_limit = np.array([8, 8, 8, 20, 20, 20, 20], dtype=np.float64)
+@@ -194,11 +590,12 @@ def test_apply_damiao_mit_torque_signs_and_limit(tmp_path):
+     from policy_io import A1PolicyIO, DAMIAO_MIT_EFFORT
+     # Adaptation: load_scene returns (model, data, path); use use_predictor=False
+     # instead of non-existent policy= kwarg.
+-    model, data, _ = load_scene(build_scene_xml())
++    model, data, _ = load_scene(build_scene_xml(out_path=tmp_path / "a1_tt_scene.xml"))
+     io = A1PolicyIO(model, data, use_predictor=False)
+     q = io.right_q()
+     # 目标设在当前位置 +0.5rad(远超步长)，期望力矩为正且不超 effort_limit
+     io.q_des = (q + 0.5).astype(np.float64)
++    io.set_motor_q_des(io.q_des)
+     io.damiao_cmd = q.copy()
+     tau = io.apply_damiao_mit(0.002)
+     assert tau.shape == (7,)
+@@ -207,3 +604,21 @@ def test_apply_damiao_mit_torque_signs_and_limit(tmp_path):
+     assert tau[0] > 0.0   # 目标在正方向 -> 正力矩
+     # qfrc_applied 已写入
+     assert np.allclose(data.qfrc_applied[io.dof_addr], tau)
++
++
++def test_apply_damiao_mit_uses_response_velocity_in_damping(tmp_path):
++    from a1_scene import build_scene_xml, load_scene
++    from policy_io import A1PolicyIO, DAMIAO_MIT_EFFORT, DAMIAO_MIT_KD
++
++    model, data, _ = load_scene(build_scene_xml(out_path=tmp_path / "a1_tt_scene.xml"))
++    io = A1PolicyIO(model, data, use_predictor=False)
++    q = io.right_q()
++    io.q_des = q.copy()
++    io.set_motor_q_des(q)
++    io.damiao_cmd = q.copy()
++
++    desired_vel = np.array([0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], dtype=np.float64)
++    tau = io.apply_damiao_mit(0.002, desired_vel=desired_vel)
++
++    expected = np.clip(DAMIAO_MIT_KD * desired_vel, -DAMIAO_MIT_EFFORT, DAMIAO_MIT_EFFORT)
++    np.testing.assert_allclose(tau, expected, atol=1e-9)
+diff --git a/deploy/robots/a1_h1/tools/joint_id/fit_second_order_actuator.py b/deploy/robots/a1_h1/tools/joint_id/fit_second_order_actuator.py
+index 03f26b9..057f7b7 100644
+--- a/deploy/robots/a1_h1/tools/joint_id/fit_second_order_actuator.py
++++ b/deploy/robots/a1_h1/tools/joint_id/fit_second_order_actuator.py
+@@ -10,7 +10,6 @@ import math
+ from pathlib import Path
+ 
+ import numpy as np
+-from scipy.optimize import differential_evolution, minimize
+ 
+ 
+ def read_rows(path: Path) -> list[dict[str, str]]:
+@@ -128,6 +127,41 @@ def solve_linear_output(
+     return intercept, gain, intercept + gain * feature
+ 
+ 
++def model_bounds(
++    model: str,
++    *,
++    fn_min_hz: float = 0.4,
++    fn_max_hz: float = 8.0,
++    delay_max_s: float = 0.14,
++) -> list[tuple[float, float]]:
++    if fn_min_hz <= 0.0:
++        raise ValueError(f"fn_min_hz must be positive, got {fn_min_hz}")
++    if fn_max_hz < fn_min_hz:
++        raise ValueError(f"fn_max_hz must be >= fn_min_hz, got {fn_max_hz} < {fn_min_hz}")
++    if delay_max_s < 0.0:
++        raise ValueError(f"delay_max_s must be non-negative, got {delay_max_s}")
++    base = [(float(fn_min_hz), float(fn_max_hz)), (0.03, 2.5), (0.0, float(delay_max_s))]
++    if model == "second_order":
++        return base
++    if model == "lead_lag":
++        return [*base, (0.0, 0.16)]
++    raise ValueError(model)
++
++
++def refine_bounded(objective, x0: np.ndarray, bounds: list[tuple[float, float]]):
++    from scipy.optimize import minimize
++
++    result = minimize(
++        objective,
++        np.asarray(x0, dtype=float),
++        method="Powell",
++        bounds=bounds,
++        options={"maxiter": 600, "xtol": 1e-8, "ftol": 1e-10},
++    )
++    result.x = np.clip(np.asarray(result.x, dtype=float), [lo for lo, _ in bounds], [hi for _, hi in bounds])
++    return result
++
++
+ def fit_model(
+     model: str,
+     t: np.ndarray,
+@@ -137,6 +171,9 @@ def fit_model(
+     max_step_s: float,
+     seed: int,
+     output_bias: str,
++    fn_min_hz: float = 0.4,
++    fn_max_hz: float = 8.0,
++    delay_max_s: float = 0.14,
+ ) -> dict:
+     u0 = float(np.mean(u[fit_mask]))
+     u_rel = u - u0
+@@ -176,12 +213,9 @@ def fit_model(
+             "rmse_fit": rmse,
+         }
+ 
+-    if model == "second_order":
+-        bounds = [(0.4, 8.0), (0.03, 2.5), (0.0, 0.14)]
+-    elif model == "lead_lag":
+-        bounds = [(0.4, 8.0), (0.03, 2.5), (0.0, 0.14), (0.0, 0.16)]
+-    else:
+-        raise ValueError(model)
++    bounds = model_bounds(model, fn_min_hz=fn_min_hz, fn_max_hz=fn_max_hz, delay_max_s=delay_max_s)
++
++    from scipy.optimize import differential_evolution
+ 
+     result_de = differential_evolution(
+         lambda p: evaluate(np.asarray(p))[0],
+@@ -194,12 +228,7 @@ def fit_model(
+         updating="immediate",
+         workers=1,
+     )
+-    result = minimize(
+-        lambda p: evaluate(np.asarray(p))[0],
+-        result_de.x,
+-        method="Nelder-Mead",
+-        options={"maxiter": 600, "xatol": 1e-8, "fatol": 1e-10},
+-    )
++    result = refine_bounded(lambda p: evaluate(np.asarray(p))[0], result_de.x, bounds)
+     _, info = evaluate(np.asarray(result.x))
+     y_hat = info["y_hat"]
+     all_residual = y_hat - y
+@@ -268,6 +297,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
+     ap.add_argument("--ignore-start-s", type=float, default=2.0)
+     ap.add_argument("--ignore-end-s", type=float, default=0.5)
+     ap.add_argument("--max-step-s", type=float, default=0.0025)
++    ap.add_argument("--fn-min-hz", type=float, default=0.4)
++    ap.add_argument("--fn-max-hz", type=float, default=8.0)
++    ap.add_argument("--delay-max-s", type=float, default=0.14)
+     ap.add_argument(
+         "--output-bias",
+         choices=["free", "none"],
+@@ -296,7 +328,19 @@ def main() -> int:
+         raise SystemExit("fit window too small")
+ 
+     fits = [
+-        fit_model(model, t, u, y, fit_mask, args.max_step_s, args.seed, args.output_bias)
++        fit_model(
++            model,
++            t,
++            u,
++            y,
++            fit_mask,
++            args.max_step_s,
++            args.seed,
++            args.output_bias,
++            args.fn_min_hz,
++            args.fn_max_hz,
++            args.delay_max_s,
++        )
+         for model in args.models
+     ]
+     predictions = {fit["model"]: fit["y_hat"] for fit in fits}
