@@ -10,6 +10,7 @@ and reset-time rejection sampling stays cheap on thousands of GPU envs.
 
 from __future__ import annotations
 
+import os
 from typing import NamedTuple
 
 import torch
@@ -55,7 +56,7 @@ def _rk4_x(state: torch.Tensor, dx: torch.Tensor | float, drag_accel_k: float, g
     return state + (dx / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
 
 
-def probe_serve_flight(
+def _probe_serve_flight_impl(
     launch_pos: torch.Tensor,
     launch_vel: torch.Tensor,
     *,
@@ -107,41 +108,43 @@ def probe_serve_flight(
             & (next_state[:, 1] <= table_ball_center_z)
             & (next_state[:, 4] < 0.0)
         )
-        if crossing.any():
-            denom = torch.clamp(prev_state[:, 1] - next_state[:, 1], min=1.0e-8)
-            alpha = torch.clamp((prev_state[:, 1] - table_ball_center_z) / denom, 0.0, 1.0)
-            pre_bounce = prev_state + alpha.unsqueeze(-1) * (next_state - prev_state)
-            post_bounce = pre_bounce.clone()
-            post_bounce[:, 1] = table_ball_center_z
-            # A no-spin ball does not preserve its horizontal speed at the
-            # first table contact.  Use the conservative Coulomb impulse bound
-            # here: PhysX's compliant contact/friction solve removed more
-            # horizontal speed from steep serves than the ideal rigid-sphere
-            # rolling impulse.  Leaving this out admitted nominally slow balls
-            # whose simulated trajectory arrived much lower than preflight.
-            tangent = pre_bounce[:, (2, 3)]
-            tangent_speed = torch.linalg.norm(tangent, dim=-1)
-            coulomb_delta = (
-                float(table_dynamic_friction)
-                * (1.0 + float(table_restitution))
-                * torch.abs(pre_bounce[:, 4])
-            )
-            delta_speed = torch.minimum(coulomb_delta, tangent_speed)
-            tangent_scale = torch.clamp(
-                1.0 - delta_speed / torch.clamp(tangent_speed, min=1.0e-8),
-                min=0.0,
-            )
-            post_bounce[:, 2] = pre_bounce[:, 2] * tangent_scale
-            post_bounce[:, 3] = pre_bounce[:, 3] * tangent_scale
-            post_bounce[:, 4] = -table_restitution * pre_bounce[:, 4]
-            remaining_dx = dx_hit * (1.0 - alpha)
-            after_bounce = _rk4_x(post_bounce, remaining_dx, drag_accel_k, gravity)
-            state = torch.where(crossing.unsqueeze(-1), after_bounce, next_state)
-            bx = x + alpha * dx_hit
-            bounce_x = torch.where(crossing, bx, bounce_x)
-            bounced = bounced | crossing
-        else:
-            state = next_state
+        # Keep this branchless on CUDA.  ``if crossing.any()`` forced a device
+        # synchronization for every integration step and dominated the reset
+        # path for thousands of environments.  The candidate bounce is cheap to
+        # evaluate in one vectorized batch and is selected only where ``crossing``
+        # is true, preserving the exact trajectory contract.
+        denom = torch.clamp(prev_state[:, 1] - next_state[:, 1], min=1.0e-8)
+        alpha = torch.clamp((prev_state[:, 1] - table_ball_center_z) / denom, 0.0, 1.0)
+        pre_bounce = prev_state + alpha.unsqueeze(-1) * (next_state - prev_state)
+        post_bounce = pre_bounce.clone()
+        post_bounce[:, 1] = table_ball_center_z
+        # A no-spin ball does not preserve its horizontal speed at the
+        # first table contact.  Use the conservative Coulomb impulse bound
+        # here: PhysX's compliant contact/friction solve removed more
+        # horizontal speed from steep serves than the ideal rigid-sphere
+        # rolling impulse.  Leaving this out admitted nominally slow balls
+        # whose simulated trajectory arrived much lower than preflight.
+        tangent = pre_bounce[:, (2, 3)]
+        tangent_speed = torch.linalg.norm(tangent, dim=-1)
+        coulomb_delta = (
+            float(table_dynamic_friction)
+            * (1.0 + float(table_restitution))
+            * torch.abs(pre_bounce[:, 4])
+        )
+        delta_speed = torch.minimum(coulomb_delta, tangent_speed)
+        tangent_scale = torch.clamp(
+            1.0 - delta_speed / torch.clamp(tangent_speed, min=1.0e-8),
+            min=0.0,
+        )
+        post_bounce[:, 2] = pre_bounce[:, 2] * tangent_scale
+        post_bounce[:, 3] = pre_bounce[:, 3] * tangent_scale
+        post_bounce[:, 4] = -table_restitution * pre_bounce[:, 4]
+        remaining_dx = dx_hit * (1.0 - alpha)
+        after_bounce = _rk4_x(post_bounce, remaining_dx, drag_accel_k, gravity)
+        state = torch.where(crossing.unsqueeze(-1), after_bounce, next_state)
+        bx = x + alpha * dx_hit
+        bounce_x = torch.where(crossing, bx, bounce_x)
+        bounced = bounced | crossing
         x = x + dx_hit
 
     return ServeFlightProbe(
@@ -152,4 +155,81 @@ def probe_serve_flight(
         hit_vx=state[:, 2],
         hit_vz=state[:, 4],
         bounced=bounced,
+    )
+
+
+_compiled_cuda_probe = None
+_compiled_cuda_probe_failed = False
+
+
+def probe_serve_flight(
+    launch_pos: torch.Tensor,
+    launch_vel: torch.Tensor,
+    *,
+    hit_plane_x: float,
+    net_x: float = 0.0,
+    table_ball_center_z: float = 0.78,
+    table_restitution: float = 0.95,
+    table_dynamic_friction: float = 0.10,
+    drag_accel_k: float = 0.09910893224020438,
+    gravity: float = 9.81,
+    launch_to_net_steps: int = 8,
+    net_to_hit_steps: int = 16,
+) -> ServeFlightProbe:
+    """Run the serve probe eagerly on CPU and as one fused graph on CUDA.
+
+    Reset batches are usually small and the eager RK4 implementation launches
+    hundreds of tiny CUDA kernels.  Compiling the branchless implementation
+    fuses that work and removes the per-step host synchronizations without
+    changing any trajectory or acceptance calculation.  The first CUDA call
+    pays a one-time compile cost; failures fall back to the verified eager path.
+    """
+
+    global _compiled_cuda_probe, _compiled_cuda_probe_failed
+    use_compiled = (
+        launch_pos.is_cuda
+        and os.environ.get("TT_SERVE_FLIGHT_COMPILE", "1") != "0"
+        and not _compiled_cuda_probe_failed
+    )
+    if use_compiled:
+        if _compiled_cuda_probe is None:
+            _compiled_cuda_probe = torch.compile(
+                _probe_serve_flight_impl,
+                dynamic=True,
+                fullgraph=True,
+                mode="reduce-overhead",
+            )
+        try:
+            return _compiled_cuda_probe(
+                launch_pos,
+                launch_vel,
+                hit_plane_x=hit_plane_x,
+                net_x=net_x,
+                table_ball_center_z=table_ball_center_z,
+                table_restitution=table_restitution,
+                table_dynamic_friction=table_dynamic_friction,
+                drag_accel_k=drag_accel_k,
+                gravity=gravity,
+                launch_to_net_steps=launch_to_net_steps,
+                net_to_hit_steps=net_to_hit_steps,
+            )
+        except Exception as exc:
+            _compiled_cuda_probe_failed = True
+            print(
+                f"[TT_SERVE_FLIGHT] CUDA compile failed; using eager fallback: {exc}",
+                flush=True,
+            )
+
+    return _probe_serve_flight_impl(
+        launch_pos,
+        launch_vel,
+        hit_plane_x=hit_plane_x,
+        net_x=net_x,
+        table_ball_center_z=table_ball_center_z,
+        table_restitution=table_restitution,
+        table_dynamic_friction=table_dynamic_friction,
+        drag_accel_k=drag_accel_k,
+        gravity=gravity,
+        launch_to_net_steps=launch_to_net_steps,
+        net_to_hit_steps=net_to_hit_steps,
     )
