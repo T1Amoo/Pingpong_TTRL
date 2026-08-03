@@ -7,7 +7,6 @@ conda activate pingpong
 
 export OMNI_KIT_ACCEPT_EULA=YES
 export TT_SERVE_PROBE=1
-export TT_SERVE_PROBE_STRIDE="${TT_SERVE_PROBE_STRIDE:-4}"
 export TT_SERVE_PROBE_BATCH=1000
 
 EXP=logs/a1_tt_backhand_real_v2_r115_netclear_highslow_paddle075

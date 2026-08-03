@@ -1045,10 +1045,8 @@ class TTEnv(VecEnv):
                 )
             else:
                 good = torch.ones(len(remaining), dtype=torch.bool, device=self.device)
-            # Boolean indexing already handles an empty mask.  Avoid the
-            # Python truth test on a CUDA tensor, which synchronizes the whole
-            # stream once per rejection attempt.
-            accepted_vel[remaining[good]] = candidate_vel[good]
+            if good.any():
+                accepted_vel[remaining[good]] = candidate_vel[good]
             remaining = remaining[~good]
 
         fallback_count = len(remaining)
@@ -2209,13 +2207,7 @@ class TTEnv(VecEnv):
         # ground truth used to verify a served ball still arrives inside the hit window after a
         # geometry change (e.g. v12 moved hit_plane -1.58 -> -1.62). Reads real physics, so it
         # does NOT depend on the analytic/clamped ball_future_pose. Prints running p5/50/95.
-        # Runtime probes are diagnostics rather than part of the environment
-        # contract.  Sampling every few control ticks still detects each plane
-        # crossing through prev/current interpolation, while avoiding two CUDA
-        # synchronizations on every 50 Hz environment step.
-        _probe_stride = max(1, int(os.environ.get("TT_SERVE_PROBE_STRIDE", "1")))
-        _probe_control_step = self.sim_step_counter // self.cfg.sim.decimation
-        if os.environ.get("TT_SERVE_PROBE") and (_probe_control_step % _probe_stride == 0):
+        if os.environ.get("TT_SERVE_PROBE"):
             _hxp = self.cfg.robot.hit_plane_x
             _prev = getattr(self, "_probe_prev_x", None)
             if _prev is None or _prev.numel() != x.numel():
