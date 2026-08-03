@@ -186,6 +186,22 @@ class BallCfg:
     serve_y_center_hard: float | None = None        # optional curriculum target for lateral center
     serve_y_start: float = 0.05                    # initial lateral half-width (centered)
     serve_y_wide: float = 0.65                     # final lateral half-width (table half-width 0.7625)
+    # Optional drag-aware reset-time rejection.  Disabled by default so legacy
+    # A1/G1/T1 tasks keep their exact historical distributions.  When enabled,
+    # every accepted launch must clear the net, first-bounce before the hit
+    # plane, and arrive inside the configured y/z/speed contract.
+    serve_flight_rejection_enable: bool = False
+    serve_net_x: float = 0.0
+    serve_net_center_z_min: float = 0.945
+    serve_net_prediction_margin: float = 0.005
+    serve_physical_bounce_x_range: tuple = (-1.35, -0.02)
+    serve_arrival_y_range: tuple = (-100.0, 100.0)
+    serve_arrival_z_range: tuple = (-100.0, 100.0)
+    serve_arrival_abs_vx_range: tuple = (0.0, 100.0)
+    serve_drag_accel_k: float = 0.09910893224020438
+    serve_table_restitution: float = 0.95
+    serve_table_dynamic_friction: float = 0.10
+    serve_rejection_max_attempts: int = 16
     # --- no-ball idle training (0 = off). Every no_ball_period_s the ball is active for
     # ball_active_s, then teleported away (no-ball + mask_invalid) for the rest, so the
     # policy learns a stable idle at the home sentinel when there is no incoming ball. ---

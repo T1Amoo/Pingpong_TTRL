@@ -30,6 +30,7 @@ from rsl_rl.env import VecEnv
 
 from legged_lab.envs.base.tt_env_config import TTEnvCfg
 from legged_lab.envs.base.tt_config import BaseSceneCfg
+from legged_lab.physics.serve_flight import probe_serve_flight
 from legged_lab.utils.env_utils.scene import SceneCfg
 
 # ! Aerodynamics : BEGIN
@@ -953,6 +954,144 @@ class TTEnv(VecEnv):
             return 1.0 if cs >= phase1 else 0.0
         return min(1.0, max(0.0, float(cs - phase1) / float(ramp)))
 
+    def _sample_bounce_serve(self, launch_pos: torch.Tensor, c: float):
+        """Sample bounce-parametrized launches, optionally with drag-aware rejection."""
+
+        def _bclerp(b, w, cc):
+            return (b[0] + cc * (w[0] - b[0]), b[1] + cc * (w[1] - b[1]))
+
+        cfg = self.cfg.ball
+        n = len(launch_pos)
+        xb_lo, xb_hi = _bclerp(
+            cfg.serve_bounce_x_range,
+            getattr(cfg, "serve_bounce_x_range_hard", cfg.serve_bounce_x_range),
+            c,
+        )
+        vz_lo, vz_hi = _bclerp(
+            cfg.serve_bounce_vz_range,
+            getattr(cfg, "serve_bounce_vz_range_hard", cfg.serve_bounce_vz_range),
+            c,
+        )
+        y_half = cfg.serve_y_start + c * (cfg.serve_y_wide - cfg.serve_y_start)
+        y_center_easy = getattr(cfg, "serve_y_center", 0.0)
+        y_center_hard = getattr(cfg, "serve_y_center_hard", None)
+        if y_center_hard is None:
+            y_center_hard = y_center_easy
+        y_center = y_center_easy + c * (y_center_hard - y_center_easy)
+
+        g = 9.81
+        z_bounce = 0.78
+        accepted_vel = torch.empty(n, 3, device=self.device, dtype=launch_pos.dtype)
+        remaining = torch.arange(n, device=self.device)
+        sampled_total = 0
+
+        def _candidate(indices: torch.Tensor, *, fallback: bool = False):
+            count = len(indices)
+            lp = launch_pos[indices]
+            if fallback:
+                x_b = torch.full((count, 1), -0.80, device=self.device, dtype=lp.dtype)
+                y_b = torch.full((count, 1), 0.041, device=self.device, dtype=lp.dtype)
+                v_z = torch.full((count, 1), 1.30, device=self.device, dtype=lp.dtype)
+            else:
+                x_b = torch.empty(count, 1, device=self.device, dtype=lp.dtype).uniform_(xb_lo, xb_hi)
+                y_b = y_center + torch.empty(count, 1, device=self.device, dtype=lp.dtype).uniform_(-y_half, y_half)
+                v_z = torch.empty(count, 1, device=self.device, dtype=lp.dtype).uniform_(vz_lo, vz_hi)
+            t_b = (
+                v_z
+                + torch.sqrt(torch.clamp(v_z.square() + 2.0 * g * (lp[:, 2:3] - z_bounce), min=1.0e-8))
+            ) / g
+            v_x = (x_b - lp[:, 0:1]) / t_b
+            v_y = (y_b - lp[:, 1:2]) / t_b
+            return torch.cat((v_x, v_y, v_z), dim=1)
+
+        rejection = bool(getattr(cfg, "serve_flight_rejection_enable", False))
+        max_attempts = max(1, int(getattr(cfg, "serve_rejection_max_attempts", 16)))
+        for _attempt in range(max_attempts if rejection else 1):
+            if len(remaining) == 0:
+                break
+            candidate_vel = _candidate(remaining)
+            sampled_total += len(remaining)
+            if rejection:
+                probe = probe_serve_flight(
+                    launch_pos[remaining],
+                    candidate_vel,
+                    hit_plane_x=float(self.cfg.robot.hit_plane_x),
+                    net_x=float(cfg.serve_net_x),
+                    table_ball_center_z=z_bounce,
+                    table_restitution=float(cfg.serve_table_restitution),
+                    table_dynamic_friction=float(cfg.serve_table_dynamic_friction),
+                    drag_accel_k=float(cfg.serve_drag_accel_k),
+                )
+                bx_lo, bx_hi = cfg.serve_physical_bounce_x_range
+                y_lo, y_hi = cfg.serve_arrival_y_range
+                z_lo, z_hi = cfg.serve_arrival_z_range
+                vx_lo, vx_hi = cfg.serve_arrival_abs_vx_range
+                good = (
+                    torch.isfinite(probe.net_z)
+                    & torch.isfinite(probe.bounce_x)
+                    & torch.isfinite(probe.hit_y)
+                    & torch.isfinite(probe.hit_z)
+                    & torch.isfinite(probe.hit_vx)
+                    & probe.bounced
+                    & (probe.net_z >= float(cfg.serve_net_center_z_min + cfg.serve_net_prediction_margin))
+                    & (probe.bounce_x >= float(bx_lo))
+                    & (probe.bounce_x <= float(bx_hi))
+                    & (probe.hit_y >= float(y_lo))
+                    & (probe.hit_y <= float(y_hi))
+                    & (probe.hit_z >= float(z_lo))
+                    & (probe.hit_z <= float(z_hi))
+                    & (torch.abs(probe.hit_vx) >= float(vx_lo))
+                    & (torch.abs(probe.hit_vx) <= float(vx_hi))
+                )
+            else:
+                good = torch.ones(len(remaining), dtype=torch.bool, device=self.device)
+            if good.any():
+                accepted_vel[remaining[good]] = candidate_vel[good]
+            remaining = remaining[~good]
+
+        fallback_count = len(remaining)
+        if fallback_count:
+            fallback_vel = _candidate(remaining, fallback=True)
+            fallback_probe = probe_serve_flight(
+                launch_pos[remaining],
+                fallback_vel,
+                hit_plane_x=float(self.cfg.robot.hit_plane_x),
+                net_x=float(cfg.serve_net_x),
+                table_ball_center_z=z_bounce,
+                table_restitution=float(cfg.serve_table_restitution),
+                table_dynamic_friction=float(cfg.serve_table_dynamic_friction),
+                drag_accel_k=float(cfg.serve_drag_accel_k),
+            )
+            fallback_good = (
+                fallback_probe.bounced
+                & (fallback_probe.net_z >= float(cfg.serve_net_center_z_min + cfg.serve_net_prediction_margin))
+                & (fallback_probe.bounce_x >= float(cfg.serve_physical_bounce_x_range[0]))
+                & (fallback_probe.bounce_x <= float(cfg.serve_physical_bounce_x_range[1]))
+                & (fallback_probe.hit_y >= float(cfg.serve_arrival_y_range[0]))
+                & (fallback_probe.hit_y <= float(cfg.serve_arrival_y_range[1]))
+                & (fallback_probe.hit_z >= float(cfg.serve_arrival_z_range[0]))
+                & (fallback_probe.hit_z <= float(cfg.serve_arrival_z_range[1]))
+                & (torch.abs(fallback_probe.hit_vx) >= float(cfg.serve_arrival_abs_vx_range[0]))
+                & (torch.abs(fallback_probe.hit_vx) <= float(cfg.serve_arrival_abs_vx_range[1]))
+            )
+            if not bool(torch.all(fallback_good).item()):
+                raise RuntimeError("configured fallback serve violates the drag-aware serve contract")
+            accepted_vel[remaining] = fallback_vel
+
+        if rejection and not getattr(self, "_serve_contract_logged", False):
+            accepted = n - fallback_count
+            print(
+                f"[TT_SERVE_CONTRACT] c={c:.3f} n={n} sampled={sampled_total} "
+                f"accepted={accepted} fallback={fallback_count} "
+                f"nominal_x=[{xb_lo:.3f},{xb_hi:.3f}] nominal_vz=[{vz_lo:.3f},{vz_hi:.3f}] "
+                f"net_center_min={cfg.serve_net_center_z_min:.3f}+{cfg.serve_net_prediction_margin:.3f} "
+                f"bounce_x={cfg.serve_physical_bounce_x_range} hit_y={cfg.serve_arrival_y_range} "
+                f"hit_z={cfg.serve_arrival_z_range} hit_abs_vx={cfg.serve_arrival_abs_vx_range}",
+                flush=True,
+            )
+            self._serve_contract_logged = True
+        return accepted_vel[:, 0:1], accepted_vel[:, 1:2], accepted_vel[:, 2:3]
+
     def reset_ball(self, env_ids):
         """Reset only the ball state for specified environments."""
         if len(env_ids) == 0:
@@ -1029,23 +1168,8 @@ class TTEnv(VecEnv):
                 # lateral half-width grows with the curriculum (start centered -> spread
                 # left/right). Launch from ball default (1.35, 0, 1.03); bounce when ball
                 # center z = 0.78 (table top 0.76 + radius 0.02). g = 9.81.
-                def _bclerp(b, w, cc):
-                    return (b[0] + cc * (w[0] - b[0]), b[1] + cc * (w[1] - b[1]))
-                xb_lo, xb_hi = _bclerp(self.cfg.ball.serve_bounce_x_range, getattr(self.cfg.ball, "serve_bounce_x_range_hard", self.cfg.ball.serve_bounce_x_range), c)
-                vz_lo, vz_hi = _bclerp(self.cfg.ball.serve_bounce_vz_range, getattr(self.cfg.ball, "serve_bounce_vz_range_hard", self.cfg.ball.serve_bounce_vz_range), c)
-                y_half = self.cfg.ball.serve_y_start + c * (self.cfg.ball.serve_y_wide - self.cfg.ball.serve_y_start)
-                y_center_easy = getattr(self.cfg.ball, "serve_y_center", 0.0)
-                y_center_hard = getattr(self.cfg.ball, "serve_y_center_hard", None)
-                if y_center_hard is None:
-                    y_center_hard = y_center_easy
-                y_center = y_center_easy + c * (y_center_hard - y_center_easy)
-                g, Z_LAUNCH, Z_BOUNCE, X_LAUNCH = 9.81, 1.03, 0.78, 1.35
-                x_b = torch.empty(n, 1, device=self.device).uniform_(xb_lo, xb_hi)
-                y_b = y_center + torch.empty(n, 1, device=self.device).uniform_(-y_half, y_half)
-                v_z = torch.empty(n, 1, device=self.device).uniform_(vz_lo, vz_hi)
-                t_b = (v_z + torch.sqrt(v_z * v_z + 2.0 * g * (Z_LAUNCH - Z_BOUNCE))) / g
-                v_x = (x_b - X_LAUNCH) / t_b   # launch x = 1.35 (env-local)
-                v_y = y_b / t_b                # launch y = 0 (env-local); ball_state pos stays centered
+                launch_pos = ball_state[:, :3] - self.scene.env_origins[new_state_env_ids]
+                v_x, v_y, v_z = self._sample_bounce_serve(launch_pos, c)
             else:
                 # legacy speed-curriculum serve (tasks that don't enable bounce mode)
                 def _lerp(b, w):
@@ -1092,6 +1216,8 @@ class TTEnv(VecEnv):
             ball_state[:, 7:] = torch.cat((lin_vel, ang_vel), dim=1)
             # Store new states in buffer
             self.reset_ball_state_buf[new_state_env_ids] = ball_state
+            if os.environ.get("TT_SERVE_PROBE") and hasattr(self, "_probe_serve_generated"):
+                self._probe_serve_generated += int(len(new_state_env_ids))
             # Apply the new state to the simulation
             self.ball.write_root_pose_to_sim(ball_state[:, :7], new_state_env_ids)
             self.ball.write_root_velocity_to_sim(ball_state[:, 7:], new_state_env_ids)
@@ -1106,6 +1232,8 @@ class TTEnv(VecEnv):
         self.ball_linvel_prev[env_ids] = self.reset_ball_state_buf[env_ids, 7:10]
         if hasattr(self, "_probe_crossed_this_serve"):
             self._probe_crossed_this_serve[env_ids] = False
+        if hasattr(self, "_probe_net_crossed_this_serve"):
+            self._probe_net_crossed_this_serve[env_ids] = False
         self._reset_camera_observation(env_ids)
 
     def _apply_effort_curriculum(self):
@@ -2084,9 +2212,28 @@ class TTEnv(VecEnv):
             _prev = getattr(self, "_probe_prev_x", None)
             if _prev is None or _prev.numel() != x.numel():
                 self._probe_prev_x = x.detach().clone()
+                self._probe_prev_y = y.detach().clone()
+                self._probe_prev_z = z.detach().clone()
                 self._probe_crossed_this_serve = torch.zeros_like(x, dtype=torch.bool)
-                self._probe_y, self._probe_z = [], []
+                self._probe_net_crossed_this_serve = torch.zeros_like(x, dtype=torch.bool)
+                self._probe_y, self._probe_z, self._probe_vx = [], [], []
+                self._probe_net_z = []
+                self._probe_serve_generated = 0
             else:
+                _prev_y = self._probe_prev_y
+                _prev_z = self._probe_prev_z
+                _net_crossed = (
+                    (_prev > 0.0)
+                    & (x <= 0.0)
+                    & (vx < -0.05)
+                    & (~self._probe_net_crossed_this_serve)
+                )
+                if _net_crossed.any():
+                    _den = torch.clamp(_prev[_net_crossed] - x[_net_crossed], min=1.0e-8)
+                    _alpha_net = torch.clamp(_prev[_net_crossed] / _den, 0.0, 1.0)
+                    _z_net = _prev_z[_net_crossed] + _alpha_net * (z[_net_crossed] - _prev_z[_net_crossed])
+                    self._probe_net_z.append(_z_net.detach().cpu())
+                    self._probe_net_crossed_this_serve[_net_crossed] = True
                 # One sample per serve: later robot/table deflections can cross
                 # the same plane again and used to poison p95 with impossible
                 # y/z outliers. Require the own-table bounce and latch the first
@@ -2099,26 +2246,49 @@ class TTEnv(VecEnv):
                     & (~self._probe_crossed_this_serve)
                 )
                 if _crossed.any():
-                    self._probe_y.append(y[_crossed].detach().cpu())
-                    self._probe_z.append(z[_crossed].detach().cpu())
+                    _den = torch.clamp(_prev[_crossed] - x[_crossed], min=1.0e-8)
+                    _alpha_hit = torch.clamp((_prev[_crossed] - _hxp) / _den, 0.0, 1.0)
+                    _y_hit = _prev_y[_crossed] + _alpha_hit * (y[_crossed] - _prev_y[_crossed])
+                    _z_hit = _prev_z[_crossed] + _alpha_hit * (z[_crossed] - _prev_z[_crossed])
+                    self._probe_y.append(_y_hit.detach().cpu())
+                    self._probe_z.append(_z_hit.detach().cpu())
+                    self._probe_vx.append(vx[_crossed].detach().cpu())
                     self._probe_crossed_this_serve[_crossed] = True
                 self._probe_prev_x = x.detach().clone()
+                self._probe_prev_y = y.detach().clone()
+                self._probe_prev_z = z.detach().clone()
+                _probe_batch = max(1, int(os.environ.get("TT_SERVE_PROBE_BATCH", "2000")))
+                _net_tot = sum(t.numel() for t in self._probe_net_z)
+                if _net_tot >= _probe_batch:
+                    _all_net_z = torch.cat(self._probe_net_z)
+                    _net_q = torch.quantile(_all_net_z, torch.tensor([0.05, 0.5, 0.95]))
+                    _net_min = float(_all_net_z.min())
+                    _net_req = float(getattr(self.cfg.ball, "serve_net_center_z_min", 0.0))
+                    print(
+                        f"[TT_NET_PROBE] n={_net_tot} generated={self._probe_serve_generated} @x=0.000 | "
+                        f"z min={_net_min:.3f} p5/50/95={_net_q[0]:.3f}/{_net_q[1]:.3f}/{_net_q[2]:.3f} "
+                        f"required>={_net_req:.3f}",
+                        flush=True,
+                    )
+                    self._probe_net_z = []
+                    self._probe_serve_generated = 0
                 _tot = sum(t.numel() for t in self._probe_y)
-                if _tot >= 2000:
-                    _ally = torch.cat(self._probe_y); _allz = torch.cat(self._probe_z)
+                if _tot >= _probe_batch:
+                    _ally = torch.cat(self._probe_y); _allz = torch.cat(self._probe_z); _allvx = torch.cat(self._probe_vx)
                     _qs = torch.tensor([0.05, 0.5, 0.95])
-                    _yq = torch.quantile(_ally, _qs); _zq = torch.quantile(_allz, _qs)
+                    _yq = torch.quantile(_ally, _qs); _zq = torch.quantile(_allz, _qs); _vxq = torch.quantile(torch.abs(_allvx), _qs)
                     _tyl, _tyh = self.cfg.robot.hit_target_y_range
                     _tzl, _tzh = self.cfg.robot.hit_target_z_range
                     print(
                         f"[TT_SERVE_PROBE] n={_tot} @x={_hxp:.3f} | "
                         f"y p5/50/95={_yq[0]:.3f}/{_yq[1]:.3f}/{_yq[2]:.3f} win[{_tyl},{_tyh}] | "
-                        f"z p5/50/95={_zq[0]:.3f}/{_zq[1]:.3f}/{_zq[2]:.3f} win[{_tzl},{_tzh}]",
+                        f"z p5/50/95={_zq[0]:.3f}/{_zq[1]:.3f}/{_zq[2]:.3f} win[{_tzl},{_tzh}] | "
+                        f"abs_vx p5/50/95={_vxq[0]:.3f}/{_vxq[1]:.3f}/{_vxq[2]:.3f}",
                         flush=True,
                     )
                     # Report the current curriculum slice instead of allowing
                     # the first 10k easy serves to dominate all later probes.
-                    self._probe_y, self._probe_z = [], []
+                    self._probe_y, self._probe_z, self._probe_vx = [], [], []
         # ----------------------------------------------------------------------------------
 
         g=9.81

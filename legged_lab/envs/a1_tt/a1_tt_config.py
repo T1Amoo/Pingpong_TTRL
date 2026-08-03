@@ -9,6 +9,7 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers.scene_entity_cfg import SceneEntityCfg
 from isaaclab.utils import configclass
 import legged_lab.mdp as mdp
+from legged_lab.physics import a1_backhand_v2_contract as backhand_v2
 from legged_lab.assets.a1.a1 import (
     A1_RIGHT_ARM_JOINTS,
     A1_INIT_Z,
@@ -1089,6 +1090,57 @@ class A1TableTennisBackhandEnvCfg(A1TableTennisEnvCfg):
 
 
 @configclass
+class A1TableTennisBackhandV2EnvCfg(A1TableTennisBackhandEnvCfg):
+    """Backhand v2: real r1 height plus net-clearing high/slow serves."""
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # The current V1_3 USD bakes the measured r1 centerline at 1.15 m.  Do
+        # not compensate the world-space hit target downward: the fresh policy
+        # must learn the corrected kinematics.
+        self.robot.hit_target_y_range = backhand_v2.HIT_TARGET_Y_RANGE
+        self.robot.hit_target_z_range = backhand_v2.HIT_TARGET_Z_RANGE
+
+        # Stage 1 is a moderate, physically net-clearing bootstrap rather than
+        # v1's nominal mentor box (which produced many real-physics net faults).
+        # Stage 2 widens depth/vz to include correlated high and slow arrivals;
+        # reset-time rejection enforces the final physical contract below.
+        self.ball.serve_bounce_x_range = backhand_v2.EASY_BOUNCE_X_RANGE
+        self.ball.serve_bounce_vz_range = backhand_v2.EASY_BOUNCE_VZ_RANGE
+        self.ball.serve_y_center = backhand_v2.EASY_Y_CENTER
+        self.ball.serve_y_start = backhand_v2.EASY_Y_HALF
+        self.ball.serve_bounce_x_range_hard = backhand_v2.HARD_BOUNCE_X_RANGE
+        self.ball.serve_bounce_vz_range_hard = backhand_v2.HARD_BOUNCE_VZ_RANGE
+        self.ball.serve_y_center_hard = backhand_v2.HARD_Y_CENTER
+        self.ball.serve_y_wide = backhand_v2.HARD_Y_HALF
+
+        self.ball.serve_flight_rejection_enable = True
+        self.ball.serve_net_x = 0.0
+        self.ball.serve_net_center_z_min = backhand_v2.NET_CENTER_Z_MIN
+        self.ball.serve_net_prediction_margin = backhand_v2.NET_PREDICTION_MARGIN
+        self.ball.serve_physical_bounce_x_range = backhand_v2.PHYSICAL_BOUNCE_X_RANGE
+        self.ball.serve_arrival_y_range = backhand_v2.HIT_TARGET_Y_RANGE
+        self.ball.serve_arrival_z_range = backhand_v2.PREFLIGHT_HIT_Z_RANGE
+        self.ball.serve_arrival_abs_vx_range = backhand_v2.HIT_ARRIVAL_ABS_VX_RANGE
+        self.ball.serve_drag_accel_k = backhand_v2.DRAG_ACCEL_K
+        self.ball.serve_table_restitution = backhand_v2.TABLE_RESTITUTION
+        self.ball.serve_table_dynamic_friction = backhand_v2.TABLE_DYNAMIC_FRICTION
+        self.ball.serve_rejection_max_attempts = 16
+
+        # 30k from scratch: 10k fixed easy + 10k linear expansion + 10k hold.
+        self.ball.serve_curriculum_phase_start = (
+            backhand_v2.CURRICULUM_EASY_ITERS * A1_TT_RAW_STEPS_PER_ITER
+        )
+        self.ball.serve_curriculum_steps = (
+            backhand_v2.CURRICULUM_RAMP_ITERS * A1_TT_RAW_STEPS_PER_ITER
+        )
+        # Slow accepted balls need enough time to complete their returned arc;
+        # v1's 1.8 s timeout truncated this outcome signal.
+        self.ball.ball_max_eposide_length = 2.4
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -1158,6 +1210,21 @@ class A1TableTennisBackhandEvalEnvCfg(A1TableTennisBackhandEnvCfg):
         self.scene.max_episode_length_s = 99999999999
         # TTEnv treats a zero-length curriculum as c=0, so explicitly promote
         # the hard endpoint to the base sampler for deterministic final-range eval.
+        self.ball.serve_bounce_x_range = self.ball.serve_bounce_x_range_hard
+        self.ball.serve_bounce_vz_range = self.ball.serve_bounce_vz_range_hard
+        self.ball.serve_y_center = self.ball.serve_y_center_hard
+        self.ball.serve_y_start = self.ball.serve_y_wide
+        self.ball.serve_curriculum_steps = 0
+        self.ball.serve_curriculum_phase_start = 0
+
+
+@configclass
+class A1TableTennisBackhandV2EvalEnvCfg(A1TableTennisBackhandV2EnvCfg):
+    """Backhand-v2 hard-range eval with the same physical serve rejection."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.max_episode_length_s = 99999999999
         self.ball.serve_bounce_x_range = self.ball.serve_bounce_x_range_hard
         self.ball.serve_bounce_vz_range = self.ball.serve_bounce_vz_range_hard
         self.ball.serve_y_center = self.ball.serve_y_center_hard
@@ -1278,6 +1345,26 @@ class A1TableTennisBackhandAgentCfg(A1TableTennisDeployAgentCfg):
         "epochs_per_update": 1,
         "batch_size": 1024,
         "train_until_iters": 1000,
+    }
+
+
+@configclass
+class A1TableTennisBackhandV2AgentCfg(A1TableTennisBackhandAgentCfg):
+    experiment_name: str = "a1_tt_backhand_real_v2_r115_netclear_highslow"
+    run_name = "scratch_r115_netclear_highslow_camera_tau_delay_10k10k10k"
+    resume = False
+    max_iterations = backhand_v2.MAX_ITERATIONS
+    # The serve distribution does not reach its high/slow endpoint until iter
+    # 20k.  Keep fitting through the ramp and early hold so the learned marker
+    # does not saturate near the old v1 z ceiling on high balls.
+    predictor = {
+        "history_len": 5,
+        "traj_max_len": 128,
+        "hidden_sizes": [64, 64],
+        "lr": 0.2e-3,
+        "epochs_per_update": 1,
+        "batch_size": 1024,
+        "train_until_iters": 22000,
     }
 
 
