@@ -1145,7 +1145,7 @@ class A1TableTennisBackhandV2EnvCfg(A1TableTennisBackhandEnvCfg):
         self.ball.serve_table_dynamic_friction = backhand_v2.TABLE_DYNAMIC_FRICTION
         self.ball.serve_rejection_max_attempts = 16
 
-        # 30k from scratch: 10k fixed easy + 10k linear expansion + 10k hold.
+        # 20k deployment schedule: 5k fixed easy + 10k linear expansion + 5k hold.
         self.ball.serve_curriculum_phase_start = (
             backhand_v2.CURRICULUM_EASY_ITERS * A1_TT_RAW_STEPS_PER_ITER
         )
@@ -1368,11 +1368,11 @@ class A1TableTennisBackhandAgentCfg(A1TableTennisDeployAgentCfg):
 @configclass
 class A1TableTennisBackhandV2AgentCfg(A1TableTennisBackhandAgentCfg):
     experiment_name: str = "a1_tt_backhand_real_v2_r115_netclear_highslow_paddle075"
-    run_name = "scratch_r115_netclear_highslow_paddle075_camera_tau_delay_10k10k10k"
+    run_name = "scratch_r115_netclear_highslow_paddle075_camera_tau_delay_5k10k5k"
     resume = False
     max_iterations = backhand_v2.MAX_ITERATIONS
-    # The serve distribution does not reach its high/slow endpoint until iter
-    # 20k.  Keep fitting through the ramp and early hold so the learned marker
+    # The serve distribution reaches its high/slow endpoint at iter 15k.
+    # Keep fitting through the ramp and early hold so the learned marker
     # does not saturate near the old v1 z ceiling on high balls.
     predictor = {
         "history_len": 5,
@@ -1381,7 +1381,7 @@ class A1TableTennisBackhandV2AgentCfg(A1TableTennisBackhandAgentCfg):
         "lr": 0.2e-3,
         "epochs_per_update": 1,
         "batch_size": 1024,
-        "train_until_iters": 22000,
+        "train_until_iters": 17000,
     }
 
 

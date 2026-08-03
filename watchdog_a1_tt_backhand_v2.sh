@@ -10,7 +10,7 @@ export TT_SERVE_PROBE=1
 export TT_SERVE_PROBE_BATCH=1000
 
 EXP=logs/a1_tt_backhand_real_v2_r115_netclear_highslow_paddle075
-TARGET=29999
+TARGET=19999
 TASK=a1_tt_backhand_v2
 TRAIN_LOG=train_a1_tt_backhand_real_v2_r115_netclear_highslow_paddle075.log
 WATCHDOG_LOG=train_a1_tt_backhand_real_v2_r115_netclear_highslow_paddle075_watchdog.log
