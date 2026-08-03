@@ -1,0 +1,23 @@
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_d7bdfbc037e805::t_db273003ddf690 1148,1371,1374-1375,1384
+watchdog_a1_tt_backhand_v2.sh
+  s_d7bdfbc037e805::t_db273003ddf690 13
+legged_lab/physics/a1_backhand_v2_contract.py
+  s_d7bdfbc037e805::t_db273003ddf690 39,41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "9ae3579f69abc01f5d03351c223f7dfadac586e3",
+  "prompts": {},
+  "sessions": {
+    "s_d7bdfbc037e805": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb780-0fbb-7d70-ad81-7f6b5c3684bd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
