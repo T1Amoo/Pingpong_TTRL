@@ -5,6 +5,7 @@
 import copy
 import os
 
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers.scene_entity_cfg import SceneEntityCfg
 from isaaclab.utils import configclass
@@ -509,6 +510,22 @@ class A1TableTennisEnvCfg(TTEnvCfg):
         self.domain_rand.events.physics_material.params["restitution_range"] = (0.0, 0.0)
         self.domain_rand.events.physics_material.params["num_buckets"] = 1
         self.domain_rand.events.physics_material.params["make_consistent"] = True
+        # A1 table-tennis material contract: the ball is 0.95, the table is
+        # 0.95, and the paddle is fixed at 0.75.  PhysX uses combine=min, so
+        # ball-paddle=0.75 while ball-table=0.95.  Keep this event on the base
+        # A1 task so all future A1 training versions inherit the same contact.
+        self.domain_rand.events.paddle_material = EventTerm(
+            func=mdp.randomize_rigid_body_material,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", body_names=["Link_r_paddle"]),
+                "static_friction_range": (0.5, 0.5),
+                "dynamic_friction_range": (0.5, 0.5),
+                "restitution_range": (0.75, 0.75),
+                "num_buckets": 1,
+                "make_consistent": True,
+            },
+        )
 
         # reset_base: no randomization. Keep the term but zero every range so each episode is a clean
         # deterministic reset to the spawn pose. (Dropping the term would leave the base at its terminal
@@ -1350,8 +1367,8 @@ class A1TableTennisBackhandAgentCfg(A1TableTennisDeployAgentCfg):
 
 @configclass
 class A1TableTennisBackhandV2AgentCfg(A1TableTennisBackhandAgentCfg):
-    experiment_name: str = "a1_tt_backhand_real_v2_r115_netclear_highslow"
-    run_name = "scratch_r115_netclear_highslow_camera_tau_delay_10k10k10k"
+    experiment_name: str = "a1_tt_backhand_real_v2_r115_netclear_highslow_paddle075"
+    run_name = "scratch_r115_netclear_highslow_paddle075_camera_tau_delay_10k10k10k"
     resume = False
     max_iterations = backhand_v2.MAX_ITERATIONS
     # The serve distribution does not reach its high/slow endpoint until iter

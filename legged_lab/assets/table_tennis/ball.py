@@ -33,7 +33,9 @@ BALL_CFG = RigidObjectCfg(
         physics_material=sim_utils.RigidBodyMaterialCfg(
             static_friction=0.1,
             dynamic_friction=0.1,
-            restitution=0.95,  # real-matched; combine=min -> ball-table=min(0.95,0.95)=0.95, ball-paddle=min(0.95,paddle0.75)=0.75
+            # Contact contract (combine=min): ball-table=0.95 and the A1
+            # paddle startup material makes ball-paddle=0.75.
+            restitution=0.95,
             restitution_combine_mode="min",
         ),
     ),

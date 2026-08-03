@@ -9,11 +9,11 @@ export OMNI_KIT_ACCEPT_EULA=YES
 export TT_SERVE_PROBE=1
 export TT_SERVE_PROBE_BATCH=1000
 
-EXP=logs/a1_tt_backhand_real_v2_r115_netclear_highslow
+EXP=logs/a1_tt_backhand_real_v2_r115_netclear_highslow_paddle075
 TARGET=29999
 TASK=a1_tt_backhand_v2
-TRAIN_LOG=train_a1_tt_backhand_real_v2_r115_netclear_highslow.log
-WATCHDOG_LOG=train_a1_tt_backhand_real_v2_r115_netclear_highslow_watchdog.log
+TRAIN_LOG=train_a1_tt_backhand_real_v2_r115_netclear_highslow_paddle075.log
+WATCHDOG_LOG=train_a1_tt_backhand_real_v2_r115_netclear_highslow_paddle075_watchdog.log
 
 max_iter() {
   find "$EXP" -mindepth 2 -maxdepth 2 -type f -name 'model_*.pt' -printf '%f\n' 2>/dev/null \
