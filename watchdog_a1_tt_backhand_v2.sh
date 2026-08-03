@@ -23,6 +23,11 @@ max_iter() {
 }
 
 run_of_iter() {
+  local preferred_run=${A1_TT_RESUME_RUN:-}
+  if [ -n "$preferred_run" ] && [ -f "$EXP/$preferred_run/model_$1.pt" ]; then
+    echo "$preferred_run"
+    return 0
+  fi
   find "$EXP" -mindepth 2 -maxdepth 2 -type f -name "model_$1.pt" -printf '%h\n' 2>/dev/null \
     | head -1 \
     | xargs -r basename
