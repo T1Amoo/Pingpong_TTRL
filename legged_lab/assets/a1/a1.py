@@ -158,12 +158,12 @@ A1_INIT_Y = 0.76
 # See docs/superpowers/plans/a1_facts.md ## BASE_Z_SETTLED.
 A1_INIT_Z = 0.0282
 
-# Real robot calibration, 2026-07-08: the maximum usable r1 joint centerline height is 1.15 m.
-# The URDF chain gives r1_z ~= base_z + sj_origin_z + r0_origin_z + sj, where
-# sj_origin_z=1.2107 and r0_origin_z=0.025. Older sim settings implicitly allowed sj=0,
-# i.e. r1_z ~= 1.264 m, which is outside the current hardware envelope.
+# Real robot calibration: r1 joint centerline height is fixed at 1.15 m.
+# V1_3 uses a fixed sj joint, so its URDF origin is baked to 1.09680245585163 m:
+# base_z(0.0282) + sj_origin_z + r0_origin_z(0.025) = 1.15 m.
+# A movable sj offset is therefore zero for this current asset.
 A1_R1_CENTER_HEIGHT_M = 1.15
-A1_LIFT_SJ_FOR_R1_CENTER = A1_R1_CENTER_HEIGHT_M - (A1_INIT_Z + 1.2107 + 0.025)
+A1_LIFT_SJ_FOR_R1_CENTER = 0.0
 
 A1_TT_CFG = ArticulationCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
