@@ -60,6 +60,7 @@ from legged_lab.envs.a1_tt.a1_tt_config import (
     A1TableTennisV14EnvCfg,
     A1TableTennisV14AgentCfg,
     A1TableTennisBackhandEnvCfg,
+    A1TableTennisBackhandEvalEnvCfg,
     A1TableTennisBackhandAgentCfg,
     A1TableTennisDamiaoEnvCfg,
     A1TableTennisDamiaoAgentCfg,
@@ -77,8 +78,10 @@ task_registry.register("g1_tt_eval", TTEnv, G1TT_EvalEnvCfg(), G1TableTennisAgen
 task_registry.register("g1_tt_eval_hard", TTEnv, G1TT_EvalHardEnvCfg(), G1TableTennisAgentCfg())
 task_registry.register("g1_tt_dr", TTEnv, G1TableTennisDREnvCfg(), G1TableTennisDRAgentCfg())
 task_registry.register("g1_locomotion", LeggedEnv, G1LocomotionEnvCfg(), G1LocomotionAgentCfg())
-task_registry.register("a1_tt", A1TTEnv, A1TableTennisEnvCfg(), A1TableTennisAgentCfg())
-task_registry.register("a1_tt_real", A1TTEnv, A1TableTennisTorqueOnlyEnvCfg(), A1TableTennisTorqueOnlyAgentCfg())
+# Unversioned A1 task names always mean the current backhand route.  Historical
+# forehand behavior remains available only through explicit a1_tt_v9..v14 names.
+task_registry.register("a1_tt", A1TTEnv, A1TableTennisBackhandEnvCfg(), A1TableTennisBackhandAgentCfg())
+task_registry.register("a1_tt_real", A1TTEnv, A1TableTennisBackhandEnvCfg(), A1TableTennisBackhandAgentCfg())
 task_registry.register("a1_tt_torque_only", A1TTEnv, A1TableTennisTorqueOnlyEnvCfg(), A1TableTennisTorqueOnlyAgentCfg())
 task_registry.register("a1_tt_real_lowpass", A1TTEnv, A1TableTennisTorqueLowpassEnvCfg(), A1TableTennisTorqueLowpassAgentCfg())
 task_registry.register("a1_tt_v13_test", A1TTEnv, A1TableTennisV13TestEnvCfg(), A1TableTennisV13TestAgentCfg())
@@ -96,4 +99,4 @@ task_registry.register(
 )
 task_registry.register("a1_tt_damiao", A1TTEnv, A1TableTennisDamiaoEnvCfg(), A1TableTennisDamiaoAgentCfg())
 task_registry.register("a1_tt_openarm", A1TTEnv, A1TableTennisOpenArmEnvCfg(), A1TableTennisOpenArmAgentCfg())
-task_registry.register("a1_tt_eval", A1TTEnv, A1TT_EvalEnvCfg(), A1TableTennisAgentCfg())
+task_registry.register("a1_tt_eval", A1TTEnv, A1TableTennisBackhandEvalEnvCfg(), A1TableTennisBackhandAgentCfg())

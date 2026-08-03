@@ -1150,6 +1150,23 @@ class A1TT_EvalEnvCfg(A1TableTennisEnvCfg):
 
 
 @configclass
+class A1TableTennisBackhandEvalEnvCfg(A1TableTennisBackhandEnvCfg):
+    """Default A1 eval/play task: final-range backhand-v1, never legacy forehand."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.max_episode_length_s = 99999999999
+        # TTEnv treats a zero-length curriculum as c=0, so explicitly promote
+        # the hard endpoint to the base sampler for deterministic final-range eval.
+        self.ball.serve_bounce_x_range = self.ball.serve_bounce_x_range_hard
+        self.ball.serve_bounce_vz_range = self.ball.serve_bounce_vz_range_hard
+        self.ball.serve_y_center = self.ball.serve_y_center_hard
+        self.ball.serve_y_start = self.ball.serve_y_wide
+        self.ball.serve_curriculum_steps = 0
+        self.ball.serve_curriculum_phase_start = 0
+
+
+@configclass
 class A1TableTennisAgentCfg(TTAgentCfg):
     experiment_name: str = "a1_tt_v13"
     empirical_normalization = True   # v3: normalize observations for critic stability (v2 diverged, value_loss->1e9)
