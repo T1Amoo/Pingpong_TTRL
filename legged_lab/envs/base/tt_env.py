@@ -1428,15 +1428,32 @@ class TTEnv(VecEnv):
             self.num_envs, -1
         ).clone()
 
-        def _scale_range(name: str) -> tuple[float, float]:
-            value = tuple(float(v) for v in getattr(self.cfg.robot, name, (1.0, 1.0)))
-            if len(value) != 2 or value[0] <= 0.0 or value[1] < value[0]:
-                raise ValueError(f"robot.{name} must be a positive (min,max) pair, got {value}")
-            return value
+        def _scale_ranges(name: str) -> tuple[torch.Tensor, bool]:
+            raw = tuple(getattr(self.cfg.robot, name, (1.0, 1.0)))
+            per_joint = bool(raw and isinstance(raw[0], (tuple, list)))
+            values = raw if per_joint else (raw,)
+            if per_joint and len(values) != self.num_actions:
+                raise ValueError(
+                    f"robot.{name} must have one (min,max) pair per action joint, "
+                    f"got {len(values)} pairs for {self.num_actions} joints"
+                )
+            parsed = tuple(tuple(float(v) for v in pair) for pair in values)
+            if any(len(pair) != 2 or pair[0] <= 0.0 or pair[1] < pair[0] for pair in parsed):
+                raise ValueError(
+                    f"robot.{name} must be a positive (min,max) pair or one pair per joint, got {raw}"
+                )
+            return (
+                torch.tensor(
+                    parsed,
+                    device=self.device,
+                    dtype=self.robot.data.default_joint_pos.dtype,
+                ),
+                per_joint,
+            )
 
-        self._action_response_fn_scale_range = _scale_range("action_response_fn_scale_range")
-        self._action_response_zeta_scale_range = _scale_range("action_response_zeta_scale_range")
-        self._action_response_gain_scale_range = _scale_range("action_response_gain_scale_range")
+        self._action_response_fn_scale_ranges = _scale_ranges("action_response_fn_scale_range")
+        self._action_response_zeta_scale_ranges = _scale_ranges("action_response_zeta_scale_range")
+        self._action_response_gain_scale_ranges = _scale_ranges("action_response_gain_scale_range")
         delay_jitter = tuple(
             float(v) for v in (getattr(self.cfg.robot, "action_response_delay_jitter_s", ()) or ())
         )
@@ -1470,6 +1487,34 @@ class TTEnv(VecEnv):
                 device=self.device,
                 dtype=self.robot.data.default_joint_pos.dtype,
             ).unsqueeze(0)
+        )
+        accel_limit = tuple(
+            float(v)
+            for v in (getattr(self.cfg.robot, "action_response_accel_limit_rad_s2", ()) or ())
+        )
+        if accel_limit and (
+            len(accel_limit) != self.num_actions or any(v <= 0.0 for v in accel_limit)
+        ):
+            raise ValueError(
+                "robot.action_response_accel_limit_rad_s2 must be empty or contain one "
+                f"positive value per action joint, got {accel_limit}"
+            )
+        self._action_response_accel_limit_base = (
+            None
+            if not accel_limit
+            else torch.tensor(
+                accel_limit,
+                device=self.device,
+                dtype=self.robot.data.default_joint_pos.dtype,
+            ).unsqueeze(0)
+        )
+        self._action_response_accel_limit = (
+            None
+            if self._action_response_accel_limit_base is None
+            else self._action_response_accel_limit_base.expand(self.num_envs, -1).clone()
+        )
+        self._action_response_accel_limit_scale_ranges = _scale_ranges(
+            "action_response_accel_limit_scale_range"
         )
         self._action_response_omega = torch.zeros_like(self._action_response_fn_hz)
         max_delay_s = self._action_response_delay_s_base
@@ -1516,22 +1561,25 @@ class TTEnv(VecEnv):
     def _randomize_action_response_model(self, env_ids: torch.Tensor) -> None:
         count = len(env_ids)
 
-        def _sample_scale(value_range, dtype):
-            lo, hi = value_range
-            return lo + torch.rand(count, 1, device=self.device, dtype=dtype) * (hi - lo)
+        def _sample_scale(spec, dtype):
+            ranges, per_joint = spec
+            lo = ranges[:, 0].unsqueeze(0)
+            hi = ranges[:, 1].unsqueeze(0)
+            width = self.num_actions if per_joint else 1
+            return lo + torch.rand(count, width, device=self.device, dtype=dtype) * (hi - lo)
 
         dtype = self._action_response_fn_hz.dtype
         self._action_response_fn_hz[env_ids] = (
             self._action_response_fn_hz_base
-            * _sample_scale(self._action_response_fn_scale_range, dtype)
+            * _sample_scale(self._action_response_fn_scale_ranges, dtype)
         )
         self._action_response_zeta[env_ids] = (
             self._action_response_zeta_base
-            * _sample_scale(self._action_response_zeta_scale_range, dtype)
+            * _sample_scale(self._action_response_zeta_scale_ranges, dtype)
         )
         self._action_response_gain[env_ids] = (
             self._action_response_gain_base
-            * _sample_scale(self._action_response_gain_scale_range, dtype)
+            * _sample_scale(self._action_response_gain_scale_ranges, dtype)
         )
         delay_s = self._action_response_delay_s_base.expand(count, -1)
         if self._action_response_delay_jitter is not None:
@@ -1546,6 +1594,11 @@ class TTEnv(VecEnv):
         if self._action_response_bias_jitter is not None:
             jitter = (2.0 * torch.rand(count, self.num_actions, device=self.device, dtype=dtype) - 1.0)
             self._action_response_bias[env_ids] += jitter * self._action_response_bias_jitter
+        if self._action_response_accel_limit is not None:
+            self._action_response_accel_limit[env_ids] = (
+                self._action_response_accel_limit_base
+                * _sample_scale(self._action_response_accel_limit_scale_ranges, dtype)
+            )
         self._action_response_omega[env_ids] = (
             2.0 * torch.tensor(np.pi, device=self.device, dtype=dtype)
             * torch.clamp(self._action_response_fn_hz[env_ids], min=1.0e-6)
@@ -1574,6 +1627,13 @@ class TTEnv(VecEnv):
             torch.square(self._action_response_omega) * (u_rel - self._action_response_x_rel)
             - 2.0 * self._action_response_zeta * self._action_response_omega * self._action_response_v_rel
         )
+        if self._action_response_accel_limit is not None:
+            # The state is normalized before the fitted static gain; convert
+            # the configured output-space rad/s^2 bound into state space.
+            accel_limit = self._action_response_accel_limit / torch.clamp(
+                torch.abs(self._action_response_gain), min=1.0e-6
+            )
+            accel = torch.clamp(accel, -accel_limit, accel_limit)
         self._action_response_v_rel.add_(accel * dt)
         self._action_response_x_rel.add_(self._action_response_v_rel * dt)
         response = (
@@ -2382,6 +2442,8 @@ class TTEnv(VecEnv):
                     & (x <= _hxp)
                     & (vx < -0.5)
                     & has_bounced
+                    & (~self.has_touch_paddle)
+                    & (~self.has_second_bounce)
                     & (~self._probe_crossed_this_serve)
                 )
                 if _crossed.any():

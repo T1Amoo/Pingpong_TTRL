@@ -108,15 +108,19 @@ class RobotCfg:
     action_response_gain: tuple = ()
     action_response_bias_rad: tuple = ()
     action_response_u_mean: tuple = ()
-    # Per-environment uncertainty around a fitted closed-loop response.  Scale
-    # ranges apply jointly to every configured action joint; delay/bias jitter
-    # are per-joint symmetric half-widths in seconds/radians. Defaults preserve
-    # old tasks.
+    # Per-environment uncertainty around a fitted closed-loop response.  Each
+    # scale range accepts either one global (min,max) pair (legacy behavior:
+    # one shared draw for every joint) or one (min,max) pair per action joint.
+    # Delay/bias jitter are per-joint symmetric half-widths.  An optional
+    # response-output acceleration limit models the finite closed-loop torque
+    # envelope without adding a second position-command filter.
     action_response_fn_scale_range: tuple = (1.0, 1.0)
     action_response_zeta_scale_range: tuple = (1.0, 1.0)
     action_response_gain_scale_range: tuple = (1.0, 1.0)
     action_response_delay_jitter_s: tuple = ()
     action_response_bias_jitter_rad: tuple = ()
+    action_response_accel_limit_rad_s2: tuple = ()
+    action_response_accel_limit_scale_range: tuple = (1.0, 1.0)
     # --- Table-tennis paddle / hitting geometry (defaults match Booster T1) ---
     paddle_body_name: str = "right_hand_link"   # body the paddle is rigidly attached to
     paddle_offset: tuple = (0.0, -0.345, 0.0)   # paddle face center offset in that body's local frame

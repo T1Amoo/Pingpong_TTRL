@@ -11,6 +11,7 @@ from isaaclab.managers.scene_entity_cfg import SceneEntityCfg
 from isaaclab.utils import configclass
 import legged_lab.mdp as mdp
 from legged_lab.physics import a1_backhand_v2_contract as backhand_v2
+from legged_lab.physics import a1_backhand_v3_contract as backhand_v3
 from legged_lab.assets.a1.a1 import (
     A1_RIGHT_ARM_JOINTS,
     A1_INIT_Z,
@@ -1163,6 +1164,67 @@ class A1TableTennisBackhandV2EnvCfg(A1TableTennisBackhandEnvCfg):
 
 
 @configclass
+class A1TableTennisBackhandV3EnvCfg(A1TableTennisBackhandV2EnvCfg):
+    """Backhand v3: real-serve envelope plus independent actuator DR."""
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # Keep the calibrated base/ready/hit plane and contact material from
+        # v2, but move the actual arrival contract onto the 2026-08-04 hand-fed
+        # ball distribution with modest measured-tail margins.
+        self.robot.hit_target_y_range = backhand_v3.HIT_TARGET_Y_RANGE
+        self.robot.hit_target_z_range = backhand_v3.HIT_TARGET_Z_RANGE
+        self.ball.serve_bounce_x_range = backhand_v3.EASY_BOUNCE_X_RANGE
+        self.ball.serve_bounce_vz_range = backhand_v3.EASY_BOUNCE_VZ_RANGE
+        self.ball.serve_y_center = backhand_v3.EASY_Y_CENTER
+        self.ball.serve_y_start = backhand_v3.EASY_Y_HALF
+        self.ball.serve_bounce_x_range_hard = backhand_v3.HARD_BOUNCE_X_RANGE
+        self.ball.serve_bounce_vz_range_hard = backhand_v3.HARD_BOUNCE_VZ_RANGE
+        self.ball.serve_y_center_hard = backhand_v3.HARD_Y_CENTER
+        self.ball.serve_y_wide = backhand_v3.HARD_Y_HALF
+        self.ball.serve_arrival_y_range = backhand_v3.HIT_TARGET_Y_RANGE
+        self.ball.serve_arrival_z_range = backhand_v3.PREFLIGHT_HIT_Z_RANGE
+        self.ball.serve_arrival_abs_vx_range = backhand_v3.HIT_ARRIVAL_ABS_VX_RANGE
+        self.ball.serve_curriculum_phase_start = (
+            backhand_v3.CURRICULUM_EASY_ITERS * A1_TT_RAW_STEPS_PER_ITER
+        )
+        self.ball.serve_curriculum_steps = (
+            backhand_v3.CURRICULUM_RAMP_ITERS * A1_TT_RAW_STEPS_PER_ITER
+        )
+
+        # v2 sampled one fn/zeta/gain scale for the whole arm.  The real
+        # traces require widening r4 (and r1 high-frequency gain) without
+        # degrading the already well-aligned wrist joints.
+        self.robot.action_response_fn_scale_range = backhand_v3.RESPONSE_FN_SCALE_RANGES
+        self.robot.action_response_zeta_scale_range = backhand_v3.RESPONSE_ZETA_SCALE_RANGES
+        self.robot.action_response_gain_scale_range = backhand_v3.RESPONSE_GAIN_SCALE_RANGES
+        self.robot.action_response_delay_s = backhand_v3.RESPONSE_DELAY_S
+        self.robot.action_response_delay_jitter_s = backhand_v3.RESPONSE_DELAY_JITTER_S
+        self.robot.action_response_accel_limit_rad_s2 = (
+            backhand_v3.RESPONSE_ACCEL_LIMIT_RAD_S2
+        )
+        self.robot.action_response_accel_limit_scale_range = (
+            backhand_v3.RESPONSE_ACCEL_LIMIT_SCALE_RANGES
+        )
+
+
+@configclass
+class A1TableTennisBackhandV3EvalEnvCfg(A1TableTennisBackhandV3EnvCfg):
+    """Backhand-v3 final-range eval with the same physical rejection."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.max_episode_length_s = 99999999999
+        self.ball.serve_bounce_x_range = self.ball.serve_bounce_x_range_hard
+        self.ball.serve_bounce_vz_range = self.ball.serve_bounce_vz_range_hard
+        self.ball.serve_y_center = self.ball.serve_y_center_hard
+        self.ball.serve_y_start = self.ball.serve_y_wide
+        self.ball.serve_curriculum_steps = 0
+        self.ball.serve_curriculum_phase_start = 0
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -1406,6 +1468,14 @@ class A1TableTennisBackhandV2AgentCfg(A1TableTennisBackhandAgentCfg):
         "validation_slow_abs_vx_mps": 2.2,
         "validation_high_z_m": 1.30,
     }
+
+
+@configclass
+class A1TableTennisBackhandV3AgentCfg(A1TableTennisBackhandV2AgentCfg):
+    experiment_name: str = "a1_tt_backhand_real_v3_realserve_predictor_r4dr"
+    run_name = "scratch_realserve142_truehit_camera157510_perjointdr_r4sat_5k10k5k"
+    resume = False
+    max_iterations = backhand_v3.MAX_ITERATIONS
 
 
 @configclass
