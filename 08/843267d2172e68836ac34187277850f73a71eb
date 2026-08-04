@@ -1,0 +1,51 @@
+rsl_rl/tests/test_predictor_hit_plane_target.py
+  s_d7bdfbc037e805::t_e545bd76f0535c 2,74-75,93-120
+  s_d7bdfbc037e805::t_09f87cfb589751 19-20,22,45-73
+  s_d7bdfbc037e805::t_9c583493c1b132 76-92
+  s_d7bdfbc037e805::t_fcf7c72310edaf 1,3-18,21,23-44
+legged_lab/envs/base/tt_config.py
+  s_d7bdfbc037e805::t_11b64539ab0734 205-209
+legged_lab/envs/base/tt_env.py
+  s_d7bdfbc037e805::t_c15aefb9d9f4d0 1987-1991
+  s_d7bdfbc037e805::t_13029687caabea 1992-2029,2053-2056,2338-2341
+  s_d7bdfbc037e805::t_6ae976f44c4f3d 2030-2052
+  s_d7bdfbc037e805::t_0313ab9e0d799f 465-486,1013-1015,1082-1089,1120-1125,1139-1147,1190-1191,1229-1235,1250
+  s_d7bdfbc037e805::t_798a5b2fe27c1b 2508-2532,2557-2558
+  s_d7bdfbc037e805::t_e61bf62a7060d1 407-412,1202
+  s_d7bdfbc037e805::t_87c071f6b669df 1039-1040
+  s_d7bdfbc037e805::t_a3c86bc9c836cd 2342
+legged_lab/physics/serve_flight.py
+  s_d7bdfbc037e805::t_a248b900702d3b 25,30,32-37,40,50-52,96-103,170
+rsl_rl/rsl_rl/runners/on_policy_predictor_regression_runner.py
+  s_d7bdfbc037e805::t_d2a4b36eef1dc3 90-121,252,257-258,354-357,359,363-364
+  s_d7bdfbc037e805::t_69d34cb3c9aaf0 860-866
+  s_d7bdfbc037e805::t_c15aefb9d9f4d0 449-451
+  s_d7bdfbc037e805::t_0f8ba0d14f18d3 823-830
+  s_d7bdfbc037e805::t_e545bd76f0535c 872
+  s_d7bdfbc037e805::t_35ed05790d1e0b 515-602,604-612,617-659,686-688
+  s_d7bdfbc037e805::t_6bc6478037405a 122,603,613-616
+  s_d7bdfbc037e805::t_73fb78872c313c 478-479
+  s_d7bdfbc037e805::t_1f7ae546c86ef3 6-7,54-56,458-463,466,475-476,483-514,711-715,822,868-871,873
+legged_lab/physics/test_serve_flight.py
+  s_d7bdfbc037e805::t_fcf7c72310edaf 1-40
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_d7bdfbc037e805::t_2af0154d4c4936 1044-1049
+  s_d7bdfbc037e805::t_0f8ba0d14f18d3 1394-1407
+  s_d7bdfbc037e805::t_11b64539ab0734 1149-1151,1390-1393
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "08843267d2172e68836ac34187277850f73a71eb",
+  "prompts": {},
+  "sessions": {
+    "s_d7bdfbc037e805": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb780-0fbb-7d70-ad81-7f6b5c3684bd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
