@@ -22,16 +22,22 @@ class ServeFlightProbe(NamedTuple):
     hit_z: torch.Tensor
     hit_vx: torch.Tensor
     hit_vz: torch.Tensor
+    hit_time: torch.Tensor
     bounced: torch.Tensor
 
 
 def _flight_rhs_x(state: torch.Tensor, drag_accel_k: float, gravity: float) -> torch.Tensor:
-    """Return d[y,z,vx,vy,vz]/dx for quadratic drag plus gravity."""
+    """Return the x-domain flight derivative.
 
-    _y, _z, vx, vy, vz = state.unbind(dim=-1)
+    ``state`` is ``[y,z,vx,vy,vz]`` or ``[y,z,vx,vy,vz,t]``.  Keeping time as
+    an optional sixth state lets reset-time serve probing return the actual
+    time-to-hit-plane without changing the established trajectory equations.
+    """
+
+    _y, _z, vx, vy, vz = state[..., :5].unbind(dim=-1)
     safe_vx = torch.where(vx < -1.0e-4, vx, torch.full_like(vx, -1.0e-4))
     speed = torch.sqrt(torch.clamp(vx.square() + vy.square() + vz.square(), min=1.0e-12))
-    return torch.stack(
+    derivative = torch.stack(
         (
             vy / safe_vx,
             vz / safe_vx,
@@ -41,6 +47,9 @@ def _flight_rhs_x(state: torch.Tensor, drag_accel_k: float, gravity: float) -> t
         ),
         dim=-1,
     )
+    if state.shape[-1] == 6:
+        derivative = torch.cat((derivative, (1.0 / safe_vx).unsqueeze(-1)), dim=-1)
+    return derivative
 
 
 def _rk4_x(state: torch.Tensor, dx: torch.Tensor | float, drag_accel_k: float, gravity: float) -> torch.Tensor:
@@ -84,7 +93,14 @@ def probe_serve_flight(
         raise ValueError("serve flight integration step counts must be positive")
 
     state = torch.stack(
-        (launch_pos[:, 1], launch_pos[:, 2], launch_vel[:, 0], launch_vel[:, 1], launch_vel[:, 2]),
+        (
+            launch_pos[:, 1],
+            launch_pos[:, 2],
+            launch_vel[:, 0],
+            launch_vel[:, 1],
+            launch_vel[:, 2],
+            torch.zeros_like(launch_pos[:, 0]),
+        ),
         dim=-1,
     )
     x = launch_pos[:, 0].clone()
@@ -151,5 +167,6 @@ def probe_serve_flight(
         hit_z=state[:, 1],
         hit_vx=state[:, 2],
         hit_vz=state[:, 4],
+        hit_time=state[:, 5],
         bounced=bounced,
     )

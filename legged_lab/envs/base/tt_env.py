@@ -404,6 +404,12 @@ class TTEnv(VecEnv):
         self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
         self.ball_episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
         self.ball_reset_counter = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+        # Monotonic per-environment serve identity for predictor history. Unlike
+        # ball_reset_counter, this is intentionally not cleared by a full env
+        # reset, so ring-buffer histories never alias two different serves.
+        self.predictor_serve_uid = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.long
+        )
         # will store env ids that had their ball reset in the most recent step
         self.ball_reset_ids = torch.empty(0, dtype=torch.long, device=self.device)
         self.reset_ball_state_buf = torch.zeros(self.num_envs, 13, device=self.device, dtype=torch.float)
@@ -456,6 +462,28 @@ class TTEnv(VecEnv):
         # learned prediction (from auxiliary model)
         self.ball_prediction_vis = torch.zeros(self.num_envs, 3, device=self.device)
         self.ball_prediction = torch.zeros(self.num_envs, 3, device=self.device)
+        # Optional fixed-hit-plane target contract.  Backhand-v2 fills the
+        # privileged target from its accepted reset-time serve probe, while the
+        # auxiliary predictor is supervised from the interpolated physical
+        # crossing exposed below.
+        self._hit_plane_target_enabled = bool(
+            getattr(self.cfg.ball, "hit_plane_target_from_serve_probe", False)
+        )
+        self._serve_hit_plane_target = torch.zeros(self.num_envs, 3, device=self.device)
+        self._serve_hit_plane_time_s = torch.zeros(self.num_envs, device=self.device)
+        self._serve_hit_plane_target_valid = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.bool
+        )
+        self._predictor_plane_prev_pos = torch.zeros(self.num_envs, 3, device=self.device)
+        self._predictor_plane_prev_valid = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.bool
+        )
+        self._predictor_plane_crossing_target = torch.zeros(
+            self.num_envs, 3, device=self.device
+        )
+        self._predictor_plane_crossed_now = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.bool
+        )
         self.robot_future_vel = torch.zeros(self.num_envs, 3, device=self.device)
         self.robot_future_pos = torch.zeros(self.num_envs, 3, device=self.device)
         self.ball_future_t = torch.zeros(self.num_envs, 1, device=self.device)
@@ -982,6 +1010,9 @@ class TTEnv(VecEnv):
         g = 9.81
         z_bounce = 0.78
         accepted_vel = torch.empty(n, 3, device=self.device, dtype=launch_pos.dtype)
+        accepted_hit_target = torch.empty(n, 3, device=self.device, dtype=launch_pos.dtype)
+        accepted_hit_time = torch.empty(n, device=self.device, dtype=launch_pos.dtype)
+        accepted_hit_valid = torch.zeros(n, device=self.device, dtype=torch.bool)
         remaining = torch.arange(n, device=self.device)
         sampled_total = 0
 
@@ -1005,6 +1036,8 @@ class TTEnv(VecEnv):
             return torch.cat((v_x, v_y, v_z), dim=1)
 
         rejection = bool(getattr(cfg, "serve_flight_rejection_enable", False))
+        if self._hit_plane_target_enabled and not rejection:
+            raise ValueError("hit_plane_target_from_serve_probe requires serve_flight_rejection_enable")
         max_attempts = max(1, int(getattr(cfg, "serve_rejection_max_attempts", 16)))
         for _attempt in range(max_attempts if rejection else 1):
             if len(remaining) == 0:
@@ -1046,7 +1079,14 @@ class TTEnv(VecEnv):
             else:
                 good = torch.ones(len(remaining), dtype=torch.bool, device=self.device)
             if good.any():
-                accepted_vel[remaining[good]] = candidate_vel[good]
+                accepted_ids = remaining[good]
+                accepted_vel[accepted_ids] = candidate_vel[good]
+                if self._hit_plane_target_enabled:
+                    accepted_hit_target[accepted_ids, 0] = float(self.cfg.robot.hit_plane_x)
+                    accepted_hit_target[accepted_ids, 1] = probe.hit_y[good]
+                    accepted_hit_target[accepted_ids, 2] = probe.hit_z[good]
+                    accepted_hit_time[accepted_ids] = probe.hit_time[good]
+                    accepted_hit_valid[accepted_ids] = True
             remaining = remaining[~good]
 
         fallback_count = len(remaining)
@@ -1077,6 +1117,12 @@ class TTEnv(VecEnv):
             if not bool(torch.all(fallback_good).item()):
                 raise RuntimeError("configured fallback serve violates the drag-aware serve contract")
             accepted_vel[remaining] = fallback_vel
+            if self._hit_plane_target_enabled:
+                accepted_hit_target[remaining, 0] = float(self.cfg.robot.hit_plane_x)
+                accepted_hit_target[remaining, 1] = fallback_probe.hit_y
+                accepted_hit_target[remaining, 2] = fallback_probe.hit_z
+                accepted_hit_time[remaining] = fallback_probe.hit_time
+                accepted_hit_valid[remaining] = True
 
         if rejection and not getattr(self, "_serve_contract_logged", False):
             accepted = n - fallback_count
@@ -1090,7 +1136,15 @@ class TTEnv(VecEnv):
                 flush=True,
             )
             self._serve_contract_logged = True
-        return accepted_vel[:, 0:1], accepted_vel[:, 1:2], accepted_vel[:, 2:3]
+        if self._hit_plane_target_enabled and not bool(torch.all(accepted_hit_valid).item()):
+            raise RuntimeError("fixed hit-plane target requested but one or more serves have no valid probe")
+        return (
+            accepted_vel[:, 0:1],
+            accepted_vel[:, 1:2],
+            accepted_vel[:, 2:3],
+            accepted_hit_target if self._hit_plane_target_enabled else None,
+            accepted_hit_time if self._hit_plane_target_enabled else None,
+        )
 
     def reset_ball(self, env_ids):
         """Reset only the ball state for specified environments."""
@@ -1133,6 +1187,8 @@ class TTEnv(VecEnv):
         self.reward_vel_prev[env_ids] = 0.0
         self.ball_episode_length_buf[env_ids] = 0
         self._reset_prediction_buffers(env_ids)
+        self._predictor_plane_prev_valid[env_ids] = False
+        self._predictor_plane_crossed_now[env_ids] = False
         generate_new = (self.ball_reset_counter[env_ids] % self.cfg.ball.ball_reset_repeat) == 0
         reuse_old = ~generate_new
         # Bug A fix: a no-ball window parks the ball underground (z=-50), so ball_on_floor (z<0.1)
@@ -1143,6 +1199,7 @@ class TTEnv(VecEnv):
         # not a serve -> do not count it.
         if not self._tt_no_ball_now():
             self.ball_reset_counter[env_ids] += 1
+            self.predictor_serve_uid[env_ids] += 1
         self.touch_info = []
 
         if generate_new.any():
@@ -1169,7 +1226,13 @@ class TTEnv(VecEnv):
                 # left/right). Launch from ball default (1.35, 0, 1.03); bounce when ball
                 # center z = 0.78 (table top 0.76 + radius 0.02). g = 9.81.
                 launch_pos = ball_state[:, :3] - self.scene.env_origins[new_state_env_ids]
-                v_x, v_y, v_z = self._sample_bounce_serve(launch_pos, c)
+                v_x, v_y, v_z, hit_target, hit_time = self._sample_bounce_serve(launch_pos, c)
+                if hit_target is not None and hit_time is not None:
+                    self._serve_hit_plane_target[new_state_env_ids] = hit_target
+                    self._serve_hit_plane_time_s[new_state_env_ids] = hit_time
+                    self._serve_hit_plane_target_valid[new_state_env_ids] = True
+                else:
+                    self._serve_hit_plane_target_valid[new_state_env_ids] = False
             else:
                 # legacy speed-curriculum serve (tasks that don't enable bounce mode)
                 def _lerp(b, w):
@@ -1184,6 +1247,7 @@ class TTEnv(VecEnv):
                 v_x = torch.empty(n, 1, device=self.device).uniform_(*xr)
                 v_y = torch.empty(n, 1, device=self.device).uniform_(*yr)
                 v_z = torch.empty(n, 1, device=self.device).uniform_(*zr)
+                self._serve_hit_plane_target_valid[new_state_env_ids] = False
 
             # With small probability (≈1%), create zero-velocity, random-position serves
             #disabled for testing
@@ -1920,6 +1984,76 @@ class TTEnv(VecEnv):
         valid = torch.isfinite(self.ball_pos).all(dim=-1) & (self.ball_pos[:, 2] > 0.1)
         return self.ball_pos, valid
 
+    def get_predictor_serve_ids(self) -> torch.Tensor:
+        """Return a monotonic serve identity that survives full env resets."""
+
+        return self.predictor_serve_uid
+
+    def get_predictor_actual_hit_plane_crossings(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return physical fixed-plane crossing targets generated on this step.
+
+        The boolean mask is a one-control-step event.  Targets are table-local
+        ``[hit_plane_x, y, z]`` values interpolated between the two surrounding
+        Isaac physics observations.  Crossings after a paddle touch are
+        excluded so the predictor never learns a robot-deflected trajectory.
+        """
+
+        return self._predictor_plane_crossing_target, self._predictor_plane_crossed_now
+
+    def _update_predictor_actual_hit_plane_crossings(
+        self,
+        has_bounced: torch.Tensor,
+    ) -> None:
+        """Latch the incoming ball's measured fixed-plane intersection."""
+
+        current = self.ball_pos
+        previous = self._predictor_plane_prev_pos
+        hx = float(self.cfg.robot.hit_plane_x)
+        finite = torch.isfinite(current).all(dim=-1) & torch.isfinite(previous).all(dim=-1)
+        crossed = (
+            self._predictor_plane_prev_valid
+            & finite
+            & (previous[:, 0] > hx)
+            & (current[:, 0] <= hx)
+            & (self.ball_linvel[:, 0] < -0.05)
+            & has_bounced.reshape(-1).bool()
+            & (~self.has_touch_paddle)
+            & (~self.has_second_bounce)
+        )
+        self._predictor_plane_crossed_now.copy_(crossed)
+        if crossed.any():
+            denom = torch.clamp(previous[crossed, 0] - current[crossed, 0], min=1.0e-8)
+            alpha = torch.clamp((previous[crossed, 0] - hx) / denom, 0.0, 1.0)
+            target = previous[crossed] + alpha.unsqueeze(-1) * (current[crossed] - previous[crossed])
+            target[:, 0] = hx
+            self._predictor_plane_crossing_target[crossed] = target
+            if os.environ.get("TT_HIT_TARGET_PROBE") and self._hit_plane_target_enabled:
+                if not hasattr(self, "_hit_target_probe_errors"):
+                    self._hit_target_probe_errors = []
+                model_target = self._serve_hit_plane_target[crossed]
+                self._hit_target_probe_errors.append(
+                    (target[:, 1:3] - model_target[:, 1:3]).detach().cpu()
+                )
+                probe_batch = max(1, int(os.environ.get("TT_HIT_TARGET_PROBE_BATCH", "1000")))
+                total = sum(value.shape[0] for value in self._hit_target_probe_errors)
+                if total >= probe_batch:
+                    errors = torch.cat(self._hit_target_probe_errors, dim=0)
+                    absolute = torch.abs(errors)
+                    mae = absolute.mean(dim=0)
+                    p95 = torch.quantile(absolute, 0.95, dim=0)
+                    bias = errors.mean(dim=0)
+                    print(
+                        "[TT_HIT_TARGET_PROBE] "
+                        f"n={len(errors)} actual-minus-model "
+                        f"y_mae/p95/bias={mae[0]:.4f}/{p95[0]:.4f}/{bias[0]:+.4f} "
+                        f"z_mae/p95/bias={mae[1]:.4f}/{p95[1]:.4f}/{bias[1]:+.4f}",
+                        flush=True,
+                    )
+                    self._hit_target_probe_errors = []
+
+        self._predictor_plane_prev_pos.copy_(current)
+        self._predictor_plane_prev_valid.copy_(finite & (current[:, 2] > 0.1))
+
     def compute_paddle_touch(self):
         self.ball_global_pos = self.ball.data.root_pos_w 
 
@@ -2201,6 +2335,11 @@ class TTEnv(VecEnv):
         vx = self.ball_linvel[:, 0]
         vy = self.ball_linvel[:, 1]
 
+        # Always-on lightweight physical crossing event used only for predictor
+        # supervision.  This is independent of the optional TT_SERVE_PROBE
+        # histogram and adds no trajectory integration to the training loop.
+        self._update_predictor_actual_hit_plane_crossings(has_bounced)
+
         # --- serve-arrival probe (guarded, OFF by default) --------------------------------
         # Set TT_SERVE_PROBE=1 to histogram the PHYSICAL ball (y,z) at the instant it crosses
         # the env-local hit plane x=hit_plane_x while flying toward the robot (vx<0). This is the
@@ -2366,6 +2505,31 @@ class TTEnv(VecEnv):
         self.pos_pred_before_ro = torch.stack([xpb - 0.1, ypb - paddle_y_offset, torch.ones_like(xpb) * body_height], dim=-1)
         self.pos_pred_after_ro = torch.stack([xpa - 0.1, ypa - paddle_y_offset, torch.ones_like(xpb) * body_height], dim=-1)
 
+        if self._hit_plane_target_enabled:
+            # Backhand-v2 target contract: use the accepted serve's direct
+            # intersection with x=hit_plane_x.  Do not clamp a post-bounce apex
+            # onto the plane; y/z are the propagated intersection themselves.
+            direct_hit = self._serve_hit_plane_target
+            self.pos_pred_before = direct_hit
+            self.pos_pred_after = direct_hit
+            direct_ro = torch.stack(
+                [
+                    direct_hit[:, 0] - 0.1,
+                    direct_hit[:, 1] - paddle_y_offset,
+                    torch.ones_like(direct_hit[:, 0]) * body_height,
+                ],
+                dim=-1,
+            )
+            self.pos_pred_before_ro = direct_ro
+            self.pos_pred_after_ro = direct_ro
+            remaining_hit_t = torch.clamp(
+                self._serve_hit_plane_time_s - self.ball_episode_length_buf.float() * self.step_dt,
+                min=0.0,
+            )
+            self.t_before = remaining_hit_t
+            self.t_after = remaining_hit_t
+            self.valid_before = self._serve_hit_plane_target_valid & self.mask_before
+
         self.ball_future_pose = torch.where(
             self.mask_before.unsqueeze(-1), self.pos_pred_before, self.pos_pred_after
         )
@@ -2390,6 +2554,8 @@ class TTEnv(VecEnv):
             | self.has_touch_paddle                # already hit this ball
             | self.mask_no_ball                    # true no-ball (injection)
         )
+        if self._hit_plane_target_enabled:
+            self.mask_invalid |= ~self._serve_hit_plane_target_valid
         if self._camera_observation_enable:
             # Match deployment: before two valid camera frames establish a track (or after
             # coast timeout), both raw ball observation and learned target stay at sentinel.

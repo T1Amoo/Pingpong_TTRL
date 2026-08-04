@@ -1041,10 +1041,12 @@ class A1TableTennisBackhandEnvCfg(A1TableTennisEnvCfg):
         camera.reset_gap_s = 0.25
         camera.coast_max_s = 0.12
         camera.dropout_prob = 0.01
-        camera.latency_mode_weights = (0.85, 0.10, 0.05)
-        # Fresh-lock source age is 23.5--27.4 ms on the deployed ZED. Keep a
-        # broad network/inference margin and a rare 80--120 ms degraded tail so
-        # the policy remains tolerant without treating the old backlog as normal.
+        # 2026-08-04 real traces after host clocks settled put essentially every
+        # rally in the 45--80 ms source-to-receive band (median 56--60 ms). Make
+        # that the normal mode while retaining fast-path and rare-tail coverage.
+        camera.latency_mode_weights = (0.15, 0.75, 0.10)
+        # Fresh-lock ZED exposure age remains 23.5--27.4 ms; TensorRT, publish,
+        # DDS transport and policy sampling account for the remaining age.
         camera.latency_ranges_s = ((0.010, 0.045), (0.045, 0.080), (0.080, 0.120))
         camera.position_noise_std = (0.004, 0.004, 0.006)
         camera.filter_alpha = 0.65
@@ -1144,6 +1146,9 @@ class A1TableTennisBackhandV2EnvCfg(A1TableTennisBackhandEnvCfg):
         self.ball.serve_table_restitution = backhand_v2.TABLE_RESTITUTION
         self.ball.serve_table_dynamic_friction = backhand_v2.TABLE_DYNAMIC_FRICTION
         self.ball.serve_rejection_max_attempts = 16
+        # The actor/critic/reward target is the fixed x=-1.243 intersection,
+        # not the historical post-bounce apex projected onto that plane.
+        self.ball.hit_plane_target_from_serve_probe = True
 
         # 20k deployment schedule: 5k fixed easy + 10k linear expansion + 5k hold.
         self.ball.serve_curriculum_phase_start = (
@@ -1382,6 +1387,24 @@ class A1TableTennisBackhandV2AgentCfg(A1TableTennisBackhandAgentCfg):
         "epochs_per_update": 1,
         "batch_size": 1024,
         "train_until_iters": 17000,
+        # Backfill each serve's histories only after Isaac's physical ball
+        # actually crosses the fixed hit plane.  This makes the supervised y/z
+        # label a measured intersection rather than an analytic apex proxy.
+        "target_mode": "actual_hit_plane",
+        # Causal validation uses the previous-tick prediction and the physical
+        # crossing revealed on the current tick.  Report every 50 iterations;
+        # warn if y/z or high/slow-ball errors stay above the acceptance bands.
+        "validation_window_samples": 4096,
+        "validation_interval_iters": 50,
+        "validation_min_samples": 256,
+        "validation_warn_start_iter": 100,
+        "validation_warn_patience": 3,
+        "validation_warn_min_rel_improvement": 0.03,
+        "validation_warn_y_mae_m": 0.08,
+        "validation_warn_z_mae_m": 0.08,
+        "validation_warn_hard_z_mae_m": 0.10,
+        "validation_slow_abs_vx_mps": 2.2,
+        "validation_high_z_m": 1.30,
     }
 
 

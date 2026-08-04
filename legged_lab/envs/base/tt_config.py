@@ -202,6 +202,11 @@ class BallCfg:
     serve_table_restitution: float = 0.95
     serve_table_dynamic_friction: float = 0.10
     serve_rejection_max_attempts: int = 16
+    # Use the accepted serve probe's fixed hit-plane intersection as the
+    # privileged target/reward geometry.  Predictor supervision may further
+    # replace this model target with the interpolated physical crossing.
+    # Opt-in keeps every historical A1/G1/T1 task bit-for-bit compatible.
+    hit_plane_target_from_serve_probe: bool = False
     # --- no-ball idle training (0 = off). Every no_ball_period_s the ball is active for
     # ball_active_s, then teleported away (no-ball + mask_invalid) for the rest, so the
     # policy learns a stable idle at the home sentinel when there is no incoming ball. ---
