@@ -6,12 +6,26 @@ source /root/miniconda3/etc/profile.d/conda.sh 2>/dev/null
 conda activate pingpong
 
 export OMNI_KIT_ACCEPT_EULA=YES
-export TT_SERVE_PROBE=1
-export TT_SERVE_PROBE_BATCH=1000
-export TT_SPIN_PROBE=1
-export TT_SPIN_PROBE_BATCH=1000
-export TT_POST_IMPACT_PROBE=1
-export TT_POST_IMPACT_PROBE_BATCH=1000
+
+# Runtime histogram probes are diagnostics, not part of the training contract.
+# Keeping them enabled for all 20k iterations forces frequent CUDA
+# synchronizations and CPU copies.  Normal training relies on the mandatory
+# reset-time serve rejection and physical predictor targets instead.  Opt in
+# only for a short, bounded diagnostic run with A1_TT_RUNTIME_PROBES=1.
+# NOTE: setting TT_*_PROBE=0 would still enable the Python checks because the
+# environment variable is non-empty, so explicitly unset every probe here.
+if [ "${A1_TT_RUNTIME_PROBES:-0}" = "1" ]; then
+  export TT_SERVE_PROBE=1
+  export TT_SERVE_PROBE_BATCH=${TT_SERVE_PROBE_BATCH:-1000}
+  export TT_SPIN_PROBE=1
+  export TT_SPIN_PROBE_BATCH=${TT_SPIN_PROBE_BATCH:-1000}
+  export TT_POST_IMPACT_PROBE=1
+  export TT_POST_IMPACT_PROBE_BATCH=${TT_POST_IMPACT_PROBE_BATCH:-1000}
+else
+  unset TT_SERVE_PROBE TT_SERVE_PROBE_BATCH
+  unset TT_SPIN_PROBE TT_SPIN_PROBE_BATCH
+  unset TT_POST_IMPACT_PROBE TT_POST_IMPACT_PROBE_BATCH
+fi
 
 EXP=logs/a1_tt_backhand_real_v4_timing_return
 TARGET=19999
