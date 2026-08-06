@@ -3,8 +3,10 @@ from __future__ import annotations
 import torch
 
 from legged_lab.physics.contact_events import (
+    first_latched_event_mask,
     horizontal_alignment_squared,
     post_impact_event_mask,
+    update_table_bounce_latches,
 )
 
 
@@ -25,3 +27,34 @@ def test_horizontal_alignment_uses_latched_xy_and_ignores_vertical_component():
         torch.tensor([[-2.0, 0.0, 20.0], [-2.0, 0.0, 0.0]]),
     )
     torch.testing.assert_close(score, torch.tensor([1.0, 0.0]))
+
+
+def test_first_latched_event_fires_once_and_ignores_inactive_samples():
+    event = first_latched_event_mask(
+        torch.tensor([False, True, True, False]),
+        torch.tensor([False, False, True, True]),
+    )
+    torch.testing.assert_close(event, torch.tensor([False, True, False, False]))
+
+
+def test_table_bounce_requires_post_hit_descent_then_fires_once_on_rise():
+    descending_seen = torch.tensor([False])
+    bounce_seen = torch.tensor([False])
+    events = []
+    for has_hit, in_band, vz in (
+        (False, True, -2.0),
+        (True, False, -1.0),
+        (True, True, -0.2),
+        (True, True, 0.0),
+        (True, True, 0.4),
+        (True, True, 0.8),
+    ):
+        event, descending_seen, bounce_seen = update_table_bounce_latches(
+            torch.tensor([has_hit]),
+            torch.tensor([in_band]),
+            torch.tensor([vz]),
+            descending_seen,
+            bounce_seen,
+        )
+        events.append(bool(event[0]))
+    assert events == [False, False, False, False, True, False]

@@ -220,6 +220,10 @@ class BallCfg:
     post_impact_outcome_enable: bool = False
     post_impact_min_outgoing_vx_mps: float = 0.05
     post_impact_timeout_s: float = 0.06
+    # Optional physical table-success event. Historical tasks retain their
+    # geometric per-control-step reward; A1-v4 detects a down-to-up bounce in
+    # the opponent-table band at the physics-substep rate.
+    table_success_bounce_event_enable: bool = False
     # Landing-projection drag coefficient k [1/m]. Preserve the historical
     # 2.7 g/Cd=.47 value for every existing TT task; a new task must opt in to
     # the actual AeroForceField/rigid-ball value explicitly (A1-v4 does).

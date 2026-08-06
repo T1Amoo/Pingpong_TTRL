@@ -174,7 +174,7 @@ def _collect_rollout(env, runner, policy, checkpoint: str, steps: int, near_dist
                 computed_ratio_real[name].append((computed[mask] / real_limit[mask]).cpu())
                 vel_ratio[name].append((jvel[mask] / vlim[mask]).cpu())
 
-        event_mask = env.has_touch_opponent_table_just_now & env.has_touch_paddle
+        event_mask = env.get_opponent_table_success_event()
         serve_success_flag |= event_mask
         serve_hit_flag |= hit_mask
         if hasattr(env, "ball_reset_ids") and env.ball_reset_ids is not None:

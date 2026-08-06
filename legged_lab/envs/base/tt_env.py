@@ -30,7 +30,10 @@ from rsl_rl.env import VecEnv
 
 from legged_lab.envs.base.tt_env_config import TTEnvCfg
 from legged_lab.envs.base.tt_config import BaseSceneCfg
-from legged_lab.physics.contact_events import post_impact_event_mask
+from legged_lab.physics.contact_events import (
+    post_impact_event_mask,
+    update_table_bounce_latches,
+)
 from legged_lab.physics.serve_flight import probe_serve_flight
 from legged_lab.utils.env_utils.scene import SceneCfg
 
@@ -451,6 +454,18 @@ class TTEnv(VecEnv):
         self.has_touch_own_table = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.has_touch_own_table_prev = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.has_touch_opo_table_prev = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        # V4 consumes a one-shot physical bounce rather than rewarding every
+        # control tick spent inside the broad opponent-table geometry band.
+        # Historical tasks keep using has_touch_opponent_table_just_now.
+        self.opponent_table_after_hit_event = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.bool
+        )
+        self._opponent_table_after_hit_seen = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.bool
+        )
+        self._opponent_table_descending_seen = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.bool
+        )
         self.has_return_own_table2_prev = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         # idle10 fix: second-bounce dead-ball detection + decoupled true-no-ball mask
         self.has_second_bounce = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
@@ -1252,6 +1267,8 @@ class TTEnv(VecEnv):
         self.has_touch_own_table[env_ids] = False
         self.has_touch_own_table_prev[env_ids] = False
         self.has_touch_opo_table_prev[env_ids] = False
+        self._opponent_table_after_hit_seen[env_ids] = False
+        self._opponent_table_descending_seen[env_ids] = False
         self.has_return_own_table2_prev[env_ids] = False
         self.has_second_bounce[env_ids] = False
         self.left_after_bounce[env_ids] = False
@@ -1735,6 +1752,7 @@ class TTEnv(VecEnv):
         # these buffers until RewardManager consumes them.
         self.paddle_contact_event.zero_()
         self.post_impact_reward_event.zero_()
+        self.opponent_table_after_hit_event.zero_()
         self._apply_effort_curriculum()
         delayed_actions = self.action_buffer.compute(actions)
 
@@ -1758,6 +1776,7 @@ class TTEnv(VecEnv):
             self.scene.update(dt=self.physics_dt)
             self.compute_perception()
             self.compute_paddle_touch()
+            self._update_opponent_table_bounce_event()
 
         if not self.headless:
             self.sim.render()
@@ -2134,6 +2153,13 @@ class TTEnv(VecEnv):
 
         return self.predictor_serve_uid
 
+    def get_opponent_table_success_event(self) -> torch.Tensor:
+        """Return the task-aligned one-control-step opponent-table event."""
+
+        if getattr(self.cfg.ball, "table_success_bounce_event_enable", False):
+            return self.opponent_table_after_hit_event
+        return self.has_touch_paddle & self.has_touch_opponent_table_just_now
+
     def get_predictor_actual_hit_plane_crossings(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Return physical fixed-plane crossing targets generated on this step.
 
@@ -2489,6 +2515,40 @@ class TTEnv(VecEnv):
                 f"speed={speed:.3f} forward={forward:.3f}",
                 flush=True,
             )
+
+    def _update_opponent_table_bounce_event(self) -> None:
+        """Latch one physical opponent-table bounce for opt-in tasks.
+
+        This runs after every physics substep. Merely descending through the
+        historical geometric table band is insufficient: vertical velocity
+        must subsequently reverse upward while the ball remains over the
+        opponent table.
+        """
+
+        if not getattr(self.cfg.ball, "table_success_bounce_event_enable", False):
+            return
+        bx, by, bz = self.ball_pos.unbind(dim=-1)
+        tx_min, tx_max = self.cfg.table.table_opponent_contact_x
+        ty_min, ty_max = self.cfg.table.table_opponent_contact_y
+        tz_min, tz_max = self.cfg.table.table_opponent_contact_z
+        in_table_band = (
+            (bx >= tx_min)
+            & (bx <= tx_max)
+            & (by >= ty_min)
+            & (by <= ty_max)
+            & (bz >= tz_min)
+            & (bz <= tz_max)
+        )
+        event, descending_seen, bounce_seen = update_table_bounce_latches(
+            self.has_touch_paddle,
+            in_table_band,
+            self.ball.data.root_lin_vel_w[:, 2],
+            self._opponent_table_descending_seen,
+            self._opponent_table_after_hit_seen,
+        )
+        self.opponent_table_after_hit_event |= event
+        self._opponent_table_descending_seen.copy_(descending_seen)
+        self._opponent_table_after_hit_seen.copy_(bounce_seen)
 
     def compute_intermediate_values(self):
         # print("has_touch_paddle", self.has_touch_paddle)

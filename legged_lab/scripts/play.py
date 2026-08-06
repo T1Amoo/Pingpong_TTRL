@@ -207,11 +207,10 @@ def play():
                 try:
                     # Update per-env success/hit flags during ongoing serve
                     if (
-                        hasattr(env, "has_touch_opponent_table_just_now")
-                        and hasattr(env, "has_touch_paddle")
+                        hasattr(env, "get_opponent_table_success_event")
                         and serve_success_flag is not None
                     ):
-                        event_mask = (env.has_touch_opponent_table_just_now & env.has_touch_paddle)
+                        event_mask = env.get_opponent_table_success_event()
                         serve_success_flag |= event_mask.to(serve_success_flag.device)
                     if (
                         hasattr(env, "ball_contact_rew")

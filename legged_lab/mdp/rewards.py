@@ -21,8 +21,15 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 from typing import Optional
 
-from legged_lab.physics.landing_target import landing_target_score
+from legged_lab.physics.landing_target import (
+    landing_rectangle_outside_penalty,
+    landing_target_quality,
+)
 from legged_lab.physics.contact_events import horizontal_alignment_squared
+from legged_lab.physics.return_flight import (
+    project_height_to_forward_x_plane,
+    smooth_clearance_gate,
+)
 from legged_lab.physics.swing_timing import (
     early_hold_gate,
     excess_speed_penalty,
@@ -1037,6 +1044,18 @@ def reward_table_success(env: TTEnv) -> torch.Tensor:
     rew_table_success = (env.has_touch_paddle.float() * env.has_touch_opponent_table_just_now.float())
     return rew_table_success * _contact_quality_outcome_scale(env)
 
+
+def reward_a1_table_success_event(env: TTEnv) -> torch.Tensor:
+    """V4-only first physical opponent-table bounce after a valid paddle hit.
+
+    This observed outcome is deliberately not contact-quality-scaled. Sweet
+    spot and hit-plane quality already have their own first-contact rewards;
+    any real table return must remain worth more than the best predicted
+    pass-net plus landing proxy, including for a low-quality contact.
+    """
+
+    return env.opponent_table_after_hit_event.float()
+
 # # (5) Encourage forward ball position.
 # def reward_ball_pos(env: TTEnv) -> torch.Tensor:
 
@@ -1299,28 +1318,54 @@ def reward_future_landing_dis(
     return torch.where(reward > 0.0, reward * scale, reward)
 
 
-def reward_a1_safe_landing_target(
+def reward_a1_landing_target_quality(
     env: TTEnv,
     target_x: float = 0.70,
     target_y: float = 0.0,
-    radius_m: float = 0.50,
-    outside_floor: float = -1.0,
+    half_reward_radius_m: float = 0.50,
 ) -> torch.Tensor:
-    """A1-only bounded landing score: positive inside the safe disk, negative outside."""
+    """A1-only positive landing quality; off-table misses are a separate term."""
 
-    reward = landing_target_score(
+    reward = landing_target_quality(
         env.predict_x_land,
         env.predict_y_land,
         target_x=target_x,
         target_y=target_y,
-        radius_m=radius_m,
-        outside_floor=outside_floor,
+        half_reward_radius_m=half_reward_radius_m,
     )
     reward = torch.where(env.ball_landing_dis_rew, reward, torch.zeros_like(reward))
-    # V4 applies contact quality symmetrically. Scaling only positive outcomes
-    # made a low-quality center return worth +25 while a miss stayed -100,
-    # creating an avoid-contact incentive early in training.
-    return reward * _contact_quality_outcome_scale(env)
+    return torch.nan_to_num(
+        reward * _contact_quality_outcome_scale(env),
+        nan=0.0,
+        posinf=0.0,
+        neginf=0.0,
+    )
+
+
+def penalty_a1_predicted_landing_outside_table(
+    env: TTEnv,
+    half_penalty_distance_m: float = 0.15,
+) -> torch.Tensor:
+    """A1-only smooth penalty for a predicted landing outside the opponent table."""
+
+    penalty = landing_rectangle_outside_penalty(
+        env.predict_x_land,
+        env.predict_y_land,
+        x_range=env.cfg.table.table_opponent_contact_x,
+        y_range=env.cfg.table.table_opponent_contact_y,
+        half_penalty_distance_m=half_penalty_distance_m,
+    )
+    penalty = torch.where(
+        env.ball_landing_dis_rew,
+        penalty,
+        torch.zeros_like(penalty),
+    )
+    return torch.nan_to_num(
+        penalty * _contact_quality_outcome_scale(env),
+        nan=0.0,
+        posinf=0.0,
+        neginf=0.0,
+    )
 
 
 def reward_future_pass_net(
@@ -1360,6 +1405,47 @@ def reward_future_pass_net(
     mask = env.ball_landing_dis_rew
     reward = torch.where(mask, reward, torch.zeros_like(reward))  # sparse
     return reward * _contact_quality_outcome_scale(env)
+
+
+def reward_a1_future_pass_net(
+    env: TTEnv,
+    std_h: float = 0.20,
+    z_target: float = 1.11,
+    net_x: float = 0.0,
+    min_center_z: float = 0.945,
+    clearance_ramp_m: float = 0.030,
+    horizontal_drag_accel_k: float = 0.09910893224020438,
+) -> torch.Tensor:
+    """V4 drag-aware predicted net-height quality with real clearance gating."""
+
+    z_at_net, _time_s, valid = project_height_to_forward_x_plane(
+        env.ball_pos[:, 0],
+        env.ball_pos[:, 2],
+        env.ball_linvel[:, 0],
+        env.ball_linvel[:, 2],
+        target_x=net_x,
+        horizontal_drag_accel_k=horizontal_drag_accel_k,
+    )
+    height_quality = torch.exp(
+        -torch.abs(z_at_net - float(z_target)) / max(float(std_h), 1.0e-6)
+    )
+    clearance = smooth_clearance_gate(
+        z_at_net,
+        min_height=min_center_z,
+        ramp_m=clearance_ramp_m,
+    )
+    event = env.ball_landing_dis_rew & valid
+    reward = torch.where(
+        event,
+        height_quality * clearance,
+        torch.zeros_like(height_quality),
+    )
+    return torch.nan_to_num(
+        reward * _contact_quality_outcome_scale(env),
+        nan=0.0,
+        posinf=0.0,
+        neginf=0.0,
+    )
 
 def robot_px_l2(env: BaseEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]

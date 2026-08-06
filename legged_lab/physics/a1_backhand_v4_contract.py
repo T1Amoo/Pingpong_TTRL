@@ -85,10 +85,22 @@ LATE_BACKTRACK_PENALTY_WEIGHT = -1.0
 # and stop paying a large positive score for out-of-bounds predictions.
 LANDING_TARGET_X = 0.70
 LANDING_TARGET_Y = 0.0
-LANDING_TARGET_RADIUS_M = 0.50
-LANDING_OUTSIDE_FLOOR = -1.0
-LANDING_REWARD_WEIGHT = 100.0
+# A 50 cm error is still a safe, stable table return: treat it as half reward,
+# not the zero contour. With dt=.02, weight 200 contributes +4 at center and
+# +2 at 50 cm, while physical table success remains the larger +9 outcome.
+LANDING_TARGET_HALF_REWARD_RADIUS_M = 0.50
+LANDING_REWARD_WEIGHT = 200.0
+# Penalize only predicted misses outside the full opponent-table rectangle.
+# The score reaches half strength 15 cm outside and saturates smoothly.
+LANDING_OUTSIDE_HALF_PENALTY_DISTANCE_M = 0.15
+LANDING_OUTSIDE_PENALTY_WEIGHT = -100.0
 PASS_NET_HEIGHT_STD_M = 0.20
+PASS_NET_MIN_CENTER_Z = NET_CENTER_Z_MIN
+PASS_NET_CLEARANCE_RAMP_M = 0.030
+# The pass-net and landing terms are both post-impact predictions. Make the
+# independently observed first opponent-table entry larger than their combined
+# best case (180 + 200) so proxy shaping cannot dominate a real return.
+TABLE_SUCCESS_REWARD_WEIGHT = 450.0
 
 # The real v2 paddle swept laterally at about -0.83 m/s at contact while the
 # same policy in MuJoCo was about -0.38 m/s.  Penalize either lateral direction

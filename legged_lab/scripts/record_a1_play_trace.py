@@ -420,6 +420,18 @@ def main() -> None:
             ball_contact = _env0(getattr(env, "ball_contact", None), env.device)
             ball_contact_rew = _env0(getattr(env, "ball_contact_rew", None), env.device)
             ball_contact_raw = _env0(getattr(env, "ball_contact_raw_rew", None), env.device)
+            table_success_event = _env0(
+                env.get_opponent_table_success_event()
+                if hasattr(env, "get_opponent_table_success_event")
+                else None,
+                env.device,
+                dtype=torch.bool,
+            )
+            geometric_table_band = _env0(
+                getattr(env, "has_touch_opponent_table_just_now", None),
+                env.device,
+                dtype=torch.bool,
+            )
             reset_ids = getattr(env, "ball_reset_ids", torch.empty(0, dtype=torch.long, device=env.device))
 
             row = {
@@ -440,6 +452,8 @@ def main() -> None:
                 "ball_contact": float(_cpu_np(ball_contact)),
                 "ball_contact_rew": float(_cpu_np(ball_contact_rew)),
                 "ball_contact_raw_rew": float(_cpu_np(ball_contact_raw)),
+                "table_success_event": float(bool(table_success_event)),
+                "geometric_table_band": float(bool(geometric_table_band)),
             }
             row.update(run_meta)
             row.update(replay_meta)

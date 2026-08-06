@@ -291,11 +291,10 @@ def play():
                 try:
                     # Update per-env success/hit flags during ongoing serve
                     if (
-                        hasattr(env, "has_touch_opponent_table_just_now")
-                        and hasattr(env, "has_touch_paddle")
+                        hasattr(env, "get_opponent_table_success_event")
                         and serve_success_flag is not None
                     ):
-                        event_mask = (env.has_touch_opponent_table_just_now & env.has_touch_paddle)
+                        event_mask = env.get_opponent_table_success_event()
                         serve_success_flag |= event_mask.to(serve_success_flag.device)
                     if (
                         hasattr(env, "ball_contact_rew")
@@ -322,11 +321,14 @@ def play():
 
                     # Update per-env SUCCESS label (keep pos set at hit)
                     if (
-                        hasattr(env, "has_touch_opponent_table_just_now")
-                        and hasattr(env, "has_touch_paddle")
+                        hasattr(env, "get_opponent_table_success_event")
                         and current_label is not None
                     ):
-                        succ_now = (env.has_touch_opponent_table_just_now & env.has_touch_paddle) & (current_label >= 1) & (current_label < 2)
+                        succ_now = (
+                            env.get_opponent_table_success_event()
+                            & (current_label >= 1)
+                            & (current_label < 2)
+                        )
                         if succ_now.any():
                             ids_succ = torch.nonzero(succ_now, as_tuple=False).squeeze(-1)
                             current_label[ids_succ] = 2  # success

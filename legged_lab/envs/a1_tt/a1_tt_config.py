@@ -470,6 +470,15 @@ class A1TableTennisBackhandV4RewardCfg(A1TableTennisBackhandRewardCfg):
             "ramp_mps": backhand_v4.CONTACT_LATERAL_SPEED_RAMP_MPS,
         },
     )
+    penalty_predicted_landing_outside_table = RewTerm(
+        func=mdp.penalty_a1_predicted_landing_outside_table,
+        weight=0.0,
+        params={
+            "half_penalty_distance_m": (
+                backhand_v4.LANDING_OUTSIDE_HALF_PENALTY_DISTANCE_M
+            ),
+        },
+    )
 
 
 @configclass
@@ -1332,6 +1341,7 @@ class A1TableTennisBackhandV4EnvCfg(A1TableTennisBackhandV3EnvCfg):
         )
         self.ball.post_impact_timeout_s = backhand_v4.POST_IMPACT_TIMEOUT_S
         self.ball.landing_drag_accel_k = backhand_v4.DRAG_ACCEL_K
+        self.ball.table_success_bounce_event_enable = True
 
         # Spin is sampled from a compact correlated prior fitted to filtered
         # real serves, then injected only after the own-table bounce. Magnus
@@ -1346,16 +1356,30 @@ class A1TableTennisBackhandV4EnvCfg(A1TableTennisBackhandV3EnvCfg):
 
         # v2 real returns had median outgoing vy=-1.96 m/s and were mostly
         # sideways/long, yet the old 3 m landing threshold still paid strongly.
-        self.reward.reward_future_landing_dis.func = mdp.reward_a1_safe_landing_target
+        self.reward.reward_future_landing_dis.func = mdp.reward_a1_landing_target_quality
         self.reward.reward_future_landing_dis.params = {
             "target_x": backhand_v4.LANDING_TARGET_X,
             "target_y": backhand_v4.LANDING_TARGET_Y,
-            "radius_m": backhand_v4.LANDING_TARGET_RADIUS_M,
-            "outside_floor": backhand_v4.LANDING_OUTSIDE_FLOOR,
+            "half_reward_radius_m": (
+                backhand_v4.LANDING_TARGET_HALF_REWARD_RADIUS_M
+            ),
         }
         self.reward.reward_future_landing_dis.weight = backhand_v4.LANDING_REWARD_WEIGHT
-        self.reward.reward_future_pass_net.params["std_h"] = (
-            backhand_v4.PASS_NET_HEIGHT_STD_M
+        self.reward.penalty_predicted_landing_outside_table.weight = (
+            backhand_v4.LANDING_OUTSIDE_PENALTY_WEIGHT
+        )
+        self.reward.reward_future_pass_net.func = mdp.reward_a1_future_pass_net
+        self.reward.reward_future_pass_net.params = {
+            "std_h": backhand_v4.PASS_NET_HEIGHT_STD_M,
+            "z_target": 0.76 + 0.35,
+            "net_x": 0.0,
+            "min_center_z": backhand_v4.PASS_NET_MIN_CENTER_Z,
+            "clearance_ramp_m": backhand_v4.PASS_NET_CLEARANCE_RAMP_M,
+            "horizontal_drag_accel_k": backhand_v4.DRAG_ACCEL_K,
+        }
+        self.reward.reward_table_success.func = mdp.reward_a1_table_success_event
+        self.reward.reward_table_success.weight = (
+            backhand_v4.TABLE_SUCCESS_REWARD_WEIGHT
         )
 
 
