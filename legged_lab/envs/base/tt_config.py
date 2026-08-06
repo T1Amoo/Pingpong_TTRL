@@ -206,6 +206,25 @@ class BallCfg:
     serve_table_restitution: float = 0.95
     serve_table_dynamic_friction: float = 0.10
     serve_rejection_max_attempts: int = 16
+    # Optional spin prior. Historical tasks leave this OFF. A1-v4 samples a
+    # correlated real-serve spin vector at reset but injects it only after the
+    # own-table bounce, keeping the established no-spin serve preflight and
+    # hit-plane target valid while exposing paddle contact to realistic spin.
+    post_bounce_spin_enable: bool = False
+    post_bounce_spin_easy_scale: float = 0.0
+    post_bounce_spin_hard_scale: float = 0.0
+    post_bounce_spin_magnitude_jitter: float = 0.0
+    # Delay sparse landing/pass-net outcomes until the physical outgoing ball
+    # state is observable. This is opt-in because historical tasks emitted the
+    # outcome reward on the geometric first-contact step.
+    post_impact_outcome_enable: bool = False
+    post_impact_min_outgoing_vx_mps: float = 0.05
+    post_impact_timeout_s: float = 0.06
+    # Landing-projection drag coefficient k [1/m]. Preserve the historical
+    # 2.7 g/Cd=.47 value for every existing TT task; a new task must opt in to
+    # the actual AeroForceField/rigid-ball value explicitly (A1-v4 does).
+    # Setting None remains available for an explicit runtime-derived value.
+    landing_drag_accel_k: float | None = 0.13398310891143134
     # Use the accepted serve probe's fixed hit-plane intersection as the
     # privileged target/reward geometry.  Predictor supervision may further
     # replace this model target with the interpolated physical crossing.

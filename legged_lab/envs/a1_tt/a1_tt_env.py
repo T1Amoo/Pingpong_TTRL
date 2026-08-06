@@ -1,11 +1,93 @@
 """A1 table-tennis env: reuse TTEnv, override only the geometric reset thresholds."""
 import torch
 from legged_lab.envs.base.tt_env import TTEnv
+from legged_lab.physics.a1_backhand_spin_prior import sample_serve_spin_prior
 
 
 class A1TTEnv(TTEnv):
     ARM_TABLE_STUCK_TERMINATE_STEPS = 10
     FIXED_LIFT_JOINT_NAMES = ("sj",)
+
+    def _sample_post_bounce_spin_target(
+        self,
+        count: int,
+        *,
+        curriculum: float,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        cfg = self.cfg.ball
+        return sample_serve_spin_prior(
+            count,
+            device=self.device,
+            dtype=dtype,
+            curriculum=curriculum,
+            easy_scale=float(getattr(cfg, "post_bounce_spin_easy_scale", 0.0)),
+            hard_scale=float(getattr(cfg, "post_bounce_spin_hard_scale", 0.0)),
+            magnitude_jitter=float(
+                getattr(cfg, "post_bounce_spin_magnitude_jitter", 0.0)
+            ),
+        )
+
+    def _sample_bounce_candidate_components(
+        self,
+        launch_pos: torch.Tensor,
+        *,
+        bounce_x_range: tuple[float, float],
+        bounce_vz_range: tuple[float, float],
+        y_center: float,
+        y_half: float,
+        curriculum: float,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Optionally add the v4 real-serve slow-tail component.
+
+        Historical A1 tasks do not define the opt-in attributes and therefore
+        execute the unchanged single-uniform sampler in ``TTEnv``.
+        """
+
+        x_b, y_b, v_z = super()._sample_bounce_candidate_components(
+            launch_pos,
+            bounce_x_range=bounce_x_range,
+            bounce_vz_range=bounce_vz_range,
+            y_center=y_center,
+            y_half=y_half,
+            curriculum=curriculum,
+        )
+        cfg = self.cfg.ball
+        weight_easy = float(getattr(cfg, "serve_tail_candidate_weight", 0.0) or 0.0)
+        weight_hard = float(
+            getattr(cfg, "serve_tail_candidate_weight_hard", weight_easy) or 0.0
+        )
+        tail_weight = weight_easy + float(curriculum) * (weight_hard - weight_easy)
+        tail_weight = min(max(tail_weight, 0.0), 1.0)
+        if tail_weight <= 0.0:
+            return x_b, y_b, v_z
+
+        def _lerp_pair(easy, hard):
+            return (
+                easy[0] + float(curriculum) * (hard[0] - easy[0]),
+                easy[1] + float(curriculum) * (hard[1] - easy[1]),
+            )
+
+        tail_x_easy = getattr(cfg, "serve_tail_bounce_x_range", bounce_x_range)
+        tail_x_hard = getattr(cfg, "serve_tail_bounce_x_range_hard", tail_x_easy)
+        tail_vz_easy = getattr(cfg, "serve_tail_bounce_vz_range", bounce_vz_range)
+        tail_vz_hard = getattr(cfg, "serve_tail_bounce_vz_range_hard", tail_vz_easy)
+        tail_x_range = _lerp_pair(tail_x_easy, tail_x_hard)
+        tail_vz_range = _lerp_pair(tail_vz_easy, tail_vz_hard)
+
+        tail_mask = torch.rand(
+            len(launch_pos), device=self.device, dtype=launch_pos.dtype
+        ) < tail_weight
+        tail_count = int(tail_mask.sum().item())
+        if tail_count == 0:
+            return x_b, y_b, v_z
+        x_b[tail_mask] = torch.empty(
+            tail_count, 1, device=self.device, dtype=launch_pos.dtype
+        ).uniform_(*tail_x_range)
+        v_z[tail_mask] = torch.empty(
+            tail_count, 1, device=self.device, dtype=launch_pos.dtype
+        ).uniform_(*tail_vz_range)
+        return x_b, y_b, v_z
 
     def reset(self, env_ids):
         super().reset(env_ids)

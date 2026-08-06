@@ -21,6 +21,15 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 from typing import Optional
 
+from legged_lab.physics.landing_target import landing_target_score
+from legged_lab.physics.contact_events import horizontal_alignment_squared
+from legged_lab.physics.swing_timing import (
+    early_hold_gate,
+    excess_speed_penalty,
+    late_swing_gate,
+    x_tracking_gain,
+)
+
 if TYPE_CHECKING:
     from legged_lab.envs.base.base_env import BaseEnv
     from legged_lab.envs.base.legged_env import LeggedEnv
@@ -923,6 +932,30 @@ def reward_hit_direction(env: TTEnv) -> torch.Tensor:
     return torch.nan_to_num(align * align * first_contact, nan=0.0, posinf=0.0, neginf=0.0)
 
 
+def reward_a1_latched_approach_velocity(env: TTEnv) -> torch.Tensor:
+    """V4 first-contact approach reward from the latched paddle-center velocity."""
+
+    event = env.paddle_contact_event.float()
+    forward = torch.clamp(env.paddle_contact_point_vel_latch[:, 0], min=0.0)
+    return torch.nan_to_num(forward * event, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def reward_a1_latched_horizontal_hit_direction(env: TTEnv) -> torch.Tensor:
+    """V4 square-on reward using the pre-impact horizontal velocity.
+
+    Only the table-plane projection is compared.  Including vertical velocity
+    would encourage the blade to mirror an upward incoming component downward,
+    fighting the pass-net and landing objectives.
+    """
+
+    event = env.paddle_contact_event.float()
+    align = horizontal_alignment_squared(
+        env.paddle_normal_latch,
+        env.paddle_incoming_ball_vel_latch,
+    )
+    return torch.nan_to_num(align * event, nan=0.0, posinf=0.0, neginf=0.0)
+
+
 def reward_idle_stand(env: TTEnv) -> torch.Tensor:
     """Dense POSITIVE per-step bonus for ACTIVELY standing when there is no playable ball.
 
@@ -1089,6 +1122,105 @@ def reward_future_ee_target(
         reward = reward * time_gain
     return reward
 
+
+def reward_a1_timed_future_ee_target(
+    env: TTEnv,
+    std_ee: float = 0.4,
+    threshold: float = 0.01,
+    z_weight: float = 1.0,
+    x_time_gate_ref: float = 0.45,
+    x_time_gate_floor: float = 0.0,
+) -> torch.Tensor:
+    """A1-only intercept reward with delayed x tracking and always-on y/z tracking."""
+
+    diff = env.ball_future_pose - env.paddle_pos
+    diff = diff.clone()
+    x_gain = x_tracking_gain(
+        env.ball_future_t.squeeze(-1),
+        full_tracking_window_s=x_time_gate_ref,
+        floor=x_time_gate_floor,
+    )
+    diff[:, 0] = diff[:, 0] * x_gain
+    diff[:, 2] = diff[:, 2] * z_weight
+    distance = torch.linalg.norm(diff, dim=1)
+    reward = torch.exp(-torch.clamp(distance, min=threshold) / (std_ee * std_ee + 1.0e-12))
+    reward = torch.where(env.mask_invalid, torch.zeros_like(reward), reward)
+    return torch.nan_to_num(reward, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def penalty_early_paddle_forward(
+    env: TTEnv,
+    release_s: float = 0.45,
+    ramp_s: float = 0.15,
+    min_retraction_m: float = 0.12,
+    max_excess_m: float = 0.18,
+) -> torch.Tensor:
+    """Keep the blade behind the hit plane until the one-way swing window.
+
+    This removes the learned ``forward -> backtrack -> forward`` exploit while
+    leaving y/z pre-positioning available for wide and high balls.
+    """
+
+    t_hit = env.ball_future_t.squeeze(-1)
+    early = early_hold_gate(t_hit, release_s=release_s, ramp_s=ramp_s)
+    x_limit = float(env.cfg.robot.hit_plane_x) - float(min_retraction_m)
+    forward_excess = torch.clamp(env.paddle_pos[:, 0] - x_limit, min=0.0)
+    scaled = torch.clamp(forward_excess / max(float(max_excess_m), 1.0e-6), max=1.0)
+    penalty = torch.square(scaled) * early
+    return torch.where(env.mask_invalid, torch.zeros_like(penalty), penalty)
+
+
+def penalty_late_paddle_backtrack(
+    env: TTEnv,
+    window_s: float = 0.45,
+    speed_scale_mps: float = 1.0,
+) -> torch.Tensor:
+    """Penalize negative-x blade velocity after the forward swing window opens."""
+
+    t_hit = env.ball_future_t.squeeze(-1)
+    late = late_swing_gate(t_hit, window_s=window_s)
+    backward_speed = torch.clamp(-env.paddle_touch_point_vel[:, 0], min=0.0)
+    scaled = torch.clamp(backward_speed / max(float(speed_scale_mps), 1.0e-6), max=1.0)
+    penalty = torch.square(scaled) * late
+    return torch.where(env.mask_invalid, torch.zeros_like(penalty), penalty)
+
+
+def penalty_contact_lateral_paddle_speed(
+    env: TTEnv,
+    deadband_mps: float = 0.30,
+    ramp_mps: float = 0.70,
+) -> torch.Tensor:
+    """Penalize sideways blade sweep only at first ball contact.
+
+    The term is deliberately independent of the simulated Coulomb coefficient:
+    low-friction simulation otherwise hides the real rubber's strong transfer
+    of lateral blade velocity into outgoing ball velocity.
+    """
+
+    first_contact = env.ball_landing_dis_rew.float()
+    penalty = excess_speed_penalty(
+        env.paddle_touch_point_vel[:, 1],
+        deadband_mps=deadband_mps,
+        ramp_mps=ramp_mps,
+    )
+    return penalty * first_contact
+
+
+def penalty_a1_latched_contact_lateral_paddle_speed(
+    env: TTEnv,
+    deadband_mps: float = 0.30,
+    ramp_mps: float = 0.70,
+) -> torch.Tensor:
+    """V4 lateral contact penalty using the actual offset paddle-center speed."""
+
+    penalty = excess_speed_penalty(
+        env.paddle_contact_point_vel_latch[:, 1],
+        deadband_mps=deadband_mps,
+        ramp_mps=ramp_mps,
+    )
+    return penalty * env.paddle_contact_event.float()
+
+
 def paddel_ball_distance(
     env: TTEnv,
     std_ee: float = 0.3,
@@ -1165,6 +1297,31 @@ def reward_future_landing_dis(
     if isinstance(scale, float):
         return reward * scale
     return torch.where(reward > 0.0, reward * scale, reward)
+
+
+def reward_a1_safe_landing_target(
+    env: TTEnv,
+    target_x: float = 0.70,
+    target_y: float = 0.0,
+    radius_m: float = 0.50,
+    outside_floor: float = -1.0,
+) -> torch.Tensor:
+    """A1-only bounded landing score: positive inside the safe disk, negative outside."""
+
+    reward = landing_target_score(
+        env.predict_x_land,
+        env.predict_y_land,
+        target_x=target_x,
+        target_y=target_y,
+        radius_m=radius_m,
+        outside_floor=outside_floor,
+    )
+    reward = torch.where(env.ball_landing_dis_rew, reward, torch.zeros_like(reward))
+    # V4 applies contact quality symmetrically. Scaling only positive outcomes
+    # made a low-quality center return worth +25 while a miss stayed -100,
+    # creating an avoid-contact incentive early in training.
+    return reward * _contact_quality_outcome_scale(env)
+
 
 def reward_future_pass_net(
     env: TTEnv,

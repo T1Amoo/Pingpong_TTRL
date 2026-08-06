@@ -30,6 +30,7 @@ from rsl_rl.env import VecEnv
 
 from legged_lab.envs.base.tt_env_config import TTEnvCfg
 from legged_lab.envs.base.tt_config import BaseSceneCfg
+from legged_lab.physics.contact_events import post_impact_event_mask
 from legged_lab.physics.serve_flight import probe_serve_flight
 from legged_lab.utils.env_utils.scene import SceneCfg
 
@@ -424,6 +425,21 @@ class TTEnv(VecEnv):
         self.has_touch_paddle = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.has_touch_paddle_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.ball_landing_dis_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        # Opt-in v4 contact semantics. Historical tasks keep their original
+        # geometric-contact event; these latches provide a physically ordered
+        # first-contact -> outgoing-state reward path without changing it.
+        self.paddle_contact_event = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        self.paddle_incoming_ball_vel_latch = torch.zeros(self.num_envs, 3, device=self.device)
+        self.paddle_contact_point_vel_latch = torch.zeros(self.num_envs, 3, device=self.device)
+        self.paddle_normal_latch = torch.zeros(self.num_envs, 3, device=self.device)
+        self.post_impact_reward_event = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        self.post_impact_latched = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        self.post_impact_pending_age_s = torch.zeros(self.num_envs, device=self.device)
+        self.post_impact_ball_vel_latch = torch.zeros(self.num_envs, 3, device=self.device)
+        self._serve_post_bounce_spin_target = torch.zeros(self.num_envs, 3, device=self.device)
+        self._serve_post_bounce_spin_injected = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.bool
+        )
         self.ball_contact_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
         self.ball_contact_raw_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
         self.paddle_sweet_contact_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
@@ -503,14 +519,20 @@ class TTEnv(VecEnv):
         # --- Quadratic-drag model constant for ball dynamics (scalar k) ---
         # k = 0.5 * rho * Cd * A / m
         try:
-            rho = 1.225  # kg/m^3
-            cd = 0.47    # sphere drag coefficient
-            radius = 0.02  # m
-            mass = 0.0027  # kg
-            area = float(np.pi) * (radius ** 2)
-            self.ball_drag_k = float(0.5 * rho * cd * area / max(1e-6, mass))
+            configured_k = getattr(self.cfg.ball, "landing_drag_accel_k", None)
+            if configured_k is not None:
+                self.ball_drag_k = float(configured_k)
+            else:
+                # Reuse the force-field and rigid-ball parameters. The old
+                # 2.7 g/Cd=.47 duplicate overestimated drag by about 35%.
+                rho = float(self.aero.env_props["air_density"])
+                cd = float(self.aero._fixed_params["drag_coefficients"])
+                radius = float(self.aero.r)
+                mass = float(self.ball.root_physx_view.get_masses().reshape(-1)[0].item())
+                area = float(np.pi) * (radius ** 2)
+                self.ball_drag_k = float(0.5 * rho * cd * area / max(1e-6, mass))
         except Exception:
-            self.ball_drag_k = 0.13
+            self.ball_drag_k = 0.09910893224020438
 
     def update_ball_future_visual(self):
         if self.headless:
@@ -982,6 +1004,41 @@ class TTEnv(VecEnv):
             return 1.0 if cs >= phase1 else 0.0
         return min(1.0, max(0.0, float(cs - phase1) / float(ramp)))
 
+    def _sample_bounce_candidate_components(
+        self,
+        launch_pos: torch.Tensor,
+        *,
+        bounce_x_range: tuple[float, float],
+        bounce_vz_range: tuple[float, float],
+        y_center: float,
+        y_half: float,
+        curriculum: float,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Sample bounce target components; subclasses may opt into richer distributions."""
+
+        count = len(launch_pos)
+        x_b = torch.empty(count, 1, device=self.device, dtype=launch_pos.dtype).uniform_(
+            *bounce_x_range
+        )
+        y_b = y_center + torch.empty(
+            count, 1, device=self.device, dtype=launch_pos.dtype
+        ).uniform_(-y_half, y_half)
+        v_z = torch.empty(count, 1, device=self.device, dtype=launch_pos.dtype).uniform_(
+            *bounce_vz_range
+        )
+        return x_b, y_b, v_z
+
+    def _sample_post_bounce_spin_target(
+        self,
+        count: int,
+        *,
+        curriculum: float,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        """Subclass hook for an opt-in correlated post-bounce spin prior."""
+
+        return torch.zeros(count, 3, device=self.device, dtype=dtype)
+
     def _sample_bounce_serve(self, launch_pos: torch.Tensor, c: float):
         """Sample bounce-parametrized launches, optionally with drag-aware rejection."""
 
@@ -1024,9 +1081,14 @@ class TTEnv(VecEnv):
                 y_b = torch.full((count, 1), 0.041, device=self.device, dtype=lp.dtype)
                 v_z = torch.full((count, 1), 1.30, device=self.device, dtype=lp.dtype)
             else:
-                x_b = torch.empty(count, 1, device=self.device, dtype=lp.dtype).uniform_(xb_lo, xb_hi)
-                y_b = y_center + torch.empty(count, 1, device=self.device, dtype=lp.dtype).uniform_(-y_half, y_half)
-                v_z = torch.empty(count, 1, device=self.device, dtype=lp.dtype).uniform_(vz_lo, vz_hi)
+                x_b, y_b, v_z = self._sample_bounce_candidate_components(
+                    lp,
+                    bounce_x_range=(xb_lo, xb_hi),
+                    bounce_vz_range=(vz_lo, vz_hi),
+                    y_center=y_center,
+                    y_half=y_half,
+                    curriculum=c,
+                )
             t_b = (
                 v_z
                 + torch.sqrt(torch.clamp(v_z.square() + 2.0 * g * (lp[:, 2:3] - z_bounce), min=1.0e-8))
@@ -1170,6 +1232,15 @@ class TTEnv(VecEnv):
         self.has_touch_paddle[env_ids] = False
         self.ball_landing_dis_rew[env_ids] = False
         self.has_touch_paddle_rew[env_ids] = False
+        self.paddle_contact_event[env_ids] = False
+        self.paddle_incoming_ball_vel_latch[env_ids] = 0.0
+        self.paddle_contact_point_vel_latch[env_ids] = 0.0
+        self.paddle_normal_latch[env_ids] = 0.0
+        self.post_impact_reward_event[env_ids] = False
+        self.post_impact_latched[env_ids] = False
+        self.post_impact_pending_age_s[env_ids] = 0.0
+        self.post_impact_ball_vel_latch[env_ids] = 0.0
+        self._serve_post_bounce_spin_injected[env_ids] = False
         self.ball_contact_rew[env_ids] = 0.0
         self.ball_contact_raw_rew[env_ids] = 0.0
         self.paddle_sweet_contact_rew[env_ids] = 0.0
@@ -1218,6 +1289,16 @@ class TTEnv(VecEnv):
                 c = float(self.serve_c)   # perf-gated: difficulty advanced in step() by success rate
             else:
                 c = 0.0 if not _cstep else min(1.0, max(0.0, float(self.sim_step_counter - _cstart) / float(_cstep)))
+            if getattr(self.cfg.ball, "post_bounce_spin_enable", False):
+                self._serve_post_bounce_spin_target[new_state_env_ids] = (
+                    self._sample_post_bounce_spin_target(
+                        n,
+                        curriculum=c,
+                        dtype=ball_state.dtype,
+                    )
+                )
+            else:
+                self._serve_post_bounce_spin_target[new_state_env_ids] = 0.0
             if getattr(self.cfg.ball, "serve_bounce_enable", False):
                 # RALLY serve: sample a TARGET BOUNCE POINT in the robot's own half and
                 # back-compute the launch velocity so the ball ALWAYS bounces in-court
@@ -1650,6 +1731,10 @@ class TTEnv(VecEnv):
 
     def step(self, actions: torch.Tensor):
 
+        # One-control-step reward events; substeps below OR new events into
+        # these buffers until RewardManager consumes them.
+        self.paddle_contact_event.zero_()
+        self.post_impact_reward_event.zero_()
         self._apply_effort_curriculum()
         delayed_actions = self.action_buffer.compute(actions)
 
@@ -2140,6 +2225,14 @@ class TTEnv(VecEnv):
         # 4) Compute your touch point:
         self.paddle_touch_point = paddle_pos + rotated_offset # paddle_position in the world frame.
         self.paddle_touch_point_vel = self.robot.data.body_lin_vel_w[:, paddle_index, :]
+        if getattr(self.cfg.ball, "post_impact_outcome_enable", False):
+            # True velocity of the offset paddle center. Keep historical tasks
+            # on their original body-linear path; only v4 pays the omega x r
+            # cost needed to prevent wrist rotation evading contact shaping.
+            paddle_ang_vel = self.robot.data.body_ang_vel_w[:, paddle_index, :]
+            self.paddle_contact_point_vel_w = self.paddle_touch_point_vel + torch.cross(
+                paddle_ang_vel, rotated_offset, dim=1
+            )
         # 5) Compute touch reward:
 
         distance = torch.norm(self.ball_global_pos - self.paddle_touch_point, dim=1) - 0.02 # corrected for ball radius
@@ -2154,6 +2247,46 @@ class TTEnv(VecEnv):
         ) / self.cfg.ball.contact_threshold
         sweet_score = self._compute_sweet_contact_score(paddle_quat, contact_score)
         ball_linvel_now = self.ball.data.root_lin_vel_w
+        if getattr(self.cfg.ball, "post_bounce_spin_enable", False):
+            # Detect the actual PhysX vertical-velocity reversal at the own
+            # table, then inject the correlated prior.  Doing this after (not
+            # before) table contact preserves the established no-spin serve
+            # preflight/true-plane target while making paddle contact spinful.
+            ball_local_now = self.ball_global_pos - self.scene.env_origins
+            spin_bounce = (
+                (self.ball_linvel_prev[:, 2] < -0.02)
+                & (ball_linvel_now[:, 2] > 0.02)
+                & (ball_local_now[:, 0] >= self.cfg.table.table_own_contact_x[0])
+                & (ball_local_now[:, 0] <= self.cfg.table.table_own_contact_x[1])
+                & (torch.abs(ball_local_now[:, 1]) <= 0.80)
+                & (ball_local_now[:, 2] >= 0.74)
+                & (ball_local_now[:, 2] <= 0.82)
+                & (~self._serve_post_bounce_spin_injected)
+            )
+            if spin_bounce.any():
+                spin_ids = torch.nonzero(spin_bounce, as_tuple=False).flatten()
+                root_velocity = self.ball.data.root_vel_w[spin_ids].clone()
+                root_velocity[:, 3:6] = self._serve_post_bounce_spin_target[spin_ids]
+                self.ball.write_root_velocity_to_sim(root_velocity, spin_ids)
+                self._serve_post_bounce_spin_injected[spin_ids] = True
+                if os.environ.get("TT_SPIN_PROBE"):
+                    if not hasattr(self, "_spin_probe_norm"):
+                        self._spin_probe_norm = []
+                    self._spin_probe_norm.append(
+                        torch.linalg.norm(root_velocity[:, 3:6], dim=1).detach().cpu()
+                    )
+                    probe_batch = max(1, int(os.environ.get("TT_SPIN_PROBE_BATCH", "200")))
+                    total = sum(value.numel() for value in self._spin_probe_norm)
+                    if total >= probe_batch:
+                        values = torch.cat(self._spin_probe_norm)
+                        q = torch.quantile(values, torch.tensor([0.05, 0.50, 0.95]))
+                        print(
+                            "[TT_SPIN_PROBE] "
+                            f"n={len(values)} norm_rad_s_p5/50/95="
+                            f"{q[0]:.2f}/{q[1]:.2f}/{q[2]:.2f}",
+                            flush=True,
+                        )
+                        self._spin_probe_norm = []
         ball_vx_before_step = self.ball_linvel_prev[:, 0]
         self.ball_contact = torch.clamp(contact_score, min=0.0, max=1.0) # determine if in contact region
         self.ball_contact_raw_rew = torch.maximum(self.ball_contact_raw_rew, self.ball_contact)
@@ -2208,8 +2341,72 @@ class TTEnv(VecEnv):
             self._record_hit_plane_contact(new_hits, neutral_plane_quality)
             self._record_sweet_contact(new_hits, sweet_score, neutral_plane_quality)
             self._debug_sweet_spot(new_hits, paddle_quat, contact_score)
+        if getattr(self.cfg.ball, "post_impact_outcome_enable", False):
+            first_hits = new_hits & (~self.has_touch_paddle)
+            if first_hits.any():
+                self.paddle_contact_event |= first_hits
+                self.paddle_incoming_ball_vel_latch[first_hits] = self.ball_linvel_prev[first_hits]
+                self.paddle_contact_point_vel_latch[first_hits] = self.paddle_contact_point_vel_w[
+                    first_hits
+                ]
+                face_axis = torch.tensor(
+                    (0.0, 1.0, 0.0), device=self.device, dtype=paddle_quat.dtype
+                ).unsqueeze(0).expand(self.num_envs, 3)
+                paddle_normal = math_utils.quat_apply(paddle_quat, face_axis)
+                self.paddle_normal_latch[first_hits] = paddle_normal[first_hits]
+                self.post_impact_pending_age_s[first_hits] = 0.0
+                self.post_impact_latched[first_hits] = False
+
         still_false = ~self.has_touch_paddle  # Tensor[N] bool
         self.has_touch_paddle[still_false] = new_hits[still_false] # set has_touch_paddle True for env with ball_contact True
+        if getattr(self.cfg.ball, "post_impact_outcome_enable", False):
+            pending = self.has_touch_paddle & (~self.post_impact_latched)
+            self.post_impact_pending_age_s[pending] += self.physics_dt
+            timed_out = self.post_impact_pending_age_s >= float(
+                self.cfg.ball.post_impact_timeout_s
+            )
+            emit = post_impact_event_mask(
+                pending,
+                self.post_impact_pending_age_s,
+                ball_linvel_now[:, 0],
+                min_outgoing_vx_mps=self.cfg.ball.post_impact_min_outgoing_vx_mps,
+                timeout_s=self.cfg.ball.post_impact_timeout_s,
+            )
+            if emit.any():
+                self.post_impact_reward_event |= emit
+                self.post_impact_ball_vel_latch[emit] = ball_linvel_now[emit]
+                self.post_impact_latched[emit] = True
+                if os.environ.get("TT_POST_IMPACT_PROBE"):
+                    if not hasattr(self, "_post_impact_probe"):
+                        self._post_impact_probe = []
+                    self._post_impact_probe.append(
+                        torch.stack(
+                            (
+                                self.post_impact_pending_age_s[emit],
+                                ball_linvel_now[emit, 0],
+                                timed_out[emit].float(),
+                            ),
+                            dim=1,
+                        ).detach().cpu()
+                    )
+                    probe_batch = max(
+                        1, int(os.environ.get("TT_POST_IMPACT_PROBE_BATCH", "200"))
+                    )
+                    total = sum(value.shape[0] for value in self._post_impact_probe)
+                    if total >= probe_batch:
+                        values = torch.cat(self._post_impact_probe)
+                        delay_q = torch.quantile(
+                            values[:, 0], torch.tensor([0.05, 0.50, 0.95])
+                        )
+                        print(
+                            "[TT_POST_IMPACT_PROBE] "
+                            f"n={len(values)} delay_s_p5/50/95="
+                            f"{delay_q[0]:.3f}/{delay_q[1]:.3f}/{delay_q[2]:.3f} "
+                            f"negative_vx_fraction={(values[:, 1] < 0.0).float().mean():.4f} "
+                            f"timeout_fraction={values[:, 2].mean():.4f}",
+                            flush=True,
+                        )
+                        self._post_impact_probe = []
         self.ball_linvel_prev.copy_(ball_linvel_now)
 
     def _compute_hit_plane_contact_score(self, ball_x_local: torch.Tensor) -> torch.Tensor:
@@ -2303,7 +2500,10 @@ class TTEnv(VecEnv):
         self.robot_linvel= self.robot.data.root_lin_vel_w
         self.ball_contact_rew = self.ball_contact_rew * (self.has_touch_paddle * ~self.has_touch_paddle_rew) # Mask if previously already gained reward
         self.paddle_sweet_contact_rew = self.paddle_sweet_contact_rew * (self.has_touch_paddle * ~self.has_touch_paddle_rew)
-        self.ball_landing_dis_rew = self.has_touch_paddle & ~self.has_touch_paddle_rew # Set True if has_touch_paddle_rew is True, compute landing dis reward once, set False if previously True
+        if getattr(self.cfg.ball, "post_impact_outcome_enable", False):
+            self.ball_landing_dis_rew = self.post_impact_reward_event.clone()
+        else:
+            self.ball_landing_dis_rew = self.has_touch_paddle & ~self.has_touch_paddle_rew # Set True if has_touch_paddle_rew is True, compute landing dis reward once, set False if previously True
 
         # --- Compute Contact with table ---
         bx, by, bz = (self.ball_pos[:, 0], self.ball_pos[:, 1], self.ball_pos[:, 2])

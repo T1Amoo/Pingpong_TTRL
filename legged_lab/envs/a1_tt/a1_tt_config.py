@@ -12,6 +12,7 @@ from isaaclab.utils import configclass
 import legged_lab.mdp as mdp
 from legged_lab.physics import a1_backhand_v2_contract as backhand_v2
 from legged_lab.physics import a1_backhand_v3_contract as backhand_v3
+from legged_lab.physics import a1_backhand_v4_contract as backhand_v4
 from legged_lab.assets.a1.a1 import (
     A1_RIGHT_ARM_JOINTS,
     A1_INIT_Z,
@@ -440,6 +441,38 @@ class A1TableTennisBackhandRewardCfg(A1TableTennisRewardCfg):
 
 
 @configclass
+class A1TableTennisBackhandV4RewardCfg(A1TableTennisBackhandRewardCfg):
+    """A1-only v4 reward terms; historical backhand configs stay bit-for-bit unchanged."""
+
+    penalty_early_paddle_forward = RewTerm(
+        func=mdp.penalty_early_paddle_forward,
+        weight=0.0,
+        params={
+            "release_s": backhand_v4.EARLY_HOLD_RELEASE_S,
+            "ramp_s": backhand_v4.EARLY_HOLD_RAMP_S,
+            "min_retraction_m": backhand_v4.EARLY_MIN_RETRACTION_M,
+            "max_excess_m": backhand_v4.EARLY_MAX_EXCESS_M,
+        },
+    )
+    penalty_late_paddle_backtrack = RewTerm(
+        func=mdp.penalty_late_paddle_backtrack,
+        weight=0.0,
+        params={
+            "window_s": backhand_v4.LATE_BACKTRACK_WINDOW_S,
+            "speed_scale_mps": backhand_v4.LATE_BACKTRACK_SPEED_SCALE_MPS,
+        },
+    )
+    penalty_contact_lateral_paddle_speed = RewTerm(
+        func=mdp.penalty_contact_lateral_paddle_speed,
+        weight=0.0,
+        params={
+            "deadband_mps": backhand_v4.CONTACT_LATERAL_SPEED_DEADBAND_MPS,
+            "ramp_mps": backhand_v4.CONTACT_LATERAL_SPEED_RAMP_MPS,
+        },
+    )
+
+
+@configclass
 class A1TableTennisDamiaoRewardCfg(A1TableTennisRewardCfg):
     motor_speed_margin = RewTerm(
         func=mdp.motor_speed_margin_l2,
@@ -485,6 +518,10 @@ class A1TableTennisEnvCfg(TTEnvCfg):
         self.scene.robot = A1_TT_CFG
         self.scene.table = TABLE_CFG
         self.scene.ball = BALL_CFG
+        # Preserve v1-v3's historical landing projection for reproducibility.
+        # V4 overrides this old 2.7 g/Cd=.47 value with the actual 3.4 g ball
+        # and Cd=.4378 force-field coefficient.
+        self.ball.landing_drag_accel_k = 0.13398310891143134
         self.scene.terrain_type = "plane"
         self.scene.terrain_generator = None
         self.scene.terrain_static_friction = 4.0
@@ -1225,6 +1262,123 @@ class A1TableTennisBackhandV3EvalEnvCfg(A1TableTennisBackhandV3EnvCfg):
 
 
 @configclass
+class A1TableTennisBackhandV4EnvCfg(A1TableTennisBackhandV3EnvCfg):
+    """Backhand v4: preserve v3 physics and enforce a one-way timed swing."""
+
+    reward = A1TableTennisBackhandV4RewardCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # Empirical real-serve mixture.  The easy phase sits near the measured
+        # median; the hard proposal retains a small slow tail without making
+        # high/slow balls the dominant visual mode.
+        self.ball.serve_bounce_x_range = backhand_v4.EASY_BOUNCE_X_RANGE
+        self.ball.serve_bounce_vz_range = backhand_v4.EASY_BOUNCE_VZ_RANGE
+        self.ball.serve_y_center = backhand_v4.EASY_Y_CENTER
+        self.ball.serve_y_start = backhand_v4.EASY_Y_HALF
+        self.ball.serve_bounce_x_range_hard = backhand_v4.HARD_BOUNCE_X_RANGE
+        self.ball.serve_bounce_vz_range_hard = backhand_v4.HARD_BOUNCE_VZ_RANGE
+        self.ball.serve_y_center_hard = backhand_v4.HARD_Y_CENTER
+        self.ball.serve_y_wide = backhand_v4.HARD_Y_HALF
+        self.ball.serve_tail_candidate_weight = 0.0
+        self.ball.serve_tail_candidate_weight_hard = (
+            backhand_v4.TAIL_CANDIDATE_WEIGHT_HARD
+        )
+        self.ball.serve_tail_bounce_x_range = backhand_v4.EASY_BOUNCE_X_RANGE
+        self.ball.serve_tail_bounce_vz_range = backhand_v4.EASY_BOUNCE_VZ_RANGE
+        self.ball.serve_tail_bounce_x_range_hard = (
+            backhand_v4.TAIL_BOUNCE_X_RANGE_HARD
+        )
+        self.ball.serve_tail_bounce_vz_range_hard = (
+            backhand_v4.TAIL_BOUNCE_VZ_RANGE_HARD
+        )
+
+        # v2/v3 applied the complete 3-D intercept-distance reward from the
+        # first valid camera observation.  With the stable true-plane target,
+        # v3 learned to reach forward immediately, backtrack, then swing again.
+        # Keep early y/z tracking, but open x tracking only in the final window.
+        self.reward.reward_future_dis_ee.func = mdp.reward_a1_timed_future_ee_target
+        self.reward.reward_future_dis_ee.params.update(
+            {
+                "x_time_gate_ref": backhand_v4.X_TRACKING_WINDOW_S,
+                "x_time_gate_floor": backhand_v4.X_TRACKING_FLOOR,
+            }
+        )
+        self.reward.penalty_early_paddle_forward.weight = (
+            backhand_v4.EARLY_FORWARD_PENALTY_WEIGHT
+        )
+        self.reward.penalty_late_paddle_backtrack.weight = (
+            backhand_v4.LATE_BACKTRACK_PENALTY_WEIGHT
+        )
+        self.reward.penalty_contact_lateral_paddle_speed.weight = (
+            backhand_v4.CONTACT_LATERAL_SPEED_PENALTY_WEIGHT
+        )
+        self.reward.penalty_contact_lateral_paddle_speed.func = (
+            mdp.penalty_a1_latched_contact_lateral_paddle_speed
+        )
+        self.reward.reward_approach_velocity.func = mdp.reward_a1_latched_approach_velocity
+        self.reward.reward_hit_direction.func = (
+            mdp.reward_a1_latched_horizontal_hit_direction
+        )
+        self.reward.reward_hit_direction.weight = backhand_v4.HIT_DIRECTION_REWARD_WEIGHT
+
+        # First contact rewards use latched pre-impact paddle/ball state;
+        # landing/pass-net wait for the physical outgoing velocity instead of
+        # consuming the geometric 7 cm proximity event.
+        self.ball.post_impact_outcome_enable = True
+        self.ball.post_impact_min_outgoing_vx_mps = (
+            backhand_v4.POST_IMPACT_MIN_OUTGOING_VX_MPS
+        )
+        self.ball.post_impact_timeout_s = backhand_v4.POST_IMPACT_TIMEOUT_S
+        self.ball.landing_drag_accel_k = backhand_v4.DRAG_ACCEL_K
+
+        # Spin is sampled from a compact correlated prior fitted to filtered
+        # real serves, then injected only after the own-table bounce. Magnus
+        # remains zero until serve preflight and target propagation are made
+        # spin-aware in a separately validated version.
+        self.ball.post_bounce_spin_enable = True
+        self.ball.post_bounce_spin_easy_scale = backhand_v4.POST_BOUNCE_SPIN_EASY_SCALE
+        self.ball.post_bounce_spin_hard_scale = backhand_v4.POST_BOUNCE_SPIN_HARD_SCALE
+        self.ball.post_bounce_spin_magnitude_jitter = (
+            backhand_v4.POST_BOUNCE_SPIN_MAGNITUDE_JITTER
+        )
+
+        # v2 real returns had median outgoing vy=-1.96 m/s and were mostly
+        # sideways/long, yet the old 3 m landing threshold still paid strongly.
+        self.reward.reward_future_landing_dis.func = mdp.reward_a1_safe_landing_target
+        self.reward.reward_future_landing_dis.params = {
+            "target_x": backhand_v4.LANDING_TARGET_X,
+            "target_y": backhand_v4.LANDING_TARGET_Y,
+            "radius_m": backhand_v4.LANDING_TARGET_RADIUS_M,
+            "outside_floor": backhand_v4.LANDING_OUTSIDE_FLOOR,
+        }
+        self.reward.reward_future_landing_dis.weight = backhand_v4.LANDING_REWARD_WEIGHT
+        self.reward.reward_future_pass_net.params["std_h"] = (
+            backhand_v4.PASS_NET_HEIGHT_STD_M
+        )
+
+
+@configclass
+class A1TableTennisBackhandV4EvalEnvCfg(A1TableTennisBackhandV4EnvCfg):
+    """Backhand-v4 final-range eval with the training swing timing."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.max_episode_length_s = 99999999999
+        self.ball.serve_bounce_x_range = self.ball.serve_bounce_x_range_hard
+        self.ball.serve_bounce_vz_range = self.ball.serve_bounce_vz_range_hard
+        self.ball.serve_y_center = self.ball.serve_y_center_hard
+        self.ball.serve_y_start = self.ball.serve_y_wide
+        self.ball.serve_tail_candidate_weight = self.ball.serve_tail_candidate_weight_hard
+        self.ball.serve_tail_bounce_x_range = self.ball.serve_tail_bounce_x_range_hard
+        self.ball.serve_tail_bounce_vz_range = self.ball.serve_tail_bounce_vz_range_hard
+        self.ball.post_bounce_spin_easy_scale = self.ball.post_bounce_spin_hard_scale
+        self.ball.serve_curriculum_steps = 0
+        self.ball.serve_curriculum_phase_start = 0
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -1476,6 +1630,14 @@ class A1TableTennisBackhandV3AgentCfg(A1TableTennisBackhandV2AgentCfg):
     run_name = "scratch_realserve142_truehit_camera157510_perjointdr_r4sat_5k10k5k"
     resume = False
     max_iterations = backhand_v3.MAX_ITERATIONS
+
+
+@configclass
+class A1TableTennisBackhandV4AgentCfg(A1TableTennisBackhandV3AgentCfg):
+    experiment_name: str = "a1_tt_backhand_real_v4_timing_return"
+    run_name = "scratch_realserve_truehit_camera157510_oneway_return_5k10k5k"
+    resume = False
+    max_iterations = backhand_v4.MAX_ITERATIONS
 
 
 @configclass
