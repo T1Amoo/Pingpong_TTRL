@@ -1,0 +1,21 @@
+docs/a1_backhand_v4_20260806.md
+  s_d7bdfbc037e805::t_b957cf8ab7f720 209-210,225-241,252-254
+watchdog_a1_tt_backhand_v4.sh
+  s_d7bdfbc037e805::t_5e450d82c4ab5e 9-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "4189982a1bb3e8f7624c9476eb8fd9c8073caa1d",
+  "prompts": {},
+  "sessions": {
+    "s_d7bdfbc037e805": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb780-0fbb-7d70-ad81-7f6b5c3684bd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
