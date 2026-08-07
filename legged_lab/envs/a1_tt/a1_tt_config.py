@@ -14,6 +14,7 @@ from legged_lab.physics import a1_backhand_v2_contract as backhand_v2
 from legged_lab.physics import a1_backhand_v3_contract as backhand_v3
 from legged_lab.physics import a1_backhand_v4_contract as backhand_v4
 from legged_lab.physics import a1_backhand_v5_contract as backhand_v5
+from legged_lab.physics import a1_backhand_v6_contract as backhand_v6
 from legged_lab.assets.a1.a1 import (
     A1_RIGHT_ARM_JOINTS,
     A1_INIT_Z,
@@ -499,6 +500,28 @@ class A1TableTennisBackhandV5RewardCfg(A1TableTennisBackhandV4RewardCfg):
             "half_reward_radius_m": (
                 backhand_v5.LANDING_TARGET_HALF_REWARD_RADIUS_M
             ),
+        },
+    )
+
+
+@configclass
+class A1TableTennisBackhandV6RewardCfg(A1TableTennisBackhandV5RewardCfg):
+    """V6 adds bounded contact-speed quality and pre-contact drawdown events."""
+
+    reward_forward_speed_quality = RewTerm(
+        func=mdp.reward_a1_latched_forward_speed_quality,
+        weight=0.0,
+        params={
+            "min_speed_mps": backhand_v6.FORWARD_SPEED_QUALITY_MIN_MPS,
+            "full_speed_mps": backhand_v6.FORWARD_SPEED_QUALITY_FULL_MPS,
+        },
+    )
+    penalty_precontact_max_drawdown = RewTerm(
+        func=mdp.penalty_a1_latched_precontact_max_drawdown,
+        weight=0.0,
+        params={
+            "free_drawdown_m": backhand_v6.PRECONTACT_DRAWDOWN_FREE_M,
+            "full_drawdown_m": backhand_v6.PRECONTACT_DRAWDOWN_FULL_M,
         },
     )
 
@@ -1582,6 +1605,85 @@ class A1TableTennisBackhandV5EvalEnvCfg(A1TableTennisBackhandV5EnvCfg):
 
 
 @configclass
+class A1TableTennisBackhandV6EnvCfg(A1TableTennisBackhandV5EnvCfg):
+    """Backhand v6: y/z guidance plus bounded swing-speed outcome shaping."""
+
+    reward = A1TableTennisBackhandV6RewardCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # V6 does not prescribe an x trajectory.  Keep only the observable y/z
+        # intercept guide and let contact-speed quality discover the stroke.
+        self.reward.reward_future_dis_ee.func = mdp.reward_a1_future_yz_target
+        self.reward.reward_future_dis_ee.weight = backhand_v6.FUTURE_YZ_REWARD_WEIGHT
+        self.reward.reward_future_dis_ee.params = {
+            "std_ee": backhand_v6.FUTURE_YZ_STD_EE,
+            "threshold": backhand_v6.FUTURE_YZ_THRESHOLD_M,
+            "z_weight": backhand_v6.FUTURE_YZ_Z_WEIGHT,
+        }
+
+        # Replace v5's raw contact approach bonus with a normalized, bounded
+        # first-contact speed-quality event.  The tracker is opt-in so every
+        # historical task, including v5, retains its original state machine.
+        self.ball.precontact_drawdown_tracking_enable = True
+        self.reward.reward_approach_velocity.weight = 0.0
+        self.reward.reward_forward_speed_quality.weight = (
+            backhand_v6.FORWARD_SPEED_QUALITY_REWARD_WEIGHT
+        )
+        self.reward.penalty_precontact_max_drawdown.weight = (
+            backhand_v6.PRECONTACT_DRAWDOWN_PENALTY_WEIGHT
+        )
+
+        # Retain a small, local forward-speed guide, but cap it so the dense
+        # term cannot outrank contact and physical return events.
+        self.reward.reward_swing_through.weight = (
+            backhand_v6.SWING_THROUGH_REWARD_WEIGHT
+        )
+        self.reward.reward_swing_through.params = {
+            "near_dist": backhand_v6.SWING_THROUGH_NEAR_DIST_M,
+            "target_yz_gate": backhand_v6.SWING_THROUGH_TARGET_YZ_GATE_M,
+            "max_speed_mps": backhand_v6.SWING_THROUGH_CAP_MPS,
+        }
+
+        # Do not prescribe early reach, late direction, lateral contact speed,
+        # or punish a predicted miss.  V5's positive outcome ladder remains.
+        self.reward.penalty_early_paddle_forward.weight = (
+            backhand_v6.EARLY_FORWARD_PENALTY_WEIGHT
+        )
+        self.reward.penalty_late_paddle_backtrack.weight = (
+            backhand_v6.LATE_BACKTRACK_PENALTY_WEIGHT
+        )
+        self.reward.penalty_contact_lateral_paddle_speed.weight = (
+            backhand_v6.CONTACT_LATERAL_SPEED_PENALTY_WEIGHT
+        )
+        self.reward.penalty_predicted_landing_outside_table.weight = (
+            backhand_v6.LANDING_OUTSIDE_PENALTY_WEIGHT
+        )
+
+
+@configclass
+class A1TableTennisBackhandV6EvalEnvCfg(A1TableTennisBackhandV6EnvCfg):
+    """Backhand-v6 final-range eval with v5 physics and weak topspin."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.max_episode_length_s = 99999999999
+        self.ball.serve_bounce_x_range = self.ball.serve_bounce_x_range_hard
+        self.ball.serve_bounce_vz_range = self.ball.serve_bounce_vz_range_hard
+        self.ball.serve_y_center = self.ball.serve_y_center_hard
+        self.ball.serve_y_start = self.ball.serve_y_wide
+        self.ball.serve_tail_candidate_weight = self.ball.serve_tail_candidate_weight_hard
+        self.ball.serve_tail_bounce_x_range = self.ball.serve_tail_bounce_x_range_hard
+        self.ball.serve_tail_bounce_vz_range = self.ball.serve_tail_bounce_vz_range_hard
+        self.ball.post_bounce_topspin_easy_range_rad_s = (
+            self.ball.post_bounce_topspin_hard_range_rad_s
+        )
+        self.ball.serve_curriculum_steps = 0
+        self.ball.serve_curriculum_phase_start = 0
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -1849,6 +1951,14 @@ class A1TableTennisBackhandV5AgentCfg(A1TableTennisBackhandV4AgentCfg):
     run_name = "scratch_hitfirst_phasegate_earlypen0_weaktopspin_5k10k5k"
     resume = False
     max_iterations = backhand_v5.MAX_ITERATIONS
+
+
+@configclass
+class A1TableTennisBackhandV6AgentCfg(A1TableTennisBackhandV5AgentCfg):
+    experiment_name: str = "a1_tt_backhand_real_v6_speedquality_drawdown_yzonly"
+    run_name = "scratch_speedquality_drawdown_yzonly_weakspin_5k10k5k"
+    resume = False
+    max_iterations = backhand_v6.MAX_ITERATIONS
 
 
 @configclass

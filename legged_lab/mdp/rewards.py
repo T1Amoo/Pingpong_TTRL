@@ -31,11 +31,13 @@ from legged_lab.physics.return_flight import (
     smooth_clearance_gate,
 )
 from legged_lab.physics.swing_timing import (
+    bounded_forward_speed_quality,
     curriculum_lerp,
     early_hold_gate,
     excess_speed_penalty,
     late_swing_gate,
     linear_curriculum_progress,
+    max_drawdown_excess_penalty,
     phase_open_gate,
     staged_intercept_reward,
     weighted_yz_distance,
@@ -896,6 +898,7 @@ def reward_swing_through(
     env: TTEnv,
     near_dist: float = 0.30,
     target_yz_gate: float = 0.0,
+    max_speed_mps: float | None = None,
 ) -> torch.Tensor:
     """Dense reward for swinging the paddle FORWARD (+x, toward the net/opponent table) WHILE the
     ball is close -> an active swing THROUGH the ball, not a passive camp/block.
@@ -912,7 +915,10 @@ def reward_swing_through(
         target_yz_dist = torch.linalg.norm(env.ball_future_pose[:, 1:3] - env.paddle_pos[:, 1:3], dim=1)
         near = near * (target_yz_dist < target_yz_gate).float()
     incoming = (env.ball.data.root_lin_vel_w[:, 0] < 0.3).float()  # ball not already leaving
-    rew = torch.clamp(vx, min=0.0) * near * incoming * (~env.mask_invalid).float()
+    forward = torch.clamp(vx, min=0.0)
+    if max_speed_mps is not None:
+        forward = torch.clamp(forward, max=max(float(max_speed_mps), 0.0))
+    rew = forward * near * incoming * (~env.mask_invalid).float()
     return torch.nan_to_num(rew, nan=0.0, posinf=0.0, neginf=0.0)
 
 
@@ -962,6 +968,38 @@ def reward_a1_latched_approach_velocity(
     if max_speed_mps is not None:
         forward = torch.clamp(forward, max=max(float(max_speed_mps), 0.0))
     return torch.nan_to_num(forward * event, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def reward_a1_latched_forward_speed_quality(
+    env: TTEnv,
+    min_speed_mps: float = 0.4,
+    full_speed_mps: float = 1.6,
+) -> torch.Tensor:
+    """One-shot bounded quality for forward paddle speed at active contact."""
+
+    quality = bounded_forward_speed_quality(
+        env.paddle_contact_point_vel_latch[:, 0],
+        min_speed_mps=min_speed_mps,
+        full_speed_mps=full_speed_mps,
+    )
+    reward = quality * env.paddle_contact_event.float()
+    return torch.nan_to_num(reward, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def penalty_a1_latched_precontact_max_drawdown(
+    env: TTEnv,
+    free_drawdown_m: float = 0.04,
+    full_drawdown_m: float = 0.12,
+) -> torch.Tensor:
+    """One-shot penalty for the worst excess backward motion before contact."""
+
+    penalty = max_drawdown_excess_penalty(
+        env.paddle_contact_max_drawdown_latch,
+        free_drawdown_m=free_drawdown_m,
+        full_penalty_drawdown_m=full_drawdown_m,
+    )
+    penalty = penalty * env.paddle_contact_event.float()
+    return torch.nan_to_num(penalty, nan=0.0, posinf=0.0, neginf=0.0)
 
 
 def reward_a1_latched_horizontal_hit_direction(env: TTEnv) -> torch.Tensor:
@@ -1157,6 +1195,22 @@ def reward_future_ee_target(
         time_gain = torch.clamp(1.0 - t / time_gate_ref, min=time_gate_floor, max=1.0)
         reward = reward * time_gain
     return reward
+
+
+def reward_a1_future_yz_target(
+    env: TTEnv,
+    std_ee: float = 0.5,
+    threshold: float = 0.08,
+    z_weight: float = 2.5,
+) -> torch.Tensor:
+    """A1 intercept guidance in y/z only, with no dense x-position term."""
+
+    diff = env.ball_future_pose - env.paddle_pos
+    yz_distance = weighted_yz_distance(diff, z_weight=z_weight)
+    denominator = float(std_ee) * float(std_ee) + 1.0e-12
+    reward = torch.exp(-torch.clamp(yz_distance, min=float(threshold)) / denominator)
+    reward = torch.where(env.mask_invalid, torch.zeros_like(reward), reward)
+    return torch.nan_to_num(reward, nan=0.0, posinf=0.0, neginf=0.0)
 
 
 def reward_a1_timed_future_ee_target(

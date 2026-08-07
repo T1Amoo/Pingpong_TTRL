@@ -36,6 +36,10 @@ from legged_lab.physics.contact_events import (
     update_table_bounce_latches,
 )
 from legged_lab.physics.serve_flight import probe_serve_flight
+from legged_lab.physics.swing_timing import (
+    latch_precontact_max_drawdown,
+    update_precontact_max_drawdown,
+)
 from legged_lab.utils.env_utils.scene import SceneCfg
 
 # ! Aerodynamics : BEGIN
@@ -436,6 +440,25 @@ class TTEnv(VecEnv):
         self.paddle_incoming_ball_vel_latch = torch.zeros(self.num_envs, 3, device=self.device)
         self.paddle_contact_point_vel_latch = torch.zeros(self.num_envs, 3, device=self.device)
         self.paddle_normal_latch = torch.zeros(self.num_envs, 3, device=self.device)
+        # Opt-in, per-ball v6 swing-path state.  It is updated at the 500 Hz
+        # physics rate and latched only on the first active paddle contact.
+        self._precontact_drawdown_tracking_enable = bool(
+            getattr(self.cfg.ball, "precontact_drawdown_tracking_enable", False)
+        )
+        self._precontact_drawdown_arm_retraction_m = float(
+            getattr(self.cfg.ball, "precontact_drawdown_arm_retraction_m", 0.08)
+        )
+        self._precontact_drawdown_arm_min_vx_mps = float(
+            getattr(self.cfg.ball, "precontact_drawdown_arm_min_vx_mps", -0.02)
+        )
+        if self._precontact_drawdown_arm_retraction_m < 0.0:
+            raise ValueError("precontact_drawdown_arm_retraction_m must be non-negative")
+        self.paddle_precontact_drawdown_armed = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.bool
+        )
+        self.paddle_precontact_peak_x = torch.zeros(self.num_envs, device=self.device)
+        self.paddle_precontact_max_drawdown = torch.zeros(self.num_envs, device=self.device)
+        self.paddle_contact_max_drawdown_latch = torch.zeros(self.num_envs, device=self.device)
         self.post_impact_reward_event = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.post_impact_latched = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.post_impact_pending_age_s = torch.zeros(self.num_envs, device=self.device)
@@ -1255,6 +1278,10 @@ class TTEnv(VecEnv):
         self.paddle_incoming_ball_vel_latch[env_ids] = 0.0
         self.paddle_contact_point_vel_latch[env_ids] = 0.0
         self.paddle_normal_latch[env_ids] = 0.0
+        self.paddle_precontact_drawdown_armed[env_ids] = False
+        self.paddle_precontact_peak_x[env_ids] = 0.0
+        self.paddle_precontact_max_drawdown[env_ids] = 0.0
+        self.paddle_contact_max_drawdown_latch[env_ids] = 0.0
         self.post_impact_reward_event[env_ids] = False
         self.post_impact_latched[env_ids] = False
         self.post_impact_pending_age_s[env_ids] = 0.0
@@ -2246,6 +2273,29 @@ class TTEnv(VecEnv):
         self._predictor_plane_prev_pos.copy_(current)
         self._predictor_plane_prev_valid.copy_(finite & (current[:, 2] > 0.1))
 
+    def _update_precontact_drawdown(self) -> None:
+        """Track the worst backward paddle excursion in the current ball flight."""
+
+        if not self._precontact_drawdown_tracking_enable:
+            return
+        paddle_x_local = self.paddle_touch_point[:, 0] - self.scene.env_origins[:, 0]
+        peak, max_drawdown, armed = update_precontact_max_drawdown(
+            paddle_x_local,
+            self.paddle_precontact_peak_x,
+            self.paddle_precontact_max_drawdown,
+            self.paddle_precontact_drawdown_armed,
+            ~self.has_touch_paddle,
+            self.paddle_contact_point_vel_w[:, 0]
+            >= self._precontact_drawdown_arm_min_vx_mps,
+            arm_x_max_m=(
+                float(self.cfg.robot.hit_plane_x)
+                - self._precontact_drawdown_arm_retraction_m
+            ),
+        )
+        self.paddle_precontact_peak_x.copy_(peak)
+        self.paddle_precontact_max_drawdown.copy_(max_drawdown)
+        self.paddle_precontact_drawdown_armed.copy_(armed)
+
     def compute_paddle_touch(self):
         self.ball_global_pos = self.ball.data.root_pos_w 
 
@@ -2272,14 +2322,22 @@ class TTEnv(VecEnv):
         # 4) Compute your touch point:
         self.paddle_touch_point = paddle_pos + rotated_offset # paddle_position in the world frame.
         self.paddle_touch_point_vel = self.robot.data.body_lin_vel_w[:, paddle_index, :]
+        # Keep a true velocity paired with the exact position tracked above.
+        # Historical tasks with no offset retain the body-linear value; v4+
+        # replaces it below with v_body + omega x r.
+        self.paddle_contact_point_vel_w = self.paddle_touch_point_vel
         if getattr(self.cfg.ball, "post_impact_outcome_enable", False):
-            # True velocity of the offset paddle center. Keep historical tasks
-            # on their original body-linear path; only v4 pays the omega x r
-            # cost needed to prevent wrist rotation evading contact shaping.
+            # True velocity of the offset paddle center. Historical tasks keep
+            # their original body-linear contact shaping; v4+ opt-in semantics
+            # pay the omega x r cost needed to prevent wrist rotation evading
+            # contact-speed and swing-path shaping.
             paddle_ang_vel = self.robot.data.body_ang_vel_w[:, paddle_index, :]
             self.paddle_contact_point_vel_w = self.paddle_touch_point_vel + torch.cross(
                 paddle_ang_vel, rotated_offset, dim=1
             )
+        # V6 drawdown is opt-in, but when enabled both its x position and arming
+        # velocity now refer to the same physical paddle touch point.
+        self._update_precontact_drawdown()
         # 5) Compute touch reward:
 
         distance = torch.norm(self.ball_global_pos - self.paddle_touch_point, dim=1) - 0.02 # corrected for ball radius
@@ -2396,6 +2454,14 @@ class TTEnv(VecEnv):
                 self.paddle_contact_point_vel_latch[first_hits] = self.paddle_contact_point_vel_w[
                     first_hits
                 ]
+                if self._precontact_drawdown_tracking_enable:
+                    contact_drawdown = latch_precontact_max_drawdown(
+                        self.paddle_precontact_max_drawdown,
+                        self.paddle_precontact_drawdown_armed,
+                    )
+                    self.paddle_contact_max_drawdown_latch[first_hits] = (
+                        contact_drawdown[first_hits]
+                    )
                 face_axis = torch.tensor(
                     (0.0, 1.0, 0.0), device=self.device, dtype=paddle_quat.dtype
                 ).unsqueeze(0).expand(self.num_envs, 3)

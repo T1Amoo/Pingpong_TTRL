@@ -3,17 +3,134 @@ from __future__ import annotations
 import torch
 
 from legged_lab.physics.swing_timing import (
+    bounded_forward_speed_quality,
     curriculum_lerp,
     early_hold_gate,
     excess_speed_penalty,
+    latch_precontact_max_drawdown,
     late_swing_gate,
     linear_curriculum_progress,
+    max_drawdown_excess_penalty,
     phase_open_gate,
     staged_intercept_reward,
+    update_precontact_max_drawdown,
     weighted_yz_distance,
     x_position_progress,
     x_tracking_gain,
 )
+
+
+def test_bounded_forward_speed_quality_saturates_at_configured_target():
+    quality = bounded_forward_speed_quality(
+        torch.tensor([-0.2, 0.4, 1.0, 1.6, 2.4]),
+        min_speed_mps=0.4,
+        full_speed_mps=1.6,
+    )
+    torch.testing.assert_close(
+        quality,
+        torch.tensor([0.0, 0.0, 0.5, 1.0, 1.0]),
+    )
+
+
+def test_max_drawdown_penalty_has_free_band_and_bounded_tail():
+    penalty = max_drawdown_excess_penalty(
+        torch.tensor([0.0, 0.04, 0.08, 0.12, 0.20]),
+        free_drawdown_m=0.04,
+        full_penalty_drawdown_m=0.12,
+    )
+    torch.testing.assert_close(
+        penalty,
+        torch.tensor([0.0, 0.0, 0.25, 1.0, 1.0]),
+    )
+
+
+def test_unarmed_contact_maps_to_full_drawdown_penalty():
+    latched = latch_precontact_max_drawdown(
+        torch.tensor([0.06, 0.00]),
+        torch.tensor([True, False]),
+    )
+    assert torch.isfinite(latched[0])
+    assert torch.isinf(latched[1])
+    penalty = max_drawdown_excess_penalty(
+        latched,
+        free_drawdown_m=0.04,
+        full_penalty_drawdown_m=0.12,
+    )
+    torch.testing.assert_close(penalty, torch.tensor([0.0625, 1.0]))
+
+
+def test_precontact_drawdown_ignores_unarmed_recovery_and_keeps_worst_excursion():
+    peak = torch.zeros(1)
+    max_drawdown = torch.zeros(1)
+    armed = torch.zeros(1, dtype=torch.bool)
+
+    # A new ball starts while the paddle is still forward from the previous
+    # return.  Its continuous negative-velocity recovery must not become
+    # drawdown for the new ball, even after it passes the arming x boundary.
+    recovery = [(-1.24, -0.8), (-1.34, -0.5), (-1.44, -0.2)]
+    for position, velocity in recovery:
+        peak, max_drawdown, armed = update_precontact_max_drawdown(
+            torch.tensor([position]),
+            peak,
+            max_drawdown,
+            armed,
+            torch.ones(1, dtype=torch.bool),
+            torch.tensor([velocity >= -0.02]),
+            arm_x_max_m=-1.323,
+        )
+    assert not armed.item()
+    torch.testing.assert_close(max_drawdown, torch.zeros(1))
+
+    # A standard ready pose arms as soon as it is effectively stationary.
+    peak, max_drawdown, armed = update_precontact_max_drawdown(
+        torch.tensor([-1.44]),
+        peak,
+        max_drawdown,
+        armed,
+        torch.ones(1, dtype=torch.bool),
+        torch.ones(1, dtype=torch.bool),
+        arm_x_max_m=-1.323,
+    )
+    assert armed.item()
+
+    # The tracker keeps the worst retreat even though the paddle fully
+    # recovers before contact.
+    for position in [-1.30, -1.36, -1.24]:
+        peak, max_drawdown, armed = update_precontact_max_drawdown(
+            torch.tensor([position]),
+            peak,
+            max_drawdown,
+            armed,
+            torch.ones(1, dtype=torch.bool),
+            torch.ones(1, dtype=torch.bool),
+            arm_x_max_m=-1.323,
+        )
+
+    torch.testing.assert_close(peak, torch.tensor([-1.24]))
+    torch.testing.assert_close(max_drawdown, torch.tensor([0.06]), atol=1.0e-6, rtol=0.0)
+
+    # Once contact turns tracking off, later paddle motion cannot alter the
+    # value that will be latched for the one-shot reward.
+    frozen_peak, frozen_drawdown, frozen_armed = update_precontact_max_drawdown(
+        torch.tensor([-1.40]),
+        peak,
+        max_drawdown,
+        armed,
+        torch.zeros(1, dtype=torch.bool),
+        torch.zeros(1, dtype=torch.bool),
+        arm_x_max_m=-1.323,
+    )
+    torch.testing.assert_close(frozen_peak, peak)
+    torch.testing.assert_close(frozen_drawdown, max_drawdown)
+    torch.testing.assert_close(frozen_armed, armed)
+
+
+def test_weighted_yz_distance_is_independent_of_x():
+    distance = weighted_yz_distance(
+        torch.tensor([[-3.0, 0.10, 0.20], [4.0, 0.10, 0.20]]),
+        z_weight=2.5,
+    )
+    torch.testing.assert_close(distance[0], distance[1])
 
 
 def test_x_tracking_is_disabled_early_and_full_at_contact():

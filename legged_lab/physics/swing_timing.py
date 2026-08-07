@@ -98,6 +98,114 @@ def weighted_yz_distance(
     return torch.linalg.vector_norm(yz_components, dim=-1)
 
 
+def bounded_forward_speed_quality(
+    forward_speed_mps: torch.Tensor,
+    *,
+    min_speed_mps: float,
+    full_speed_mps: float,
+) -> torch.Tensor:
+    """Return a smooth, bounded quality for a forward-speed target.
+
+    Quality is zero through ``min_speed_mps``, rises to one at
+    ``full_speed_mps``, then stays saturated.  Smoothstep has zero slope at both
+    ends, which avoids making a one-shot contact reward numerically sensitive
+    to a few millimetres per second of velocity noise and never rewards speeds
+    above the configured target.
+    """
+
+    minimum = float(min_speed_mps)
+    full = float(full_speed_mps)
+    if minimum < 0.0:
+        raise ValueError("min_speed_mps must be non-negative")
+    if full <= minimum:
+        raise ValueError("full_speed_mps must be > min_speed_mps")
+
+    progress = torch.clamp(
+        (forward_speed_mps - minimum) / (full - minimum),
+        min=0.0,
+        max=1.0,
+    )
+    return progress * progress * (3.0 - 2.0 * progress)
+
+
+def max_drawdown_excess_penalty(
+    max_drawdown_m: torch.Tensor,
+    *,
+    free_drawdown_m: float,
+    full_penalty_drawdown_m: float,
+) -> torch.Tensor:
+    """Return a squared unit penalty for pre-contact drawdown above a free band."""
+
+    free = float(free_drawdown_m)
+    full = float(full_penalty_drawdown_m)
+    if free < 0.0:
+        raise ValueError("free_drawdown_m must be non-negative")
+    if full <= free:
+        raise ValueError("full_penalty_drawdown_m must be > free_drawdown_m")
+    scaled = torch.clamp((max_drawdown_m - free) / (full - free), min=0.0, max=1.0)
+    return torch.square(scaled)
+
+
+def latch_precontact_max_drawdown(
+    max_drawdown_m: torch.Tensor,
+    armed: torch.Tensor,
+) -> torch.Tensor:
+    """Latch drawdown at contact, mapping an unarmed trajectory to full penalty.
+
+    An unarmed contact means the paddle never returned behind the configured
+    arming boundary during this ball.  Treating that case as zero drawdown would
+    let a parked-forward strategy bypass the path constraint, so it is encoded
+    as infinity and subsequently saturates the bounded drawdown penalty.
+    """
+
+    return torch.where(
+        armed.bool(),
+        max_drawdown_m,
+        torch.full_like(max_drawdown_m, float("inf")),
+    )
+
+
+def update_precontact_max_drawdown(
+    current_x_m: torch.Tensor,
+    peak_x_m: torch.Tensor,
+    max_drawdown_m: torch.Tensor,
+    armed: torch.Tensor,
+    tracking_mask: torch.Tensor,
+    arm_allowed_mask: torch.Tensor,
+    *,
+    arm_x_max_m: float,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Advance a per-ball maximum-drawdown state without crossing resets.
+
+    Tracking arms only after the paddle reaches the configured retracted side
+    of the hit plane.  This prevents the previous ball's forward finish and the
+    following normal return-to-ready motion from being charged to the new ball.
+    Once armed, the maximum records the worst ``peak_x - current_x`` even if the
+    paddle has recovered all of that drawdown by the eventual contact tick.
+    """
+
+    tracking = tracking_mask.bool()
+    arm_allowed = arm_allowed_mask.bool()
+    armed_now = armed.bool()
+    newly_armed = (
+        tracking
+        & arm_allowed
+        & (~armed_now)
+        & (current_x_m <= float(arm_x_max_m))
+    )
+    next_armed = armed_now | newly_armed
+    seeded_peak = torch.where(newly_armed, current_x_m, peak_x_m)
+    active = tracking & next_armed
+    next_peak = torch.where(active, torch.maximum(seeded_peak, current_x_m), seeded_peak)
+    current_drawdown = torch.clamp(next_peak - current_x_m, min=0.0)
+    next_max_drawdown = torch.where(
+        active,
+        torch.maximum(max_drawdown_m, current_drawdown),
+        max_drawdown_m,
+    )
+    return next_peak, next_max_drawdown, next_armed
+
+
 def x_position_progress(
     x_error_m: torch.Tensor,
     *,
