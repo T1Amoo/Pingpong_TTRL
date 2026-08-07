@@ -1,0 +1,86 @@
+legged_lab/physics/test_a1_backhand_v5_watchdog.py
+  s_d7bdfbc037e805::t_5ed7026c1b6d4a 21
+  s_d7bdfbc037e805::t_5b19cc88b9fdff 1-20,22-23
+legged_lab/physics/test_a1_backhand_v5_contract.py
+  s_d7bdfbc037e805::t_827fa197b2974d 1-32,54,57-60,62-67
+  s_d7bdfbc037e805::t_6c0a2182590b0e 33-53,55-56,61
+legged_lab/mdp/rewards.py
+  s_d7bdfbc037e805::t_9322af96ae1d2d 41-42,1195-1196,1202-1203,1227,1231-1235,1238
+  s_d7bdfbc037e805::t_083f12a2e212a4 34,38-40,792-797,1187-1194,1197-1201,1208-1226,1236-1237,1239-1246,1269-1298,1452-1473
+  s_d7bdfbc037e805::t_8bd8695eb13257 1204-1207
+  s_d7bdfbc037e805::t_6c0a2182590b0e 954-957,962-963
+  s_d7bdfbc037e805::t_12cc027b0b2b7c 1228-1230
+  s_d7bdfbc037e805::t_c4cc5d3dcbb354 1474-1475
+legged_lab/physics/swing_timing.py
+  s_d7bdfbc037e805::t_12cc027b0b2b7c 90-92,95-97,119,121-122
+  s_d7bdfbc037e805::t_9322af96ae1d2d 66,72-73,82-86,89,93-94,98-118,120
+  s_d7bdfbc037e805::t_8bd8695eb13257 74-77
+  s_d7bdfbc037e805::t_be6141f8d6576b 8-65,67-71,78-81,87-88
+legged_lab/physics/a1_backhand_spin_prior.py
+  s_d7bdfbc037e805::t_7c616059382f8b 109-122,132-135
+  s_d7bdfbc037e805::t_148933a0476b2c 20-21,89-108,123-131,136-146
+legged_lab/physics/test_a1_backhand_spin_prior.py
+  s_d7bdfbc037e805::t_7c616059382f8b 3,88-107
+  s_d7bdfbc037e805::t_148933a0476b2c 6-9,46-81,83-86
+  s_d7bdfbc037e805::t_c3601b6782c652 82
+  s_d7bdfbc037e805::t_b119e1a13a45c6 87
+legged_lab/envs/base/tt_env.py
+  s_d7bdfbc037e805::t_6bc5c192f67f70 2581
+  s_d7bdfbc037e805::t_48639c847083cf 35,1814-1829
+  s_d7bdfbc037e805::t_083f12a2e212a4 464-466,1276
+  s_d7bdfbc037e805::t_10102514f63882 2571-2580
+legged_lab/physics/contact_events.py
+  s_d7bdfbc037e805::t_48639c847083cf 23-44
+legged_lab/envs/a1_tt/a1_tt_env.py
+  s_d7bdfbc037e805::t_148933a0476b2c 4-7,22-38
+legged_lab/envs/__init__.py
+  s_d7bdfbc037e805::t_2b88b3be7fcbf3 74-76,148-159
+legged_lab/physics/test_swing_timing.py
+  s_d7bdfbc037e805::t_12cc027b0b2b7c 108-111,118-119,121-127
+  s_d7bdfbc037e805::t_be6141f8d6576b 6,10-12,47-57,59-60,62-67,69-74,76-107
+  s_d7bdfbc037e805::t_9322af96ae1d2d 13-14,58,61,68,75,112-114,116-117,120,128-129,132-133,135-138,142-148,150-159
+  s_d7bdfbc037e805::t_8a7c905e87a47d 115,130-131,134,139-141,149
+legged_lab/physics/a1_backhand_v5_contract.py
+  s_d7bdfbc037e805::t_6c0a2182590b0e 48,57,61,68-70,74
+  s_d7bdfbc037e805::t_8a7c905e87a47d 44-47
+  s_d7bdfbc037e805::t_9bd255e1820be7 30-32,51-52
+  s_d7bdfbc037e805::t_827fa197b2974d 1-29,33-43,49-50,53-56,58-60,62-67,71-73,75-81
+legged_lab/envs/base/tt_config.py
+  s_d7bdfbc037e805::t_148933a0476b2c 214,218-220
+  s_d7bdfbc037e805::t_10102514f63882 231-233
+  s_d7bdfbc037e805::t_48639c847083cf 234-237
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_d7bdfbc037e805::t_48639c847083cf 1530
+  s_d7bdfbc037e805::t_8bd8695eb13257 1436
+  s_d7bdfbc037e805::t_6c0a2182590b0e 1448-1453,1511-1513
+  s_d7bdfbc037e805::t_10102514f63882 1529
+  s_d7bdfbc037e805::t_2b88b3be7fcbf3 16,485-505,1427-1435,1437-1447,1454-1510,1514-1528,1531-1583,1846-1851
+  s_d7bdfbc037e805::t_df4cf919648674 1852-1853
+watchdog_a1_tt_backhand_v5.sh
+  s_d7bdfbc037e805::t_5ed7026c1b6d4a 10-13
+  s_d7bdfbc037e805::t_296c5453a502a7 1-8,14-56,58-63,67-110
+  s_d7bdfbc037e805::t_5b19cc88b9fdff 9,57,64-66
+docs/a1_backhand_v5_20260807.md
+  s_d7bdfbc037e805::t_6bb46e11ce9267 1-25,27-28,30,33-39,41-42,44-51,53,55-95,97-98
+  s_d7bdfbc037e805::t_9bd255e1820be7 26,29,31-32,40,43,99-100
+  s_d7bdfbc037e805::t_8a7c905e87a47d 52,54,96
+  s_d7bdfbc037e805::t_f2d9c0828f70ce 101-106
+legged_lab/physics/test_contact_events.py
+  s_d7bdfbc037e805::t_48639c847083cf 9,62-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "b85b734b2e0f5015416fe72910f9391c3044442f",
+  "prompts": {},
+  "sessions": {
+    "s_d7bdfbc037e805": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb780-0fbb-7d70-ad81-7f6b5c3684bd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
