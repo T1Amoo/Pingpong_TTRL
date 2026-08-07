@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from legged_lab.physics import a1_backhand_v4_contract as v4
 from legged_lab.physics import a1_backhand_v5_contract as v5
+
+
+REWARDS_SOURCE = (
+    Path(__file__).resolve().parents[1] / "mdp" / "rewards.py"
+).read_text()
 
 
 def test_v5_keeps_v4_translational_serve_contract():
@@ -59,6 +66,15 @@ def test_v5_removes_new_v4_constraints_but_keeps_legacy_high_guard():
     assert v5.CONTACT_LATERAL_SPEED_PENALTY_WEIGHT == 0.0
     assert v5.LANDING_OUTSIDE_PENALTY_WEIGHT == 0.0
     assert v5.PADDLE_ABOVE_TARGET_PENALTY_WEIGHT == -4.0
+
+
+def test_v5_early_forward_penalty_is_full_strength_from_iter_zero():
+    function_source = REWARDS_SOURCE.split(
+        "def penalty_a1_curriculum_early_paddle_forward(", 1
+    )[1].split("\ndef penalty_late_paddle_backtrack(", 1)[0]
+    assert "penalty = torch.square(scaled) * early" in function_source
+    assert "* float(progress)" not in function_source
+    assert "* float(timing_progress)" not in function_source
 
 
 def test_v5_spin_is_weak_topspin_only():

@@ -1846,7 +1846,7 @@ class A1TableTennisBackhandV4AgentCfg(A1TableTennisBackhandV3AgentCfg):
 @configclass
 class A1TableTennisBackhandV5AgentCfg(A1TableTennisBackhandV4AgentCfg):
     experiment_name: str = "a1_tt_backhand_real_v5_hitfirst_phasegate_weakspin"
-    run_name = "scratch_hitfirst_phasegate_weaktopspin_5k10k5k"
+    run_name = "scratch_hitfirst_phasegate_earlypen0_weaktopspin_5k10k5k"
     resume = False
     max_iterations = backhand_v5.MAX_ITERATIONS
 

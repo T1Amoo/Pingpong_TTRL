@@ -1276,14 +1276,22 @@ def penalty_a1_curriculum_early_paddle_forward(
     curriculum_start_raw_step: int = 240_000,
     curriculum_ramp_raw_steps: int = 720_000,
 ) -> torch.Tensor:
-    """V5's sole swing constraint, introduced gradually after contact bootstrap."""
+    """V5's sole swing constraint, active from the first rollout.
 
-    progress = linear_curriculum_progress(
+    Curriculum progress changes only the release time from 0.80 s to 0.60 s;
+    it must never scale the penalty strength to zero during early training.
+    """
+
+    timing_progress = linear_curriculum_progress(
         env.sim_step_counter,
         start_raw_step=curriculum_start_raw_step,
         ramp_raw_steps=curriculum_ramp_raw_steps,
     )
-    release_s = curriculum_lerp(release_start_s, release_final_s, progress)
+    release_s = curriculum_lerp(
+        release_start_s,
+        release_final_s,
+        timing_progress,
+    )
     t_hit = env.ball_future_t.squeeze(-1)
     early = early_hold_gate(t_hit, release_s=release_s, ramp_s=ramp_s)
     x_limit = float(env.cfg.robot.hit_plane_x) - float(min_retraction_m)
@@ -1292,7 +1300,9 @@ def penalty_a1_curriculum_early_paddle_forward(
         forward_excess / max(float(max_excess_m), 1.0e-6),
         max=1.0,
     )
-    penalty = torch.square(scaled) * early * float(progress)
+    # Full strength from iter 0.  Only ``release_s`` follows the timing
+    # curriculum above, matching the phase gate used by the x reward.
+    penalty = torch.square(scaled) * early
     return torch.where(env.mask_invalid, torch.zeros_like(penalty), penalty)
 
 

@@ -15,8 +15,10 @@ from legged_lab.physics.a1_backhand_v4_contract import MAX_ITERATIONS
 # contains ten 500 Hz physics substeps.  TTEnv.sim_step_counter uses the latter.
 RAW_STEPS_PER_ITER = 240
 
-# Let a scratch policy discover contact with a generous x phase first, then
-# tighten to the final timing before the easy-serve stage ends at iter 5000.
+# Use a generous x release time first, then tighten to the final timing before
+# the easy-serve stage ends at iter 5000.  This curriculum changes only WHEN
+# the phase opens; the bounded early-forward penalty is fully active from the
+# very first rollout.
 TIMING_CURRICULUM_START_ITER = 1_000
 TIMING_CURRICULUM_END_ITER = 4_000
 TIMING_CURRICULUM_START_RAW_STEP = (
