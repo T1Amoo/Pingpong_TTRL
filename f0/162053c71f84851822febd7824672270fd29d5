@@ -1,0 +1,60 @@
+legged_lab/physics/a1_backhand_v6_contract.py
+  s_d7bdfbc037e805::t_f05cba4ddd63eb 1-49
+legged_lab/envs/base/tt_env.py
+  s_d7bdfbc037e805::t_db09c48031634f 443-444,456-461,1281-1284
+  s_d7bdfbc037e805::t_fa625173be7913 2276-2287,2290-2298
+  s_d7bdfbc037e805::t_2ba3a41879e0cb 2330-2333
+  s_d7bdfbc037e805::t_be1241b4d82e53 454-455
+  s_d7bdfbc037e805::t_386f25dd501416 451-453,2289
+  s_d7bdfbc037e805::t_4fd3548dbb3f88 445-450
+  s_d7bdfbc037e805::t_73be342bf1a752 39-42,2457-2464
+  s_d7bdfbc037e805::t_ddc2a974d7b693 2288,2325-2328,2338-2340
+legged_lab/envs/__init__.py
+  s_d7bdfbc037e805::t_5951bdb2d11d58 77-79,163-174
+legged_lab/physics/test_a1_backhand_v6_watchdog.py
+  s_d7bdfbc037e805::t_e068c75e1ffe31 1-26
+legged_lab/physics/swing_timing.py
+  s_d7bdfbc037e805::t_6b100524b0563d 149-167
+  s_d7bdfbc037e805::t_ae958143b70872 174,188,190-195
+  s_d7bdfbc037e805::t_f35f3e68530741 104-105,107,109-113,116-121,123-124,128
+  s_d7bdfbc037e805::t_7660576d3cb929 101-103,106,108,114-115,122,125-127,129-148,168-173,175-187,189,196-208
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_d7bdfbc037e805::t_a189f4ef46dfca 1607-1685,1956
+  s_d7bdfbc037e805::t_89c62eeded5630 1957-1963
+  s_d7bdfbc037e805::t_c7a79a69c67f2d 17,507-526
+  s_d7bdfbc037e805::t_80d12cdfd60581 527-528
+legged_lab/mdp/rewards.py
+  s_d7bdfbc037e805::t_4a41e946956a10 1200-1215
+  s_d7bdfbc037e805::t_aecf8433e4ee01 34,40,901,918-921,973-1002
+  s_d7bdfbc037e805::t_a26293dfa0ae81 1003-1004
+watchdog_a1_tt_backhand_v6.sh
+  s_d7bdfbc037e805::t_1d277d74138b30 1-108
+legged_lab/physics/test_a1_backhand_v6_registration.py
+  s_d7bdfbc037e805::t_e068c75e1ffe31 1-44
+legged_lab/physics/test_swing_timing.py
+  s_d7bdfbc037e805::t_41e77d127e78c2 68-71,78,81-82,84-93,95-109,119
+  s_d7bdfbc037e805::t_30133cf695b48a 10,45-59
+  s_d7bdfbc037e805::t_0e0a4148f51426 6,13,16,23-44,60-67,72-77,79-80,83,94,110-118,120-133
+  s_d7bdfbc037e805::t_cacf83244cc227 134-135
+docs/a1_backhand_v6_20260807.md
+  s_d7bdfbc037e805::t_5e553af33493f0 1-14,17-22,25-42
+  s_d7bdfbc037e805::t_1bbc449111d1a0 15-16,23-24
+legged_lab/physics/test_a1_backhand_v6_contract.py
+  s_d7bdfbc037e805::t_e068c75e1ffe31 1-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "f0162053c71f84851822febd7824672270fd29d5",
+  "prompts": {},
+  "sessions": {
+    "s_d7bdfbc037e805": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb780-0fbb-7d70-ad81-7f6b5c3684bd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
