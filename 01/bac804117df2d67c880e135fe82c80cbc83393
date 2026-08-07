@@ -1,0 +1,28 @@
+docs/a1_backhand_v5_20260807.md
+  s_d7bdfbc037e805::t_469cdf0a3f7b08 42,58-59,84
+legged_lab/mdp/rewards.py
+  s_d7bdfbc037e805::t_469cdf0a3f7b08 1279,1281-1285,1290-1294,1303-1305
+legged_lab/physics/a1_backhand_v5_contract.py
+  s_d7bdfbc037e805::t_469cdf0a3f7b08 18-21
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_d7bdfbc037e805::t_469cdf0a3f7b08 1849
+legged_lab/physics/test_a1_backhand_v5_contract.py
+  s_d7bdfbc037e805::t_469cdf0a3f7b08 3-4,9-13,71-77
+  s_d7bdfbc037e805::t_7c07d33c1354a3 78-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "01bac804117df2d67c880e135fe82c80cbc83393",
+  "prompts": {},
+  "sessions": {
+    "s_d7bdfbc037e805": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb780-0fbb-7d70-ad81-7f6b5c3684bd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
