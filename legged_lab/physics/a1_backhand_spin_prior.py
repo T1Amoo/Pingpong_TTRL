@@ -17,6 +17,8 @@ spin-aware flight/target experiment.
 
 from __future__ import annotations
 
+import math
+
 import torch
 
 
@@ -84,3 +86,61 @@ def sample_serve_spin_prior(
         )
         spin = spin * scale_per_sample
     return spin * scale
+
+
+def sample_weak_topspin_prior(
+    count: int,
+    *,
+    device: str | torch.device,
+    dtype: torch.dtype,
+    curriculum: float,
+    easy_range_rad_s: tuple[float, float] = (2.0, 4.0),
+    hard_range_rad_s: tuple[float, float] = (2.0, 8.0),
+    tilt_deg: float = 10.0,
+) -> torch.Tensor:
+    """Sample weak topspin for an incoming A1 ball travelling along ``-x``.
+
+    Topspin has negative ``omega_y`` in the A1 table frame.  A small random
+    tilt toward ``omega_z`` supplies bounded side-spin robustness without
+    reintroducing v4's large mixed side/backspin clusters.  ``omega_x`` stays
+    zero because it does not model the user's hand-fed serve mechanism.
+    """
+
+    for name, value_range in (
+        ("easy_range_rad_s", easy_range_rad_s),
+        ("hard_range_rad_s", hard_range_rad_s),
+    ):
+        if len(value_range) != 2:
+            raise ValueError(f"{name} must contain exactly two values")
+        lo_value, hi_value = map(float, value_range)
+        if not (math.isfinite(lo_value) and math.isfinite(hi_value)):
+            raise ValueError(f"{name} must be finite")
+        if lo_value < 0.0 or hi_value < lo_value:
+            raise ValueError(f"{name} must satisfy 0 <= low <= high")
+    if not math.isfinite(float(tilt_deg)) or not 0.0 <= float(tilt_deg) < 90.0:
+        raise ValueError("tilt_deg must satisfy 0 <= tilt_deg < 90")
+
+    if count <= 0:
+        return torch.empty((0, 3), device=device, dtype=dtype)
+
+    c = min(max(float(curriculum), 0.0), 1.0)
+    magnitude_lo = float(easy_range_rad_s[0]) + c * (
+        float(hard_range_rad_s[0]) - float(easy_range_rad_s[0])
+    )
+    magnitude_hi = float(easy_range_rad_s[1]) + c * (
+        float(hard_range_rad_s[1]) - float(easy_range_rad_s[1])
+    )
+    magnitude = torch.empty((count,), device=device, dtype=dtype).uniform_(
+        magnitude_lo,
+        magnitude_hi,
+    )
+
+    max_tilt_rad = math.radians(abs(float(tilt_deg)))
+    tilt = torch.empty((count,), device=device, dtype=dtype).uniform_(
+        -max_tilt_rad,
+        max_tilt_rad,
+    )
+    spin = torch.zeros((count, 3), device=device, dtype=dtype)
+    spin[:, 1] = -magnitude * torch.cos(tilt)
+    spin[:, 2] = magnitude * torch.sin(tilt)
+    return spin

@@ -1,7 +1,10 @@
 """A1 table-tennis env: reuse TTEnv, override only the geometric reset thresholds."""
 import torch
 from legged_lab.envs.base.tt_env import TTEnv
-from legged_lab.physics.a1_backhand_spin_prior import sample_serve_spin_prior
+from legged_lab.physics.a1_backhand_spin_prior import (
+    sample_serve_spin_prior,
+    sample_weak_topspin_prior,
+)
 
 
 class A1TTEnv(TTEnv):
@@ -16,6 +19,23 @@ class A1TTEnv(TTEnv):
         dtype: torch.dtype,
     ) -> torch.Tensor:
         cfg = self.cfg.ball
+        mode = str(getattr(cfg, "post_bounce_spin_mode", "correlated_prior"))
+        if mode == "weak_topspin":
+            return sample_weak_topspin_prior(
+                count,
+                device=self.device,
+                dtype=dtype,
+                curriculum=curriculum,
+                easy_range_rad_s=tuple(
+                    getattr(cfg, "post_bounce_topspin_easy_range_rad_s", (2.0, 4.0))
+                ),
+                hard_range_rad_s=tuple(
+                    getattr(cfg, "post_bounce_topspin_hard_range_rad_s", (2.0, 8.0))
+                ),
+                tilt_deg=float(getattr(cfg, "post_bounce_topspin_tilt_deg", 10.0)),
+            )
+        if mode != "correlated_prior":
+            raise ValueError(f"Unsupported A1 post-bounce spin mode: {mode!r}")
         return sample_serve_spin_prior(
             count,
             device=self.device,

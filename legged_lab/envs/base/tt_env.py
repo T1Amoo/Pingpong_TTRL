@@ -32,6 +32,7 @@ from legged_lab.envs.base.tt_env_config import TTEnvCfg
 from legged_lab.envs.base.tt_config import BaseSceneCfg
 from legged_lab.physics.contact_events import (
     post_impact_event_mask,
+    reward_event_reset_defer_mask,
     update_table_bounce_latches,
 )
 from legged_lab.physics.serve_flight import probe_serve_flight
@@ -459,6 +460,9 @@ class TTEnv(VecEnv):
         # Historical tasks keep using has_touch_opponent_table_just_now.
         self.opponent_table_after_hit_event = torch.zeros(
             self.num_envs, device=self.device, dtype=torch.bool
+        )
+        self.opponent_table_bounce_pos_latch = torch.zeros(
+            self.num_envs, 3, device=self.device
         )
         self._opponent_table_after_hit_seen = torch.zeros(
             self.num_envs, device=self.device, dtype=torch.bool
@@ -1269,6 +1273,7 @@ class TTEnv(VecEnv):
         self.has_touch_opo_table_prev[env_ids] = False
         self._opponent_table_after_hit_seen[env_ids] = False
         self._opponent_table_descending_seen[env_ids] = False
+        self.opponent_table_bounce_pos_latch[env_ids] = 0.0
         self.has_return_own_table2_prev[env_ids] = False
         self.has_second_bounce[env_ids] = False
         self.left_after_bounce[env_ids] = False
@@ -1806,6 +1811,22 @@ class TTEnv(VecEnv):
         ball_on_floor = self.ball.data.root_pos_w[:, 2] < 0.1  # Adjust threshold as needed
         ball_timeout = self.ball_episode_length_buf >= self.max_ball_episode_length
         ball_reset_condition = ball_on_floor | ball_timeout
+        if getattr(
+            self.cfg.ball,
+            "defer_ball_reset_for_reward_events_enable",
+            False,
+        ):
+            if getattr(self.cfg.ball, "post_impact_outcome_enable", False):
+                post_impact_pending = self.has_touch_paddle & (~self.post_impact_latched)
+            else:
+                post_impact_pending = torch.zeros_like(self.has_touch_paddle)
+            defer_reset = reward_event_reset_defer_mask(
+                self.paddle_contact_event,
+                self.post_impact_reward_event,
+                self.opponent_table_after_hit_event,
+                post_impact_pending,
+            )
+            ball_reset_condition &= ~defer_reset
         # ball_reset_condition = ball_timeout
         ball_reset_ids = ball_reset_condition.nonzero(as_tuple=False).flatten()
         # expose ball reset ids for downstream modules (e.g., predictor)
@@ -2547,6 +2568,17 @@ class TTEnv(VecEnv):
             self._opponent_table_after_hit_seen,
         )
         self.opponent_table_after_hit_event |= event
+        if getattr(self.cfg.ball, "table_center_bounce_latch_enable", False):
+            # Keep this 500 Hz path fully on device.  A Python ``bool(any())``
+            # would synchronize CUDA on every physics substep.  V4 leaves the
+            # opt-in flag off, so even this tensor kernel is v5-only.
+            self.opponent_table_bounce_pos_latch.copy_(
+                torch.where(
+                    event.unsqueeze(-1),
+                    self.ball_pos,
+                    self.opponent_table_bounce_pos_latch,
+                )
+            )
         self._opponent_table_descending_seen.copy_(descending_seen)
         self._opponent_table_after_hit_seen.copy_(bounce_seen)
 

@@ -13,6 +13,7 @@ import legged_lab.mdp as mdp
 from legged_lab.physics import a1_backhand_v2_contract as backhand_v2
 from legged_lab.physics import a1_backhand_v3_contract as backhand_v3
 from legged_lab.physics import a1_backhand_v4_contract as backhand_v4
+from legged_lab.physics import a1_backhand_v5_contract as backhand_v5
 from legged_lab.assets.a1.a1 import (
     A1_RIGHT_ARM_JOINTS,
     A1_INIT_Z,
@@ -476,6 +477,27 @@ class A1TableTennisBackhandV4RewardCfg(A1TableTennisBackhandRewardCfg):
         params={
             "half_penalty_distance_m": (
                 backhand_v4.LANDING_OUTSIDE_HALF_PENALTY_DISTANCE_M
+            ),
+        },
+    )
+
+
+@configclass
+class A1TableTennisBackhandV5RewardCfg(A1TableTennisBackhandV4RewardCfg):
+    """V5 adds guaranteed contact and observed table-center outcome events."""
+
+    reward_contact_event = RewTerm(
+        func=mdp.reward_a1_active_contact_event,
+        weight=0.0,
+    )
+    reward_actual_table_center = RewTerm(
+        func=mdp.reward_a1_actual_table_center,
+        weight=0.0,
+        params={
+            "target_x": backhand_v5.LANDING_TARGET_X,
+            "target_y": backhand_v5.LANDING_TARGET_Y,
+            "half_reward_radius_m": (
+                backhand_v5.LANDING_TARGET_HALF_REWARD_RADIUS_M
             ),
         },
     )
@@ -1403,6 +1425,163 @@ class A1TableTennisBackhandV4EvalEnvCfg(A1TableTennisBackhandV4EnvCfg):
 
 
 @configclass
+class A1TableTennisBackhandV5EnvCfg(A1TableTennisBackhandV4EnvCfg):
+    """Backhand v5: hit-first rewards, phase-gated x and weak topspin."""
+
+    reward = A1TableTennisBackhandV5RewardCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # Y/z remains an always-positive guide.  Forward x progress is a
+        # separate late-phase bonus, not v4's continuous dx rescaling.
+        self.reward.reward_future_dis_ee.func = (
+            mdp.reward_a1_phase_gated_future_ee_target
+        )
+        self.reward.reward_future_dis_ee.params = {
+            "std_ee": 0.5,
+            "threshold": 0.08,
+            "z_weight": 2.5,
+            "x_phase_open_start_s": backhand_v5.X_PHASE_OPEN_START_S,
+            "x_phase_open_final_s": backhand_v5.X_PHASE_OPEN_FINAL_S,
+            "x_phase_transition_s": backhand_v5.X_PHASE_TRANSITION_S,
+            "x_zero_reward_error_m": (
+                backhand_v5.X_PROGRESS_ZERO_REWARD_ERROR_M
+            ),
+            "x_full_reward_error_m": (
+                backhand_v5.X_PROGRESS_FULL_REWARD_ERROR_M
+            ),
+            "curriculum_start_raw_step": (
+                backhand_v5.TIMING_CURRICULUM_START_RAW_STEP
+            ),
+            "curriculum_ramp_raw_steps": (
+                backhand_v5.TIMING_CURRICULUM_RAMP_RAW_STEPS
+            ),
+        }
+
+        # Preserve only a gradually introduced early-forward guard.  Remove
+        # every v4 prescription of how the paddle must move at/after contact,
+        # and remove the negative reward for an off-table return.
+        self.reward.penalty_early_paddle_forward.func = (
+            mdp.penalty_a1_curriculum_early_paddle_forward
+        )
+        self.reward.penalty_early_paddle_forward.params = {
+            "release_start_s": backhand_v5.X_PHASE_OPEN_START_S,
+            "release_final_s": backhand_v5.X_PHASE_OPEN_FINAL_S,
+            "ramp_s": backhand_v5.EARLY_HOLD_RAMP_S,
+            "min_retraction_m": backhand_v5.EARLY_MIN_RETRACTION_M,
+            "max_excess_m": backhand_v5.EARLY_MAX_EXCESS_M,
+            "curriculum_start_raw_step": (
+                backhand_v5.TIMING_CURRICULUM_START_RAW_STEP
+            ),
+            "curriculum_ramp_raw_steps": (
+                backhand_v5.TIMING_CURRICULUM_RAMP_RAW_STEPS
+            ),
+        }
+        self.reward.penalty_early_paddle_forward.weight = (
+            backhand_v5.EARLY_FORWARD_PENALTY_WEIGHT
+        )
+        self.reward.penalty_late_paddle_backtrack.weight = (
+            backhand_v5.LATE_BACKTRACK_PENALTY_WEIGHT
+        )
+        self.reward.penalty_contact_lateral_paddle_speed.weight = (
+            backhand_v5.CONTACT_LATERAL_SPEED_PENALTY_WEIGHT
+        )
+        self.reward.penalty_predicted_landing_outside_table.weight = (
+            backhand_v5.LANDING_OUTSIDE_PENALTY_WEIGHT
+        )
+        self.reward.penalty_paddle_above_target.weight = (
+            backhand_v5.PADDLE_ABOVE_TARGET_PENALTY_WEIGHT
+        )
+
+        # Explicit positive ladder:
+        # miss < active contact < physical table bounce < actual table center.
+        self.reward.reward_contact_event.weight = (
+            backhand_v5.CONTACT_EVENT_REWARD_WEIGHT
+        )
+        self.reward.reward_contact.weight = (
+            backhand_v5.CONTACT_QUALITY_REWARD_WEIGHT
+        )
+        self.reward.reward_sweet_contact.weight = (
+            backhand_v5.SWEET_CONTACT_REWARD_WEIGHT
+        )
+        self.reward.reward_approach_velocity.weight = (
+            backhand_v5.APPROACH_VELOCITY_REWARD_WEIGHT
+        )
+        self.reward.reward_approach_velocity.params = {
+            "max_speed_mps": backhand_v5.APPROACH_VELOCITY_CAP_MPS,
+        }
+        self.reward.reward_hit_direction.weight = (
+            backhand_v5.HIT_DIRECTION_REWARD_WEIGHT
+        )
+        self.reward.reward_future_landing_dis.weight = (
+            backhand_v5.PREDICTED_LANDING_REWARD_WEIGHT
+        )
+        self.reward.reward_future_pass_net.weight = (
+            backhand_v5.PASS_NET_REWARD_WEIGHT
+        )
+        self.reward.reward_table_success.weight = (
+            backhand_v5.TABLE_SUCCESS_REWARD_WEIGHT
+        )
+        self.reward.reward_actual_table_center.weight = (
+            backhand_v5.ACTUAL_TABLE_CENTER_REWARD_WEIGHT
+        )
+        self.ball.table_center_bounce_latch_enable = True
+        self.ball.defer_ball_reset_for_reward_events_enable = True
+
+        # V4's full empirical codebook is intentionally too strong and mixes
+        # side/backspin.  V5 keeps the exact translational serve proposal but
+        # injects only 2--8 rad/s weak topspin after the own-table bounce.
+        self.ball.post_bounce_spin_mode = "weak_topspin"
+        self.ball.post_bounce_topspin_easy_range_rad_s = (
+            backhand_v5.WEAK_TOPSPIN_EASY_RANGE_RAD_S
+        )
+        self.ball.post_bounce_topspin_hard_range_rad_s = (
+            backhand_v5.WEAK_TOPSPIN_HARD_RANGE_RAD_S
+        )
+        self.ball.post_bounce_topspin_tilt_deg = (
+            backhand_v5.WEAK_TOPSPIN_TILT_DEG
+        )
+
+
+@configclass
+class A1TableTennisBackhandV5EvalEnvCfg(A1TableTennisBackhandV5EnvCfg):
+    """Backhand-v5 final-range eval with final timing and weak-spin ranges."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.max_episode_length_s = 99999999999
+        self.ball.serve_bounce_x_range = self.ball.serve_bounce_x_range_hard
+        self.ball.serve_bounce_vz_range = self.ball.serve_bounce_vz_range_hard
+        self.ball.serve_y_center = self.ball.serve_y_center_hard
+        self.ball.serve_y_start = self.ball.serve_y_wide
+        self.ball.serve_tail_candidate_weight = self.ball.serve_tail_candidate_weight_hard
+        self.ball.serve_tail_bounce_x_range = self.ball.serve_tail_bounce_x_range_hard
+        self.ball.serve_tail_bounce_vz_range = self.ball.serve_tail_bounce_vz_range_hard
+        self.ball.post_bounce_topspin_easy_range_rad_s = (
+            self.ball.post_bounce_topspin_hard_range_rad_s
+        )
+        self.ball.serve_curriculum_steps = 0
+        self.ball.serve_curriculum_phase_start = 0
+
+        # Eval must use the final 0.60 s phase boundary immediately.
+        self.reward.reward_future_dis_ee.params.update(
+            {
+                "x_phase_open_start_s": backhand_v5.X_PHASE_OPEN_FINAL_S,
+                "curriculum_start_raw_step": 0,
+                "curriculum_ramp_raw_steps": 0,
+            }
+        )
+        self.reward.penalty_early_paddle_forward.params.update(
+            {
+                "release_start_s": backhand_v5.X_PHASE_OPEN_FINAL_S,
+                "curriculum_start_raw_step": 0,
+                "curriculum_ramp_raw_steps": 0,
+            }
+        )
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -1662,6 +1841,14 @@ class A1TableTennisBackhandV4AgentCfg(A1TableTennisBackhandV3AgentCfg):
     run_name = "scratch_realserve_truehit_camera157510_oneway_return_5k10k5k"
     resume = False
     max_iterations = backhand_v4.MAX_ITERATIONS
+
+
+@configclass
+class A1TableTennisBackhandV5AgentCfg(A1TableTennisBackhandV4AgentCfg):
+    experiment_name: str = "a1_tt_backhand_real_v5_hitfirst_phasegate_weakspin"
+    run_name = "scratch_hitfirst_phasegate_weaktopspin_5k10k5k"
+    resume = False
+    max_iterations = backhand_v5.MAX_ITERATIONS
 
 
 @configclass

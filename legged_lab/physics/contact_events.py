@@ -20,6 +20,28 @@ def post_impact_event_mask(
     return pending.bool() & (outgoing | timed_out)
 
 
+def reward_event_reset_defer_mask(
+    contact_event: torch.Tensor,
+    post_impact_event: torch.Tensor,
+    table_bounce_event: torch.Tensor,
+    post_impact_pending: torch.Tensor,
+) -> torch.Tensor:
+    """Keep a ball alive until same-tick sparse rewards are consumed.
+
+    TTEnv computes ball timeouts before RewardManager.  Without this mask, a
+    contact, outgoing-state, or table-bounce event occurring exactly on the
+    timeout control tick is cleared by ``reset_ball`` before it can pay.  A
+    pending post-impact latch is also retained for its bounded timeout window.
+    """
+
+    return (
+        contact_event.bool()
+        | post_impact_event.bool()
+        | table_bounce_event.bool()
+        | post_impact_pending.bool()
+    )
+
+
 def first_latched_event_mask(
     active_now: torch.Tensor,
     active_seen: torch.Tensor,

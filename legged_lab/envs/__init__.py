@@ -71,6 +71,9 @@ from legged_lab.envs.a1_tt.a1_tt_config import (
     A1TableTennisBackhandV4EnvCfg,
     A1TableTennisBackhandV4EvalEnvCfg,
     A1TableTennisBackhandV4AgentCfg,
+    A1TableTennisBackhandV5EnvCfg,
+    A1TableTennisBackhandV5EvalEnvCfg,
+    A1TableTennisBackhandV5AgentCfg,
     A1TableTennisDamiaoEnvCfg,
     A1TableTennisDamiaoAgentCfg,
     A1TableTennisOpenArmEnvCfg,
@@ -141,6 +144,18 @@ task_registry.register(
     A1TTEnv,
     A1TableTennisBackhandV4EvalEnvCfg(),
     A1TableTennisBackhandV4AgentCfg(),
+)
+task_registry.register(
+    "a1_tt_backhand_v5",
+    A1TTEnv,
+    A1TableTennisBackhandV5EnvCfg(),
+    A1TableTennisBackhandV5AgentCfg(),
+)
+task_registry.register(
+    "a1_tt_backhand_v5_eval",
+    A1TTEnv,
+    A1TableTennisBackhandV5EvalEnvCfg(),
+    A1TableTennisBackhandV5AgentCfg(),
 )
 task_registry.register("a1_tt_damiao", A1TTEnv, A1TableTennisDamiaoEnvCfg(), A1TableTennisDamiaoAgentCfg())
 task_registry.register("a1_tt_openarm", A1TTEnv, A1TableTennisOpenArmEnvCfg(), A1TableTennisOpenArmAgentCfg())

@@ -6,6 +6,7 @@ from legged_lab.physics.contact_events import (
     first_latched_event_mask,
     horizontal_alignment_squared,
     post_impact_event_mask,
+    reward_event_reset_defer_mask,
     update_table_bounce_latches,
 )
 
@@ -58,3 +59,16 @@ def test_table_bounce_requires_post_hit_descent_then_fires_once_on_rise():
         )
         events.append(bool(event[0]))
     assert events == [False, False, False, False, True, False]
+
+
+def test_reward_events_and_pending_outcome_defer_same_tick_ball_reset():
+    defer = reward_event_reset_defer_mask(
+        contact_event=torch.tensor([True, False, False, False, False]),
+        post_impact_event=torch.tensor([False, True, False, False, False]),
+        table_bounce_event=torch.tensor([False, False, True, False, False]),
+        post_impact_pending=torch.tensor([False, False, False, True, False]),
+    )
+    torch.testing.assert_close(
+        defer,
+        torch.tensor([True, True, True, True, False]),
+    )

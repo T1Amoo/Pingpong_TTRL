@@ -5,6 +5,121 @@ from __future__ import annotations
 import torch
 
 
+def linear_curriculum_progress(
+    raw_step: int,
+    *,
+    start_raw_step: int,
+    ramp_raw_steps: int,
+) -> float:
+    """Return a clamped scalar curriculum progress in ``[0, 1]``.
+
+    ``TT_SIM_STEP_OFFSET`` seeds the environment's raw-step clock on resume,
+    so this helper is safe for watchdog restarts.  A non-positive ramp selects
+    the final value, which is useful for deterministic eval configs.
+    """
+
+    if ramp_raw_steps <= 0:
+        return 1.0
+    return min(
+        max((int(raw_step) - int(start_raw_step)) / float(ramp_raw_steps), 0.0),
+        1.0,
+    )
+
+
+def curriculum_lerp(
+    start_value: float,
+    final_value: float,
+    progress: float,
+) -> float:
+    """Linearly interpolate a scalar after clamping curriculum progress."""
+
+    value = min(max(float(progress), 0.0), 1.0)
+    return float(start_value) + value * (float(final_value) - float(start_value))
+
+
+def phase_open_gate(
+    time_to_hit_s: torch.Tensor,
+    *,
+    open_time_s: float,
+    transition_s: float,
+) -> torch.Tensor:
+    """Open a late-swing reward phase at a remaining-time boundary.
+
+    The gate is zero while ``time_to_hit_s >= open_time_s`` and reaches one
+    once ``transition_s`` more seconds have elapsed.  Smoothstep gives a short
+    differentiable hand-off without continuously rescaling the x error during
+    the entire incoming flight.
+    """
+
+    if transition_s <= 0.0:
+        return (time_to_hit_s < float(open_time_s)).to(time_to_hit_s.dtype)
+    progress = torch.clamp(
+        (float(open_time_s) - time_to_hit_s) / float(transition_s),
+        min=0.0,
+        max=1.0,
+    )
+    return progress * progress * (3.0 - 2.0 * progress)
+
+
+def staged_intercept_reward(
+    yz_distance: torch.Tensor,
+    x_progress: torch.Tensor,
+    x_gate: torch.Tensor,
+    *,
+    std_ee: float,
+    threshold: float,
+) -> torch.Tensor:
+    """Positive-only y/z guidance plus a gated forward-progress bonus.
+
+    The x bonus is conditioned on y/z quality and starts from zero at its
+    configurable shaping boundary. Opening the phase can therefore never make
+    an otherwise identical state lose reward; the squared ramp leaves only a
+    negligible bonus at the measured ready pose and grows toward the hit plane.
+    """
+
+    denominator = float(std_ee) * float(std_ee) + 1.0e-12
+    yz_quality = torch.exp(-torch.clamp(yz_distance, min=float(threshold)) / denominator)
+    gated_progress = (
+        torch.clamp(x_gate, min=0.0, max=1.0)
+        * torch.clamp(x_progress, min=0.0, max=1.0)
+    )
+    return yz_quality * (1.0 + gated_progress)
+
+
+def weighted_yz_distance(
+    diff_xyz: torch.Tensor,
+    *,
+    z_weight: float,
+) -> torch.Tensor:
+    """Return a zero-gradient-safe weighted y/z intercept distance."""
+
+    weighted_z = diff_xyz[..., 2] * float(z_weight)
+    yz_components = torch.stack((diff_xyz[..., 1], weighted_z), dim=-1)
+    return torch.linalg.vector_norm(yz_components, dim=-1)
+
+
+def x_position_progress(
+    x_error_m: torch.Tensor,
+    *,
+    zero_reward_error_m: float,
+    full_reward_error_m: float,
+) -> torch.Tensor:
+    """Return squared forward progress from a retracted boundary to target."""
+
+    zero_error = float(zero_reward_error_m)
+    full_error = float(full_reward_error_m)
+    if not 0.0 <= full_error < zero_error:
+        raise ValueError(
+            "x progress requires 0 <= full_reward_error_m < zero_reward_error_m"
+        )
+    progress = torch.clamp(
+        (zero_error - torch.abs(x_error_m)) / (zero_error - full_error),
+        min=0.0,
+        max=1.0,
+    )
+    return torch.square(progress)
+
+
 def x_tracking_gain(
     time_to_hit_s: torch.Tensor,
     *,

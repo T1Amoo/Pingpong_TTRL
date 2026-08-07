@@ -31,9 +31,15 @@ from legged_lab.physics.return_flight import (
     smooth_clearance_gate,
 )
 from legged_lab.physics.swing_timing import (
+    curriculum_lerp,
     early_hold_gate,
     excess_speed_penalty,
     late_swing_gate,
+    linear_curriculum_progress,
+    phase_open_gate,
+    staged_intercept_reward,
+    weighted_yz_distance,
+    x_position_progress,
     x_tracking_gain,
 )
 
@@ -783,6 +789,12 @@ def reward_contact(env: TTEnv) -> torch.Tensor:
     return env.ball_contact_rew.float()
 
 
+def reward_a1_active_contact_event(env: TTEnv) -> torch.Tensor:
+    """Guaranteed positive reward for one valid, active first paddle contact."""
+
+    return env.paddle_contact_event.float()
+
+
 def reward_paddle_sweet_contact(env: TTEnv) -> torch.Tensor:
     reward = getattr(env, "paddle_sweet_contact_rew", None)
     if reward is None:
@@ -939,11 +951,16 @@ def reward_hit_direction(env: TTEnv) -> torch.Tensor:
     return torch.nan_to_num(align * align * first_contact, nan=0.0, posinf=0.0, neginf=0.0)
 
 
-def reward_a1_latched_approach_velocity(env: TTEnv) -> torch.Tensor:
+def reward_a1_latched_approach_velocity(
+    env: TTEnv,
+    max_speed_mps: float | None = None,
+) -> torch.Tensor:
     """V4 first-contact approach reward from the latched paddle-center velocity."""
 
     event = env.paddle_contact_event.float()
     forward = torch.clamp(env.paddle_contact_point_vel_latch[:, 0], min=0.0)
+    if max_speed_mps is not None:
+        forward = torch.clamp(forward, max=max(float(max_speed_mps), 0.0))
     return torch.nan_to_num(forward * event, nan=0.0, posinf=0.0, neginf=0.0)
 
 
@@ -1167,6 +1184,66 @@ def reward_a1_timed_future_ee_target(
     return torch.nan_to_num(reward, nan=0.0, posinf=0.0, neginf=0.0)
 
 
+def reward_a1_phase_gated_future_ee_target(
+    env: TTEnv,
+    std_ee: float = 0.5,
+    threshold: float = 0.08,
+    z_weight: float = 2.5,
+    x_phase_open_start_s: float = 0.80,
+    x_phase_open_final_s: float = 0.60,
+    x_phase_transition_s: float = 0.04,
+    x_zero_reward_error_m: float = 0.08,
+    x_full_reward_error_m: float = 0.02,
+    curriculum_start_raw_step: int = 240_000,
+    curriculum_ramp_raw_steps: int = 720_000,
+) -> torch.Tensor:
+    """Positive-only staged intercept guidance for A1 backhand v5.
+
+    Y/z guidance stays on for the whole incoming flight. Once the stable
+    reset-time hit clock crosses the learned swing boundary, forward progress
+    from the configurable shaping boundary toward the hit plane earns an
+    additional bonus over a two-control-tick smoothstep. Unlike v4, x error is
+    never multiplied into the only distance term; the squared ramp keeps
+    ready-pose x credit negligible while preserving a forward gradient.
+    """
+
+    progress = linear_curriculum_progress(
+        env.sim_step_counter,
+        start_raw_step=curriculum_start_raw_step,
+        ramp_raw_steps=curriculum_ramp_raw_steps,
+    )
+    open_time_s = curriculum_lerp(
+        x_phase_open_start_s,
+        x_phase_open_final_s,
+        progress,
+    )
+    x_gate = phase_open_gate(
+        env.ball_future_t.squeeze(-1),
+        open_time_s=open_time_s,
+        transition_s=x_phase_transition_s,
+    )
+
+    diff = env.ball_future_pose - env.paddle_pos
+    yz_distance = weighted_yz_distance(
+        diff,
+        z_weight=z_weight,
+    )
+    x_progress = x_position_progress(
+        diff[:, 0],
+        zero_reward_error_m=x_zero_reward_error_m,
+        full_reward_error_m=x_full_reward_error_m,
+    )
+    reward = staged_intercept_reward(
+        yz_distance,
+        x_progress,
+        x_gate,
+        std_ee=std_ee,
+        threshold=threshold,
+    )
+    reward = torch.where(env.mask_invalid, torch.zeros_like(reward), reward)
+    return torch.nan_to_num(reward, nan=0.0, posinf=0.0, neginf=0.0)
+
+
 def penalty_early_paddle_forward(
     env: TTEnv,
     release_s: float = 0.45,
@@ -1186,6 +1263,36 @@ def penalty_early_paddle_forward(
     forward_excess = torch.clamp(env.paddle_pos[:, 0] - x_limit, min=0.0)
     scaled = torch.clamp(forward_excess / max(float(max_excess_m), 1.0e-6), max=1.0)
     penalty = torch.square(scaled) * early
+    return torch.where(env.mask_invalid, torch.zeros_like(penalty), penalty)
+
+
+def penalty_a1_curriculum_early_paddle_forward(
+    env: TTEnv,
+    release_start_s: float = 0.80,
+    release_final_s: float = 0.60,
+    ramp_s: float = 0.10,
+    min_retraction_m: float = 0.08,
+    max_excess_m: float = 0.20,
+    curriculum_start_raw_step: int = 240_000,
+    curriculum_ramp_raw_steps: int = 720_000,
+) -> torch.Tensor:
+    """V5's sole swing constraint, introduced gradually after contact bootstrap."""
+
+    progress = linear_curriculum_progress(
+        env.sim_step_counter,
+        start_raw_step=curriculum_start_raw_step,
+        ramp_raw_steps=curriculum_ramp_raw_steps,
+    )
+    release_s = curriculum_lerp(release_start_s, release_final_s, progress)
+    t_hit = env.ball_future_t.squeeze(-1)
+    early = early_hold_gate(t_hit, release_s=release_s, ramp_s=ramp_s)
+    x_limit = float(env.cfg.robot.hit_plane_x) - float(min_retraction_m)
+    forward_excess = torch.clamp(env.paddle_pos[:, 0] - x_limit, min=0.0)
+    scaled = torch.clamp(
+        forward_excess / max(float(max_excess_m), 1.0e-6),
+        max=1.0,
+    )
+    penalty = torch.square(scaled) * early * float(progress)
     return torch.where(env.mask_invalid, torch.zeros_like(penalty), penalty)
 
 
@@ -1340,6 +1447,30 @@ def reward_a1_landing_target_quality(
         posinf=0.0,
         neginf=0.0,
     )
+
+
+def reward_a1_actual_table_center(
+    env: TTEnv,
+    target_x: float = 0.70,
+    target_y: float = 0.0,
+    half_reward_radius_m: float = 0.50,
+) -> torch.Tensor:
+    """Score the latched physical opponent-table bounce, never a prediction."""
+
+    bounce_pos = getattr(env, "opponent_table_bounce_pos_latch", env.ball_pos)
+    reward = landing_target_quality(
+        bounce_pos[:, 0],
+        bounce_pos[:, 1],
+        target_x=target_x,
+        target_y=target_y,
+        half_reward_radius_m=half_reward_radius_m,
+    )
+    reward = torch.where(
+        env.opponent_table_after_hit_event,
+        reward,
+        torch.zeros_like(reward),
+    )
+    return torch.nan_to_num(reward, nan=0.0, posinf=0.0, neginf=0.0)
 
 
 def penalty_a1_predicted_landing_outside_table(
