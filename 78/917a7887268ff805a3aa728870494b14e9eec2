@@ -1,0 +1,26 @@
+legged_lab/physics/test_a1_backhand_v6_watchdog.py
+  s_d7bdfbc037e805::t_d1d6f9ddbc073b 9-11,28,30-48
+  s_d7bdfbc037e805::t_f29dc53b04eef9 49-61
+watchdog_a1_tt_backhand_v6_to30k.sh
+  s_d7bdfbc037e805::t_f29dc53b04eef9 13-14
+  s_d7bdfbc037e805::t_d1d6f9ddbc073b 1-12,15-21
+watchdog_a1_tt_backhand_v6.sh
+  s_d7bdfbc037e805::t_d1d6f9ddbc073b 52,54-64,111,115
+  s_d7bdfbc037e805::t_f29dc53b04eef9 9-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "78917a7887268ff805a3aa728870494b14e9eec2",
+  "prompts": {},
+  "sessions": {
+    "s_d7bdfbc037e805": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb780-0fbb-7d70-ad81-7f6b5c3684bd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
