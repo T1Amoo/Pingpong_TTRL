@@ -1,0 +1,19 @@
+legged_lab/scripts/eval.py
+  s_d7bdfbc037e805::t_6711394e196581 33-38,173-178,209-222,233,235-238,400-407,413-417,427-437
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "c62aaf93f8921c94da5c463e973add271426b14f",
+  "prompts": {},
+  "sessions": {
+    "s_d7bdfbc037e805": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb780-0fbb-7d70-ad81-7f6b5c3684bd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
