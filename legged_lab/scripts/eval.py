@@ -30,6 +30,12 @@ parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--predictor", action="store_true", help="Use predictor-augmented runner for loading predictor weights and inference")
+parser.add_argument(
+    "--eval_output",
+    type=str,
+    default="eval_results.csv",
+    help="CSV filename below the checkpoint run's eval_result directory.",
+)
 # recording / debugging flags
 parser.add_argument(
     "--record_action",
@@ -164,7 +170,12 @@ def play():
     # Prepare paths for periodic eval result saving
     result_dir = os.path.join(os.path.dirname(resume_path), "eval_result")
     os.makedirs(result_dir, exist_ok=True)
-    csv_path = os.path.join(result_dir, "eval_results.csv")
+    # Keep every bounded evaluation as a separate artifact when requested.  A
+    # basename-only contract prevents an accidental path escape from the run.
+    eval_output = os.path.basename(args_cli.eval_output)
+    if not eval_output or eval_output != args_cli.eval_output:
+        raise ValueError(f"--eval_output must be a plain filename: {args_cli.eval_output!r}")
+    csv_path = os.path.join(result_dir, eval_output)
 
     # Prepare record buffers if requested
     record_action = bool(getattr(args_cli, "record_action", False))
@@ -195,7 +206,20 @@ def play():
     except Exception:
         current_label = None
         current_pos = None
-    # Collected rows: (env_id, label_str, x, y, z)
+    # Freeze the accepted reset-time hit-plane target for the whole serve.  At
+    # a reset boundary env._serve_hit_plane_target already belongs to the next
+    # ball, while this buffer still belongs to the completed one.  This avoids
+    # assigning the invalid prediction sentinel to misses and makes y/z-bin
+    # contact rates auditable.
+    try:
+        current_target = env._serve_hit_plane_target.detach().clone()
+        current_target_valid = env._serve_hit_plane_target_valid.detach().clone()
+    except Exception:
+        current_target = None
+        current_target_valid = None
+    # Collected rows:
+    # (env_id, label_str, contact_or_fallback x/y/z,
+    #  target_valid, accepted target x/y/z)
     eval_rows = []
     last_saved_len = 0
 
@@ -206,9 +230,12 @@ def play():
         nonlocal last_saved_len
         try:
             with open(csv_path, "w") as f:
-                f.write("env_id,label,x,y,z\n")
+                f.write("env_id,label,x,y,z,target_valid,target_x,target_y,target_z\n")
                 for row in eval_rows:
-                    f.write(f"{row[0]},{row[1]},{row[2]:.6f},{row[3]:.6f},{row[4]:.6f}\n")
+                    f.write(
+                        f"{row[0]},{row[1]},{row[2]:.6f},{row[3]:.6f},{row[4]:.6f},"
+                        f"{row[5]},{row[6]:.6f},{row[7]:.6f},{row[8]:.6f}\n"
+                    )
             last_saved_len = len(eval_rows)
             print(f"[INFO] Saved evaluation results to: {csv_path} ({last_saved_len} records)")
         except Exception as e:
@@ -370,12 +397,24 @@ def play():
                                     try:
                                         record_pos = current_pos[ids_take]
                                         labels = current_label[ids_take]
+                                        if current_target is not None:
+                                            record_target = current_target[ids_take]
+                                            record_target_valid = current_target_valid[ids_take]
+                                        else:
+                                            record_target = record_pos
+                                            record_target_valid = torch.zeros_like(
+                                                labels, dtype=torch.bool
+                                            )
                                         for k in range(ids_take.numel()):
                                             eid = int(ids_take[k].item())
                                             lab = int(labels[k].item())
                                             lab_str = "missed" if lab == 0 else ("hit" if lab == 1 else "success")
                                             px, py, pz = [float(v) for v in record_pos[k].tolist()]
-                                            eval_rows.append((eid, lab_str, px, py, pz))
+                                            tx, ty, tz = [float(v) for v in record_target[k].tolist()]
+                                            target_valid = int(bool(record_target_valid[k].item()))
+                                            eval_rows.append(
+                                                (eid, lab_str, px, py, pz, target_valid, tx, ty, tz)
+                                            )
                                     except Exception:
                                         pass
                                     # Re-initialize for next serves: default to missed with future pose
@@ -385,6 +424,17 @@ def play():
                                             current_pos[ids_take] = env.ball_future_pose[ids_take]
                                     except Exception:
                                         pass
+                            # Capture the accepted target for the new serve only
+                            # after finalizing every old-serve row, including
+                            # warm-up completions.
+                            if current_target is not None:
+                                try:
+                                    current_target[ids_dev] = env._serve_hit_plane_target[ids_dev]
+                                    current_target_valid[ids_dev] = (
+                                        env._serve_hit_plane_target_valid[ids_dev]
+                                    )
+                                except Exception:
+                                    current_target_valid[ids_dev] = False
                     # print(f"envheading_w {env.robot.data.heading_w}")
                 except Exception:
                     pass
