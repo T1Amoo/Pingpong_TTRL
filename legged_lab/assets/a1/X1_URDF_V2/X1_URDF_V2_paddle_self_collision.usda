@@ -5,10 +5,12 @@
     upAxis = "Z"
 )
 
-# V2 self-collision overlay.  The CAD meshes intentionally overlap at the two
-# shoulder housings and at the rigid paddle mount.  Filter only those assembly
-# pairs; in particular Link_r_paddle <-> base_link remains enabled so a deep
-# backswing is physically blocked instead of passing through the chassis.
+# V2 targeted self-collision overlay. Full 31-body articulation
+# self-collision creates unnecessary broad-phase work for 4096 training
+# environments, while the deployment hazard is the paddle entering the
+# chassis. Explicit fine-grained pair filters are safe under Isaac's
+# environment replication. Every internal rigid-body pair is filtered except
+# Link_r_paddle <-> base_link. Ball, table, and world collisions are unchanged.
 def Xform "X1_URDF_V2" (
     prepend references = @X1_URDF_V2_paddle.usd@</X1_URDF_V2>
 )
@@ -17,9 +19,568 @@ def Xform "X1_URDF_V2" (
         prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
     )
     {
-        rel physics:filteredPairs = [
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_lun_l>,
+            </X1_URDF_V2/Link_lun_r>,
+            </X1_URDF_V2/Link_sj>,
+            </X1_URDF_V2/Link_l0>,
             </X1_URDF_V2/Link_l1>,
+            </X1_URDF_V2/Link_l2>,
+            </X1_URDF_V2/Link_l3>,
+            </X1_URDF_V2/Link_l4>,
+            </X1_URDF_V2/Link_l5>,
+            </X1_URDF_V2/Link_l6>,
+            </X1_URDF_V2/Link_l7>,
+            </X1_URDF_V2/Link_r0>,
             </X1_URDF_V2/Link_r1>,
+            </X1_URDF_V2/Link_r2>,
+            </X1_URDF_V2/Link_r3>,
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_lun_l" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_lun_r>,
+            </X1_URDF_V2/Link_sj>,
+            </X1_URDF_V2/Link_l0>,
+            </X1_URDF_V2/Link_l1>,
+            </X1_URDF_V2/Link_l2>,
+            </X1_URDF_V2/Link_l3>,
+            </X1_URDF_V2/Link_l4>,
+            </X1_URDF_V2/Link_l5>,
+            </X1_URDF_V2/Link_l6>,
+            </X1_URDF_V2/Link_l7>,
+            </X1_URDF_V2/Link_r0>,
+            </X1_URDF_V2/Link_r1>,
+            </X1_URDF_V2/Link_r2>,
+            </X1_URDF_V2/Link_r3>,
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_lun_r" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_sj>,
+            </X1_URDF_V2/Link_l0>,
+            </X1_URDF_V2/Link_l1>,
+            </X1_URDF_V2/Link_l2>,
+            </X1_URDF_V2/Link_l3>,
+            </X1_URDF_V2/Link_l4>,
+            </X1_URDF_V2/Link_l5>,
+            </X1_URDF_V2/Link_l6>,
+            </X1_URDF_V2/Link_l7>,
+            </X1_URDF_V2/Link_r0>,
+            </X1_URDF_V2/Link_r1>,
+            </X1_URDF_V2/Link_r2>,
+            </X1_URDF_V2/Link_r3>,
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_sj" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_l0>,
+            </X1_URDF_V2/Link_l1>,
+            </X1_URDF_V2/Link_l2>,
+            </X1_URDF_V2/Link_l3>,
+            </X1_URDF_V2/Link_l4>,
+            </X1_URDF_V2/Link_l5>,
+            </X1_URDF_V2/Link_l6>,
+            </X1_URDF_V2/Link_l7>,
+            </X1_URDF_V2/Link_r0>,
+            </X1_URDF_V2/Link_r1>,
+            </X1_URDF_V2/Link_r2>,
+            </X1_URDF_V2/Link_r3>,
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_l0" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_l1>,
+            </X1_URDF_V2/Link_l2>,
+            </X1_URDF_V2/Link_l3>,
+            </X1_URDF_V2/Link_l4>,
+            </X1_URDF_V2/Link_l5>,
+            </X1_URDF_V2/Link_l6>,
+            </X1_URDF_V2/Link_l7>,
+            </X1_URDF_V2/Link_r0>,
+            </X1_URDF_V2/Link_r1>,
+            </X1_URDF_V2/Link_r2>,
+            </X1_URDF_V2/Link_r3>,
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_l1" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_l2>,
+            </X1_URDF_V2/Link_l3>,
+            </X1_URDF_V2/Link_l4>,
+            </X1_URDF_V2/Link_l5>,
+            </X1_URDF_V2/Link_l6>,
+            </X1_URDF_V2/Link_l7>,
+            </X1_URDF_V2/Link_r0>,
+            </X1_URDF_V2/Link_r1>,
+            </X1_URDF_V2/Link_r2>,
+            </X1_URDF_V2/Link_r3>,
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_l2" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_l3>,
+            </X1_URDF_V2/Link_l4>,
+            </X1_URDF_V2/Link_l5>,
+            </X1_URDF_V2/Link_l6>,
+            </X1_URDF_V2/Link_l7>,
+            </X1_URDF_V2/Link_r0>,
+            </X1_URDF_V2/Link_r1>,
+            </X1_URDF_V2/Link_r2>,
+            </X1_URDF_V2/Link_r3>,
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_l3" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_l4>,
+            </X1_URDF_V2/Link_l5>,
+            </X1_URDF_V2/Link_l6>,
+            </X1_URDF_V2/Link_l7>,
+            </X1_URDF_V2/Link_r0>,
+            </X1_URDF_V2/Link_r1>,
+            </X1_URDF_V2/Link_r2>,
+            </X1_URDF_V2/Link_r3>,
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_l4" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_l5>,
+            </X1_URDF_V2/Link_l6>,
+            </X1_URDF_V2/Link_l7>,
+            </X1_URDF_V2/Link_r0>,
+            </X1_URDF_V2/Link_r1>,
+            </X1_URDF_V2/Link_r2>,
+            </X1_URDF_V2/Link_r3>,
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_l5" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_l6>,
+            </X1_URDF_V2/Link_l7>,
+            </X1_URDF_V2/Link_r0>,
+            </X1_URDF_V2/Link_r1>,
+            </X1_URDF_V2/Link_r2>,
+            </X1_URDF_V2/Link_r3>,
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_l6" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_l7>,
+            </X1_URDF_V2/Link_r0>,
+            </X1_URDF_V2/Link_r1>,
+            </X1_URDF_V2/Link_r2>,
+            </X1_URDF_V2/Link_r3>,
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_l7" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_r0>,
+            </X1_URDF_V2/Link_r1>,
+            </X1_URDF_V2/Link_r2>,
+            </X1_URDF_V2/Link_r3>,
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_r0" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_r1>,
+            </X1_URDF_V2/Link_r2>,
+            </X1_URDF_V2/Link_r3>,
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_r1" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_r2>,
+            </X1_URDF_V2/Link_r3>,
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_r2" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_r3>,
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_r3" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_r4>,
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_r4" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_r5>,
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_r5" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_r6" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_r7>,
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_r7" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_r_paddle>,
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
         ]
     }
 
@@ -27,9 +588,135 @@ def Xform "X1_URDF_V2" (
         prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
     )
     {
-        rel physics:filteredPairs = [
-            </X1_URDF_V2/Link_r6>,
-            </X1_URDF_V2/Link_r7>,
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_t01>,
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
         ]
     }
+
+    over "Link_t01" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_t02>,
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_t02" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_wxl_1_2>,
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_wxl_1_2" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_wxl_1_1>,
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_wxl_1_1" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_wxl_2_2>,
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_wxl_2_2" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_wxl_2_1>,
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_wxl_2_1" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_wxl_3_2>,
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_wxl_3_2" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_wxl_3_1>,
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_wxl_3_1" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_wxl_4_2>,
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
+    over "Link_wxl_4_2" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        prepend rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_wxl_4_1>,
+        ]
+    }
+
 }

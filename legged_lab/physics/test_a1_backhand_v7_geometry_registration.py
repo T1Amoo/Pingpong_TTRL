@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from itertools import combinations
 from pathlib import Path
+import re
 import xml.etree.ElementTree as ET
 
 
@@ -49,13 +51,27 @@ def test_v2_is_an_independent_fixed_sj_108cm_asset_without_changing_v1_3():
     assert '"X1_URDF_V2_paddle_self_collision.usda"' in ASSET_SOURCE
 
     overlay = V2_SELF_COLLISION_USD.read_text()
-    assert "PhysicsFilteredPairsAPI" in overlay
-    assert "</X1_URDF_V2/Link_r1>" in overlay
-    assert "</X1_URDF_V2/Link_l1>" in overlay
-    assert "</X1_URDF_V2/Link_r6>" in overlay
-    # Paddle/body collision must remain physical, not filtered away.
-    paddle_block = overlay.split('over "Link_r_paddle"', 1)[1]
-    assert "base_link" not in paddle_block
+    assert "PhysicsCollisionGroup" not in overlay
+    blocks = re.findall(
+        r'over "([^"]+)".*?\{\s*prepend rel physics:filteredPairs = '
+        r'\[(.*?)\]\s*\}',
+        overlay,
+        flags=re.DOTALL,
+    )
+    filtered_pairs = {
+        frozenset((source, target))
+        for source, block in blocks
+        for target in re.findall(r"</X1_URDF_V2/([^>]+)>", block)
+    }
+    body_names = {link.attrib["name"] for link in v2_root.findall("link")}
+    expected_pairs = {
+        frozenset(pair) for pair in combinations(body_names, 2)
+    }
+    expected_pairs.remove(frozenset(("base_link", "Link_r_paddle")))
+    assert filtered_pairs == expected_pairs
+    assert len(filtered_pairs) == 464
+    # The only retained articulation-internal collision is paddle against body.
+    assert frozenset(("base_link", "Link_r_paddle")) not in filtered_pairs
 
 
 def test_v7_ready_pose_is_inside_every_urdf_joint_limit():
