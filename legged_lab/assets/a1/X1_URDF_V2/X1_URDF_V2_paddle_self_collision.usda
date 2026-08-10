@@ -1,0 +1,35 @@
+#usda 1.0
+(
+    defaultPrim = "X1_URDF_V2"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+# V2 self-collision overlay.  The CAD meshes intentionally overlap at the two
+# shoulder housings and at the rigid paddle mount.  Filter only those assembly
+# pairs; in particular Link_r_paddle <-> base_link remains enabled so a deep
+# backswing is physically blocked instead of passing through the chassis.
+def Xform "X1_URDF_V2" (
+    prepend references = @X1_URDF_V2_paddle.usd@</X1_URDF_V2>
+)
+{
+    over "base_link" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_l1>,
+            </X1_URDF_V2/Link_r1>,
+        ]
+    }
+
+    over "Link_r_paddle" (
+        prepend apiSchemas = ["PhysicsFilteredPairsAPI"]
+    )
+    {
+        rel physics:filteredPairs = [
+            </X1_URDF_V2/Link_r6>,
+            </X1_URDF_V2/Link_r7>,
+        ]
+    }
+}

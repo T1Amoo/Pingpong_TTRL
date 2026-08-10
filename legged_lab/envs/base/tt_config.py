@@ -124,6 +124,19 @@ class RobotCfg:
     # --- Table-tennis paddle / hitting geometry (defaults match Booster T1) ---
     paddle_body_name: str = "right_hand_link"   # body the paddle is rigidly attached to
     paddle_offset: tuple = (0.0, -0.345, 0.0)   # paddle face center offset in that body's local frame
+    # Optional paddle-vs-body safety proxy.  Defaults are inert so historical
+    # tasks retain their exact behavior; A1 backhand-v7 supplies an audited
+    # paddle outline and torso capsule in the articulation-root frame.
+    paddle_body_safety_enable: bool = False
+    paddle_body_safety_sample_points_local_m: tuple = ()
+    paddle_body_safety_capsule_center_xy_m: tuple = (0.0, 0.0)
+    paddle_body_safety_capsule_z_range_m: tuple = (0.0, 1.0)
+    paddle_body_safety_capsule_radius_m: float = 0.1
+    paddle_body_safety_soft_clearance_m: float = 0.0
+    paddle_body_safety_full_penalty_clearance_m: float = -0.01
+    paddle_body_safety_termination_clearance_m: float = -0.02
+    paddle_body_safety_termination_steps: int = 1
+    paddle_body_safety_log_interval_steps: int = 0
     hit_body_height: float = 0.69               # target body height for robot_future_pos
     home_y: float = 0.0                         # fixed robot base home y in table frame
     paddle_y_offset: float = -0.60              # lateral base->paddle offset in ready stance

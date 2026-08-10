@@ -13,6 +13,7 @@ V1_3_URDF = ROOT / "legged_lab/assets/a1/X1_URDF_V1_3/urdf/X1_URDF_V1_3.urdf"
 V2_DIR = ROOT / "legged_lab/assets/a1/X1_URDF_V2"
 V2_URDF = V2_DIR / "urdf/X1_URDF_V2.urdf"
 V2_USD = V2_DIR / "X1_URDF_V2_paddle.usd"
+V2_SELF_COLLISION_USD = V2_DIR / "X1_URDF_V2_paddle_self_collision.usda"
 READY_Q = (1.369, -0.651, 1.656, -1.767, 0.145, 0.684, -2.153)
 
 
@@ -39,12 +40,22 @@ def test_v2_is_an_independent_fixed_sj_108cm_asset_without_changing_v1_3():
     assert abs((0.0282 + _origin_z(v2_sj) + _origin_z(v2_ro)) - 1.08) < 5.0e-6
 
     assert V2_USD.is_file() and V2_USD.stat().st_size > 1000
+    assert V2_SELF_COLLISION_USD.is_file()
     assert (V2_DIR / "configuration/X1_URDF_V2_paddle_base.usd").stat().st_size > 50_000_000
     assert (V2_DIR / "meshes").resolve() == (
         ROOT / "legged_lab/assets/a1/X1_URDF_V1_3/meshes"
     ).resolve()
     assert "A1_USD_PATH_V2" in ASSET_SOURCE
-    assert '"X1_URDF_V2", "X1_URDF_V2_paddle.usd"' in ASSET_SOURCE
+    assert '"X1_URDF_V2_paddle_self_collision.usda"' in ASSET_SOURCE
+
+    overlay = V2_SELF_COLLISION_USD.read_text()
+    assert "PhysicsFilteredPairsAPI" in overlay
+    assert "</X1_URDF_V2/Link_r1>" in overlay
+    assert "</X1_URDF_V2/Link_l1>" in overlay
+    assert "</X1_URDF_V2/Link_r6>" in overlay
+    # Paddle/body collision must remain physical, not filtered away.
+    paddle_block = overlay.split('over "Link_r_paddle"', 1)[1]
+    assert "base_link" not in paddle_block
 
 
 def test_v7_ready_pose_is_inside_every_urdf_joint_limit():
@@ -54,7 +65,7 @@ def test_v7_ready_pose_is_inside_every_urdf_joint_limit():
         assert float(limit["lower"]) <= q <= float(limit["upper"])
 
 
-def test_v7_inherits_v6_and_changes_only_asset_pose_response_and_relative_geometry():
+def test_v7_inherits_v6_and_adds_only_v7_asset_geometry_and_safety_contract():
     assert (
         "class A1TableTennisBackhandV7EnvCfg(A1TableTennisBackhandV6EnvCfg)"
         in CONFIG_SOURCE
@@ -64,8 +75,14 @@ def test_v7_inherits_v6_and_changes_only_asset_pose_response_and_relative_geomet
     )[1].split("class A1TableTennisBackhandV7EvalEnvCfg", 1)[0]
     assert "super().__post_init__()" in body
     assert "self.scene.robot.spawn.usd_path = A1_USD_PATH_V2" in body
+    assert "enabled_self_collisions" in body
+    assert "backhand_v7.ENABLE_SELF_COLLISIONS" in body
     assert "self.scene.robot.init_state.joint_pos.update" in body
     assert "self.robot.action_response_u_mean = A1_BACKHAND_V7_READY_Q" in body
+    assert "self.robot.paddle_body_safety_enable = True" in body
+    assert "self.ball.precontact_drawdown_arm_retraction_m" in body
+    assert "self.reward.reward_postimpact_safe_retraction.weight" in body
+    assert "self.reward.penalty_paddle_body_clearance.weight" in body
     assert "self.robot.hit_plane_x = backhand_v7.HIT_PLANE_X" in body
     assert "self.robot.hit_target_y_range = backhand_v7.HIT_TARGET_Y_RANGE" in body
     assert "self.robot.hit_target_z_range = backhand_v7.HIT_TARGET_Z_RANGE" in body
@@ -73,7 +90,6 @@ def test_v7_inherits_v6_and_changes_only_asset_pose_response_and_relative_geomet
     assert "self.ball.serve_arrival_y_range = backhand_v7.HIT_TARGET_Y_RANGE" in body
     assert "self.ball.serve_arrival_z_range = backhand_v7.PREFLIGHT_HIT_Z_RANGE" in body
     for forbidden in (
-        "self.reward.",
         "action_response_fn_hz =",
         "action_response_zeta =",
         "action_response_delay_s =",
@@ -88,11 +104,19 @@ def test_v7_inherits_v6_and_changes_only_asset_pose_response_and_relative_geomet
         in CONFIG_SOURCE
     )
 
+    v6_body = CONFIG_SOURCE.split(
+        "class A1TableTennisBackhandV6EnvCfg", 1
+    )[1].split("class A1TableTennisBackhandV6EvalEnvCfg", 1)[0]
+    assert "enabled_self_collisions" not in v6_body
+    assert "paddle_body_safety_enable" not in v6_body
+    assert "reward_postimpact_safe_retraction" not in v6_body
+
 
 def test_v7_has_dedicated_train_eval_agent_registry_and_watchdog_namespaces():
     for class_name in (
         "A1TableTennisBackhandV7EnvCfg",
         "A1TableTennisBackhandV7EvalEnvCfg",
+        "A1TableTennisBackhandV7RewardCfg",
         "A1TableTennisBackhandV7AgentCfg",
     ):
         assert f"class {class_name}" in CONFIG_SOURCE
@@ -101,6 +125,7 @@ def test_v7_has_dedicated_train_eval_agent_registry_and_watchdog_namespaces():
     assert "A1TableTennisBackhandV7EnvCfg()" in REGISTRY_SOURCE
     assert "A1TableTennisBackhandV7EvalEnvCfg()" in REGISTRY_SOURCE
     assert 'experiment_name: str = "a1_tt_backhand_real_v7_r108_readypose"' in CONFIG_SOURCE
+    assert 'run_name = "scratch_r108_selfcollision_bodyclear65mm_saferetract_5k10k5k"' in CONFIG_SOURCE
     assert "max_iterations = backhand_v7.MAX_ITERATIONS" in CONFIG_SOURCE
 
     assert "TASK=a1_tt_backhand_v7" in WATCHDOG_SOURCE

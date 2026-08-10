@@ -44,6 +44,10 @@ from legged_lab.physics.swing_timing import (
     x_position_progress,
     x_tracking_gain,
 )
+from legged_lab.physics.a1_backhand_v7_safety import (
+    normalized_clearance_penalty,
+    safe_postimpact_retraction_reward,
+)
 
 if TYPE_CHECKING:
     from legged_lab.envs.base.base_env import BaseEnv
@@ -1000,6 +1004,47 @@ def penalty_a1_latched_precontact_max_drawdown(
     )
     penalty = penalty * env.paddle_contact_event.float()
     return torch.nan_to_num(penalty, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def penalty_a1_paddle_body_clearance(
+    env: TTEnv,
+    safe_clearance_m: float = 0.065,
+    full_penalty_clearance_m: float = 0.035,
+) -> torch.Tensor:
+    """V7 dense safety cost before the physical self-collision boundary."""
+
+    clearance = getattr(env, "paddle_body_clearance_m", None)
+    if clearance is None:
+        return torch.zeros(env.num_envs, device=env.device)
+    return normalized_clearance_penalty(
+        clearance,
+        safe_clearance_m=safe_clearance_m,
+        full_penalty_clearance_m=full_penalty_clearance_m,
+    )
+
+
+def reward_a1_safe_postimpact_retraction(
+    env: TTEnv,
+    start_x_m: float,
+    target_x_m: float,
+    safe_clearance_m: float = 0.065,
+    full_reward_clearance_m: float = 0.085,
+) -> torch.Tensor:
+    """V7 bounded return-to-ready reward after outgoing velocity is observed."""
+
+    clearance = getattr(env, "paddle_body_clearance_m", None)
+    if clearance is None:
+        return torch.zeros(env.num_envs, device=env.device)
+    active = env.has_touch_paddle & env.post_impact_latched
+    return safe_postimpact_retraction_reward(
+        env.paddle_pos[:, 0],
+        clearance,
+        active,
+        start_x_m=start_x_m,
+        target_x_m=target_x_m,
+        safe_clearance_m=safe_clearance_m,
+        full_reward_clearance_m=full_reward_clearance_m,
+    )
 
 
 def reward_a1_latched_horizontal_hit_direction(env: TTEnv) -> torch.Tensor:

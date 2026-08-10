@@ -84,3 +84,61 @@ CURRICULUM_RAMP_ITERS = v3.CURRICULUM_RAMP_ITERS
 CURRICULUM_HOLD_ITERS = v3.CURRICULUM_HOLD_ITERS
 MAX_ITERATIONS = v3.MAX_ITERATIONS
 HIT_ARRIVAL_ABS_VX_RANGE = v3.HIT_ARRIVAL_ABS_VX_RANGE
+
+# ---------------------------------------------------------------------------
+# V7-only paddle/body safety and post-impact retraction contract.
+#
+# The fixed V2 ready pose was audited against the URDF collision meshes.  The
+# true paddle-mesh/base-mesh closest distance is about 10.58 cm.  The compact
+# paddle-outline/torso-capsule proxy used online reads about 10.44 cm after a
+# zero-action settling step.  Keep the dense safety boundary at 6.5 cm,
+# leaving ~3.9 cm of modeled room at ready for USD
+# convexification, assembly tolerance, calibration error and structural flex.
+# A persistent excursion below 3.5 cm is a hard safety failure; actual PhysX
+# self-collision is independently enabled as the physical backstop.
+ENABLE_SELF_COLLISIONS = True
+TORSO_CAPSULE_CENTER_XY_M = (0.040, 0.0)
+TORSO_CAPSULE_Z_RANGE_M = (0.650, 1.400)
+TORSO_CAPSULE_RADIUS_M = 0.120
+
+# Convex-outline samples of x1_paddle.STL in Link_r_paddle coordinates.  Both
+# mesh faces are represented.  The outline follows the actual elliptical blade
+# and narrow handle instead of an over-conservative rectangular AABB.
+PADDLE_OUTLINE_XZ_M = (
+    (-0.0150, 0.1700),
+    (0.0150, 0.1700),
+    (-0.0699, 0.0290),
+    (0.0699, 0.0290),
+    (-0.0750, 0.0000),
+    (0.0750, 0.0000),
+    (-0.0687, -0.0320),
+    (0.0687, -0.0320),
+    (-0.0520, -0.0580),
+    (0.0520, -0.0580),
+    (-0.0284, -0.0740),
+    (0.0284, -0.0740),
+    (0.0000, -0.0800),
+)
+PADDLE_SAFETY_SAMPLE_POINTS_LOCAL_M = tuple(
+    (x, y, z) for x, z in PADDLE_OUTLINE_XZ_M for y in (-0.010, 0.010)
+)
+AUDITED_READY_MESH_CLEARANCE_M = 0.1058
+AUDITED_READY_PROXY_CLEARANCE_M = 0.1044
+PADDLE_BODY_SAFE_CLEARANCE_M = 0.065
+PADDLE_BODY_FULL_PENALTY_CLEARANCE_M = 0.035
+PADDLE_BODY_TERMINATION_CLEARANCE_M = 0.035
+PADDLE_BODY_TERMINATION_STEPS = 2
+PADDLE_BODY_SAFETY_LOG_INTERVAL_STEPS = 1200
+PADDLE_BODY_CLEARANCE_PENALTY_WEIGHT = -60.0
+
+# Do not require the complete ~19.9 cm hit-plane-to-ready displacement.  The
+# reward saturates 4 cm in front of the nominal ready point (~15.9 cm retreat),
+# which is enough to prepare the next serve without paying for a deep backswing.
+# It opens only after the outgoing velocity has been latched, preserving the
+# contact follow-through.  Clearance is an independent gate: below 6.5 cm the
+# retraction term is exactly zero and the safety penalty takes over.
+PRECONTACT_DRAWDOWN_ARM_RETRACTION_M = 0.05
+POSTIMPACT_RETRACTION_START_X_M = HIT_PLANE_X
+POSTIMPACT_RETRACTION_TARGET_X_M = V7_READY_PADDLE_WORLD_M[0] + 0.04
+POSTIMPACT_RETRACTION_FULL_REWARD_CLEARANCE_M = 0.085
+POSTIMPACT_RETRACTION_REWARD_WEIGHT = 2.0

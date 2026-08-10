@@ -533,6 +533,34 @@ class A1TableTennisBackhandV6RewardCfg(A1TableTennisBackhandV5RewardCfg):
 
 
 @configclass
+class A1TableTennisBackhandV7RewardCfg(A1TableTennisBackhandV6RewardCfg):
+    """V7-only safe retraction and conservative paddle/body clearance terms."""
+
+    reward_postimpact_safe_retraction = RewTerm(
+        func=mdp.reward_a1_safe_postimpact_retraction,
+        weight=0.0,
+        params={
+            "start_x_m": backhand_v7.POSTIMPACT_RETRACTION_START_X_M,
+            "target_x_m": backhand_v7.POSTIMPACT_RETRACTION_TARGET_X_M,
+            "safe_clearance_m": backhand_v7.PADDLE_BODY_SAFE_CLEARANCE_M,
+            "full_reward_clearance_m": (
+                backhand_v7.POSTIMPACT_RETRACTION_FULL_REWARD_CLEARANCE_M
+            ),
+        },
+    )
+    penalty_paddle_body_clearance = RewTerm(
+        func=mdp.penalty_a1_paddle_body_clearance,
+        weight=0.0,
+        params={
+            "safe_clearance_m": backhand_v7.PADDLE_BODY_SAFE_CLEARANCE_M,
+            "full_penalty_clearance_m": (
+                backhand_v7.PADDLE_BODY_FULL_PENALTY_CLEARANCE_M
+            ),
+        },
+    )
+
+
+@configclass
 class A1TableTennisDamiaoRewardCfg(A1TableTennisRewardCfg):
     motor_speed_margin = RewTerm(
         func=mdp.motor_speed_margin_l2,
@@ -1691,7 +1719,9 @@ class A1TableTennisBackhandV6EvalEnvCfg(A1TableTennisBackhandV6EnvCfg):
 
 @configclass
 class A1TableTennisBackhandV7EnvCfg(A1TableTennisBackhandV6EnvCfg):
-    """Backhand v7: move the complete v6 strike/serve geometry with the new ready pose."""
+    """Backhand v7: translated v6 geometry plus collision-safe retraction."""
+
+    reward = A1TableTennisBackhandV7RewardCfg()
 
     def __post_init__(self):
         super().__post_init__()
@@ -1699,6 +1729,9 @@ class A1TableTennisBackhandV7EnvCfg(A1TableTennisBackhandV6EnvCfg):
         # The V2 USD is an isolated conversion of V1_3.  Its fixed sj origin is
         # 7 cm lower, giving base_z + sj_z + r0_z = 1.08 m without a movable sj.
         self.scene.robot.spawn.usd_path = A1_USD_PATH_V2
+        self.scene.robot.spawn.articulation_props.enabled_self_collisions = (
+            backhand_v7.ENABLE_SELF_COLLISIONS
+        )
         self.scene.robot.init_state.joint_pos.update(
             {joint: q for joint, q in zip(A1_ARM_JOINTS, A1_BACKHAND_V7_READY_Q)}
         )
@@ -1706,6 +1739,54 @@ class A1TableTennisBackhandV7EnvCfg(A1TableTennisBackhandV6EnvCfg):
         # Re-anchor the existing identified affine response at the new default
         # pose.  All v6 dynamic/DR parameters remain inherited byte-for-byte.
         self.robot.action_response_u_mean = A1_BACKHAND_V7_READY_Q
+
+        # Online safety uses the actual paddle orientation and a compact mesh
+        # outline against an audited torso capsule.  The dense boundary is
+        # deliberately farther out than the persistent termination boundary;
+        # PhysX self-collision remains the final physical backstop.
+        self.robot.paddle_body_safety_enable = True
+        self.robot.paddle_body_safety_sample_points_local_m = (
+            backhand_v7.PADDLE_SAFETY_SAMPLE_POINTS_LOCAL_M
+        )
+        self.robot.paddle_body_safety_capsule_center_xy_m = (
+            backhand_v7.TORSO_CAPSULE_CENTER_XY_M
+        )
+        self.robot.paddle_body_safety_capsule_z_range_m = (
+            backhand_v7.TORSO_CAPSULE_Z_RANGE_M
+        )
+        self.robot.paddle_body_safety_capsule_radius_m = (
+            backhand_v7.TORSO_CAPSULE_RADIUS_M
+        )
+        self.robot.paddle_body_safety_soft_clearance_m = (
+            backhand_v7.PADDLE_BODY_SAFE_CLEARANCE_M
+        )
+        self.robot.paddle_body_safety_full_penalty_clearance_m = (
+            backhand_v7.PADDLE_BODY_FULL_PENALTY_CLEARANCE_M
+        )
+        self.robot.paddle_body_safety_termination_clearance_m = (
+            backhand_v7.PADDLE_BODY_TERMINATION_CLEARANCE_M
+        )
+        self.robot.paddle_body_safety_termination_steps = (
+            backhand_v7.PADDLE_BODY_TERMINATION_STEPS
+        )
+        self.robot.paddle_body_safety_log_interval_steps = (
+            backhand_v7.PADDLE_BODY_SAFETY_LOG_INTERVAL_STEPS
+        )
+        _override_attr(
+            self.robot,
+            "paddle_body_safety_log_interval_steps",
+            "TT_PADDLE_BODY_SAFETY_LOG_INTERVAL_STEPS",
+            _env_int,
+        )
+        self.ball.precontact_drawdown_arm_retraction_m = (
+            backhand_v7.PRECONTACT_DRAWDOWN_ARM_RETRACTION_M
+        )
+        self.reward.reward_postimpact_safe_retraction.weight = (
+            backhand_v7.POSTIMPACT_RETRACTION_REWARD_WEIGHT
+        )
+        self.reward.penalty_paddle_body_clearance.weight = (
+            backhand_v7.PADDLE_BODY_CLEARANCE_PENALTY_WEIGHT
+        )
 
         # Preserve v6's paddle-relative plane and y/z strike window.  Keeping
         # the old world plane made the new blade travel an extra 9.3 cm before
@@ -1754,7 +1835,7 @@ class A1TableTennisBackhandV7EnvCfg(A1TableTennisBackhandV6EnvCfg):
 
 @configclass
 class A1TableTennisBackhandV7EvalEnvCfg(A1TableTennisBackhandV7EnvCfg):
-    """Backhand-v7 final-range eval with the same v6 physics and rewards."""
+    """Backhand-v7 final-range eval with identical collision safety."""
 
     def __post_init__(self):
         super().__post_init__()
@@ -2054,7 +2135,7 @@ class A1TableTennisBackhandV6AgentCfg(A1TableTennisBackhandV5AgentCfg):
 @configclass
 class A1TableTennisBackhandV7AgentCfg(A1TableTennisBackhandV6AgentCfg):
     experiment_name: str = "a1_tt_backhand_real_v7_r108_readypose"
-    run_name = "scratch_r108_v6relativegeom_speedquality_yzonly_5k10k5k"
+    run_name = "scratch_r108_selfcollision_bodyclear65mm_saferetract_5k10k5k"
     resume = False
     max_iterations = backhand_v7.MAX_ITERATIONS
 
