@@ -1,0 +1,19 @@
+docs/a1_backhand_v7_20260810.md
+  s_bd3f1e0bb06892::t_130ce6a43a88ad 44,79-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "e92a99aceb3b357a490cb95eac65ff13ce31422b",
+  "prompts": {},
+  "sessions": {
+    "s_bd3f1e0bb06892": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fbb68-281a-7dc1-ab81-9f831deef9b3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
