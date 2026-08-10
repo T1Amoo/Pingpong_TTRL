@@ -1,0 +1,54 @@
+legged_lab/physics/a1_backhand_v7_safety.py
+  s_bd3f1e0bb06892::t_f3b13475c647de 1-99
+legged_lab/envs/base/tt_config.py
+  s_bd3f1e0bb06892::t_a115a343501db9 127-139
+legged_lab/physics/test_a1_backhand_v7_geometry_registration.py
+  s_bd3f1e0bb06892::t_3f07a6bdb9d3e0 16,43,49-58
+  s_bd3f1e0bb06892::t_c247cd5caa71d1 68,78-79,82-85,107-113,119,128
+legged_lab/assets/a1/a1.py
+  s_bd3f1e0bb06892::t_3f07a6bdb9d3e0 20-22,24-28
+legged_lab/physics/test_a1_backhand_v7_safety.py
+  s_bd3f1e0bb06892::t_c247cd5caa71d1 1-84
+legged_lab/assets/a1/X1_URDF_V2/README.md
+  s_bd3f1e0bb06892::t_3f07a6bdb9d3e0 3-8
+legged_lab/envs/a1_tt/a1_tt_env.py
+  s_bd3f1e0bb06892::t_a115a343501db9 3-4,10-12,122-123,235-266,280-326,345-348,350-354,360-361,367-368,375,379
+  s_bd3f1e0bb06892::t_f39d204cf06f63 267-279,327-344,349,355-359,362-366
+legged_lab/physics/a1_backhand_v7_contract.py
+  s_bd3f1e0bb06892::t_fceb855f14d8ae 141
+  s_bd3f1e0bb06892::t_f3b13475c647de 87-92,96-125,127-140,142-144
+  s_bd3f1e0bb06892::t_f39d204cf06f63 93-95,126
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_bd3f1e0bb06892::t_f39d204cf06f63 1775-1780
+  s_bd3f1e0bb06892::t_e37855bcfdaa90 536-562,1722-1724,1732-1734,1743-1774,1781-1790,1838,2138
+  s_bd3f1e0bb06892::t_05533d5f8c4ead 535
+legged_lab/assets/a1/X1_URDF_V2/X1_URDF_V2_paddle_self_collision.usda
+  s_bd3f1e0bb06892::t_3f07a6bdb9d3e0 1-35
+legged_lab/mdp/rewards.py
+  s_bd3f1e0bb06892::t_a115a343501db9 47-50,1009-1047
+  s_d7bdfbc037e805::t_af48f6e4da630b 1048-1049
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "031eb36c227705ff66144ab319fb5ea9fdd4276a",
+  "prompts": {},
+  "sessions": {
+    "s_bd3f1e0bb06892": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fbb68-281a-7dc1-ab81-9f831deef9b3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    },
+    "s_d7bdfbc037e805": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb780-0fbb-7d70-ad81-7f6b5c3684bd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
