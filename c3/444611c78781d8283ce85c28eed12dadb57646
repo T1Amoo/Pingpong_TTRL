@@ -1,0 +1,28 @@
+legged_lab/physics/test_a1_backhand_v7_geometry_registration.py
+  s_bd3f1e0bb06892::t_85d395c12bb95e 54
+  s_bd3f1e0bb06892::t_a5c5b265bd03ed 3,5,55-74
+docs/a1_backhand_v7_20260810.md
+  s_bd3f1e0bb06892::t_2c23ed6d3b65df 46
+  s_bd3f1e0bb06892::t_1ee803bf8f5824 7,14-16,18-20,35,40-45,47-51,59,73,76-78
+  s_bd3f1e0bb06892::t_a5c5b265bd03ed 36-39
+legged_lab/assets/a1/X1_URDF_V2/README.md
+  s_bd3f1e0bb06892::t_a5c5b265bd03ed 4-10
+legged_lab/assets/a1/X1_URDF_V2/X1_URDF_V2_paddle_self_collision.usda
+  s_bd3f1e0bb06892::t_c61bfe69489c62 8-13,22-26,28-34,36-51,55-505,509-510,513-601,604-721
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "c3444611c78781d8283ce85c28eed12dadb57646",
+  "prompts": {},
+  "sessions": {
+    "s_bd3f1e0bb06892": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fbb68-281a-7dc1-ab81-9f831deef9b3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
