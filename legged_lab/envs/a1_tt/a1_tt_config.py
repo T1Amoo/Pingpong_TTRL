@@ -19,6 +19,7 @@ from legged_lab.assets.a1.a1 import (
     A1_RIGHT_ARM_JOINTS,
     A1_INIT_Z,
     A1_USD_PATH_V1_3,
+    A1_USD_PATH_V2,
     A1_TT_CFG,
     A1_TT_DAMIAO_DELAYED_CFG,
     A1_TT_OPENARM_CFG,
@@ -167,6 +168,10 @@ A1_REAL_DEPLOY_LOWPASS_VEL_LIMIT = (1.0, 1.2, 1.8, 1.6, 4.0, 3.2, 8.0)
 # tracking) rather than the explicit Damiao actuator to avoid applying two motor
 # dynamics in series.  Validation on the new hardware-latency trace is 3.1--8.2 mrad.
 A1_BACKHAND_READY_Q = (1.450, -0.762, -2.050, 1.445, 0.206, -0.827, 1.043)
+# Backhand-v7 real ready pose.  V7 re-anchors the same v6 response model at
+# this operating point; fn/zeta/delay/gain/bias and every other v6 contract
+# remain unchanged.
+A1_BACKHAND_V7_READY_Q = (1.369, -0.651, 1.656, -1.767, 0.145, 0.684, -2.153)
 A1_BACKHAND_RESPONSE_FN_HZ = (3.166, 9.959, 9.899, 5.892, 20.000, 8.572, 19.455)
 A1_BACKHAND_RESPONSE_ZETA = (0.414, 0.559, 0.728, 0.325, 0.889, 0.615, 0.565)
 A1_BACKHAND_RESPONSE_DELAY_S = (0.010, 0.040, 0.040, 0.030, 0.040, 0.030, 0.040)
@@ -1684,6 +1689,46 @@ class A1TableTennisBackhandV6EvalEnvCfg(A1TableTennisBackhandV6EnvCfg):
 
 
 @configclass
+class A1TableTennisBackhandV7EnvCfg(A1TableTennisBackhandV6EnvCfg):
+    """Backhand v7: v6 unchanged except 1.08 m hardware geometry and ready pose."""
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # The V2 USD is an isolated conversion of V1_3.  Its fixed sj origin is
+        # 7 cm lower, giving base_z + sj_z + r0_z = 1.08 m without a movable sj.
+        self.scene.robot.spawn.usd_path = A1_USD_PATH_V2
+        self.scene.robot.init_state.joint_pos.update(
+            {joint: q for joint, q in zip(A1_ARM_JOINTS, A1_BACKHAND_V7_READY_Q)}
+        )
+
+        # Re-anchor the existing identified affine response at the new default
+        # pose.  All v6 dynamic/DR parameters remain inherited byte-for-byte.
+        self.robot.action_response_u_mean = A1_BACKHAND_V7_READY_Q
+
+
+@configclass
+class A1TableTennisBackhandV7EvalEnvCfg(A1TableTennisBackhandV7EnvCfg):
+    """Backhand-v7 final-range eval with the same v6 physics and rewards."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.max_episode_length_s = 99999999999
+        self.ball.serve_bounce_x_range = self.ball.serve_bounce_x_range_hard
+        self.ball.serve_bounce_vz_range = self.ball.serve_bounce_vz_range_hard
+        self.ball.serve_y_center = self.ball.serve_y_center_hard
+        self.ball.serve_y_start = self.ball.serve_y_wide
+        self.ball.serve_tail_candidate_weight = self.ball.serve_tail_candidate_weight_hard
+        self.ball.serve_tail_bounce_x_range = self.ball.serve_tail_bounce_x_range_hard
+        self.ball.serve_tail_bounce_vz_range = self.ball.serve_tail_bounce_vz_range_hard
+        self.ball.post_bounce_topspin_easy_range_rad_s = (
+            self.ball.post_bounce_topspin_hard_range_rad_s
+        )
+        self.ball.serve_curriculum_steps = 0
+        self.ball.serve_curriculum_phase_start = 0
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -1957,6 +2002,14 @@ class A1TableTennisBackhandV5AgentCfg(A1TableTennisBackhandV4AgentCfg):
 class A1TableTennisBackhandV6AgentCfg(A1TableTennisBackhandV5AgentCfg):
     experiment_name: str = "a1_tt_backhand_real_v6_speedquality_drawdown_yzonly"
     run_name = "scratch_speedquality_drawdown_yzonly_weakspin_5k10k5k"
+    resume = False
+    max_iterations = backhand_v6.MAX_ITERATIONS
+
+
+@configclass
+class A1TableTennisBackhandV7AgentCfg(A1TableTennisBackhandV6AgentCfg):
+    experiment_name: str = "a1_tt_backhand_real_v7_r108_readypose"
+    run_name = "scratch_r108_readypose_speedquality_drawdown_yzonly_weakspin_5k10k5k"
     resume = False
     max_iterations = backhand_v6.MAX_ITERATIONS
 

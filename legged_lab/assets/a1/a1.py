@@ -16,6 +16,10 @@ A1_USD_PATH = A1_USD_PATH_SJ_FIXED
 # v9: V1_3 CAD (arm ~6% heavier than V1_1, matches the latest SolidWorks export), sj fixed,
 # 0.15 kg paddle kept as a separate Link_r_paddle body (converted WITHOUT --merge-joints).
 A1_USD_PATH_V1_3 = os.path.join(os.path.dirname(__file__), "X1_URDF_V1_3", "X1_URDF_V1_3_paddle.usd")
+# Backhand-v7 hardware geometry: independent V2 conversion with sj still fixed,
+# but baked 7 cm lower so the r1 centerline is 1.08 m instead of 1.15 m.
+# Keep V1_3 available for every historical task/checkpoint.
+A1_USD_PATH_V2 = os.path.join(os.path.dirname(__file__), "X1_URDF_V2", "X1_URDF_V2_paddle.usd")
 
 A1_RIGHT_ARM_JOINTS = [f"r{i}" for i in range(1, 8)]
 A1_LEFT_ARM_JOINTS = [f"l{i}" for i in range(1, 8)]
