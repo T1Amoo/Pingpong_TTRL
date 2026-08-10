@@ -1,0 +1,42 @@
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_bd3f1e0bb06892::t_0af947df5151bd 22,171-174,1691-1730,2009-2012
+  s_bd3f1e0bb06892::t_0a032ea7921ccb 2013-2015
+  s_bd3f1e0bb06892::t_4a300990beafa8 2016
+legged_lab/envs/__init__.py
+  s_bd3f1e0bb06892::t_0af947df5151bd 80-82,178-189
+legged_lab/physics/test_a1_backhand_v7_geometry_registration.py
+  s_bd3f1e0bb06892::t_de3afcdbf0ee8e 1-106
+legged_lab/assets/a1/X1_URDF_V2/urdf/X1_URDF_V2.urdf
+  s_bd3f1e0bb06892::t_51ad53ae3130ba 1,3-1726
+  s_bd3f1e0bb06892::t_4e9677837a167f 2
+docs/a1_backhand_v7_20260810.md
+  s_bd3f1e0bb06892::t_cec956637601c2 1-57
+watchdog_a1_tt_backhand_v7.sh
+  s_bd3f1e0bb06892::t_a0f137a70cb61b 1-140
+legged_lab/assets/a1/X1_URDF_V2/README.md
+  s_bd3f1e0bb06892::t_51ad53ae3130ba 1-15
+legged_lab/assets/a1/a1.py
+  s_bd3f1e0bb06892::t_0af947df5151bd 19-22
+legged_lab/assets/a1/X1_URDF_V2/.asset_hash
+  s_bd3f1e0bb06892::t_485d384ec88868 1
+legged_lab/assets/a1/X1_URDF_V2/config.yaml
+  s_bd3f1e0bb06892::t_dfc1d0e231fb78 1-23
+legged_lab/assets/a1/X1_URDF_V2/meshes
+  s_bd3f1e0bb06892::t_fd4085dce88edc 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "695328cbfbb35132ca717c9be4ebe44c1d604c63",
+  "prompts": {},
+  "sessions": {
+    "s_bd3f1e0bb06892": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fbb68-281a-7dc1-ab81-9f831deef9b3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
