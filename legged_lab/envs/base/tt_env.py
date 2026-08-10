@@ -1119,9 +1119,24 @@ class TTEnv(VecEnv):
             count = len(indices)
             lp = launch_pos[indices]
             if fallback:
-                x_b = torch.full((count, 1), -0.80, device=self.device, dtype=lp.dtype)
-                y_b = torch.full((count, 1), 0.041, device=self.device, dtype=lp.dtype)
-                v_z = torch.full((count, 1), 1.30, device=self.device, dtype=lp.dtype)
+                x_b = torch.full(
+                    (count, 1),
+                    float(getattr(cfg, "serve_fallback_bounce_x", -0.80)),
+                    device=self.device,
+                    dtype=lp.dtype,
+                )
+                y_b = torch.full(
+                    (count, 1),
+                    float(getattr(cfg, "serve_fallback_bounce_y", 0.041)),
+                    device=self.device,
+                    dtype=lp.dtype,
+                )
+                v_z = torch.full(
+                    (count, 1),
+                    float(getattr(cfg, "serve_fallback_bounce_vz", 1.30)),
+                    device=self.device,
+                    dtype=lp.dtype,
+                )
             else:
                 x_b, y_b, v_z = self._sample_bounce_candidate_components(
                     lp,

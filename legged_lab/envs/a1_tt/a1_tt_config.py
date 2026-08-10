@@ -15,6 +15,7 @@ from legged_lab.physics import a1_backhand_v3_contract as backhand_v3
 from legged_lab.physics import a1_backhand_v4_contract as backhand_v4
 from legged_lab.physics import a1_backhand_v5_contract as backhand_v5
 from legged_lab.physics import a1_backhand_v6_contract as backhand_v6
+from legged_lab.physics import a1_backhand_v7_contract as backhand_v7
 from legged_lab.assets.a1.a1 import (
     A1_RIGHT_ARM_JOINTS,
     A1_INIT_Z,
@@ -1690,7 +1691,7 @@ class A1TableTennisBackhandV6EvalEnvCfg(A1TableTennisBackhandV6EnvCfg):
 
 @configclass
 class A1TableTennisBackhandV7EnvCfg(A1TableTennisBackhandV6EnvCfg):
-    """Backhand v7: v6 unchanged except 1.08 m hardware geometry and ready pose."""
+    """Backhand v7: move the complete v6 strike/serve geometry with the new ready pose."""
 
     def __post_init__(self):
         super().__post_init__()
@@ -1705,6 +1706,50 @@ class A1TableTennisBackhandV7EnvCfg(A1TableTennisBackhandV6EnvCfg):
         # Re-anchor the existing identified affine response at the new default
         # pose.  All v6 dynamic/DR parameters remain inherited byte-for-byte.
         self.robot.action_response_u_mean = A1_BACKHAND_V7_READY_Q
+
+        # Preserve v6's paddle-relative plane and y/z strike window.  Keeping
+        # the old world plane made the new blade travel an extra 9.3 cm before
+        # contact could become active, which removed the from-scratch contact
+        # bootstrap even though the final workspace remained reachable.
+        self.robot.hit_plane_x = backhand_v7.HIT_PLANE_X
+        self.robot.hit_target_x_range = (
+            backhand_v7.HIT_PLANE_X,
+            backhand_v7.HIT_PLANE_X,
+        )
+        self.robot.hit_target_y_range = backhand_v7.HIT_TARGET_Y_RANGE
+        self.robot.hit_target_z_range = backhand_v7.HIT_TARGET_Z_RANGE
+
+        # Translate the accepted arrival contract, then retune the fixed-world
+        # launch/bounce proposal so easy, ramp, and hard arrivals reproduce the
+        # v6 relative y/z, speed, and timing distributions after table contact.
+        self.scene.ball.init_state.pos = backhand_v7.BALL_LAUNCH_POS
+        self.ball.serve_bounce_x_range = backhand_v7.EASY_BOUNCE_X_RANGE
+        self.ball.serve_bounce_vz_range = backhand_v7.EASY_BOUNCE_VZ_RANGE
+        self.ball.serve_y_center = backhand_v7.EASY_Y_CENTER
+        self.ball.serve_y_start = backhand_v7.EASY_Y_HALF
+        self.ball.serve_bounce_x_range_hard = backhand_v7.HARD_BOUNCE_X_RANGE
+        self.ball.serve_bounce_vz_range_hard = backhand_v7.HARD_BOUNCE_VZ_RANGE
+        self.ball.serve_y_center_hard = backhand_v7.HARD_Y_CENTER
+        self.ball.serve_y_wide = backhand_v7.HARD_Y_HALF
+        self.ball.serve_tail_candidate_weight_hard = (
+            backhand_v7.TAIL_CANDIDATE_WEIGHT_HARD
+        )
+        self.ball.serve_tail_bounce_x_range = backhand_v7.EASY_BOUNCE_X_RANGE
+        self.ball.serve_tail_bounce_vz_range = backhand_v7.EASY_BOUNCE_VZ_RANGE
+        self.ball.serve_tail_bounce_x_range_hard = (
+            backhand_v7.TAIL_BOUNCE_X_RANGE_HARD
+        )
+        self.ball.serve_tail_bounce_vz_range_hard = (
+            backhand_v7.TAIL_BOUNCE_VZ_RANGE_HARD
+        )
+        self.ball.serve_arrival_y_range = backhand_v7.HIT_TARGET_Y_RANGE
+        self.ball.serve_arrival_z_range = backhand_v7.PREFLIGHT_HIT_Z_RANGE
+        self.ball.serve_arrival_abs_vx_range = (
+            backhand_v7.HIT_ARRIVAL_ABS_VX_RANGE
+        )
+        self.ball.serve_fallback_bounce_x = backhand_v7.FALLBACK_BOUNCE_X
+        self.ball.serve_fallback_bounce_y = backhand_v7.FALLBACK_BOUNCE_Y
+        self.ball.serve_fallback_bounce_vz = backhand_v7.FALLBACK_BOUNCE_VZ
 
 
 @configclass
@@ -2009,9 +2054,9 @@ class A1TableTennisBackhandV6AgentCfg(A1TableTennisBackhandV5AgentCfg):
 @configclass
 class A1TableTennisBackhandV7AgentCfg(A1TableTennisBackhandV6AgentCfg):
     experiment_name: str = "a1_tt_backhand_real_v7_r108_readypose"
-    run_name = "scratch_r108_readypose_speedquality_drawdown_yzonly_weakspin_5k10k5k"
+    run_name = "scratch_r108_v6relativegeom_speedquality_yzonly_5k10k5k"
     resume = False
-    max_iterations = backhand_v6.MAX_ITERATIONS
+    max_iterations = backhand_v7.MAX_ITERATIONS
 
 
 @configclass

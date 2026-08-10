@@ -206,6 +206,12 @@ class BallCfg:
     serve_table_restitution: float = 0.95
     serve_table_dynamic_friction: float = 0.10
     serve_rejection_max_attempts: int = 16
+    # Deterministic fallback used only after rejection sampling exhausts all
+    # attempts.  Defaults preserve the historical A1 sampler exactly; tasks
+    # with a translated arrival contract may override the three components.
+    serve_fallback_bounce_x: float = -0.80
+    serve_fallback_bounce_y: float = 0.041
+    serve_fallback_bounce_vz: float = 1.30
     # Optional spin prior. Historical tasks leave this OFF. A1-v4 samples a
     # correlated real-serve spin vector at reset but injects it only after the
     # own-table bounce, keeping the established no-spin serve preflight and

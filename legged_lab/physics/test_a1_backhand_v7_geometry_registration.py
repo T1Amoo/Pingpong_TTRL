@@ -54,7 +54,7 @@ def test_v7_ready_pose_is_inside_every_urdf_joint_limit():
         assert float(limit["lower"]) <= q <= float(limit["upper"])
 
 
-def test_v7_inherits_v6_and_changes_only_asset_ready_pose_and_response_anchor():
+def test_v7_inherits_v6_and_changes_only_asset_pose_response_and_relative_geometry():
     assert (
         "class A1TableTennisBackhandV7EnvCfg(A1TableTennisBackhandV6EnvCfg)"
         in CONFIG_SOURCE
@@ -66,9 +66,14 @@ def test_v7_inherits_v6_and_changes_only_asset_ready_pose_and_response_anchor():
     assert "self.scene.robot.spawn.usd_path = A1_USD_PATH_V2" in body
     assert "self.scene.robot.init_state.joint_pos.update" in body
     assert "self.robot.action_response_u_mean = A1_BACKHAND_V7_READY_Q" in body
+    assert "self.robot.hit_plane_x = backhand_v7.HIT_PLANE_X" in body
+    assert "self.robot.hit_target_y_range = backhand_v7.HIT_TARGET_Y_RANGE" in body
+    assert "self.robot.hit_target_z_range = backhand_v7.HIT_TARGET_Z_RANGE" in body
+    assert "self.scene.ball.init_state.pos = backhand_v7.BALL_LAUNCH_POS" in body
+    assert "self.ball.serve_arrival_y_range = backhand_v7.HIT_TARGET_Y_RANGE" in body
+    assert "self.ball.serve_arrival_z_range = backhand_v7.PREFLIGHT_HIT_Z_RANGE" in body
     for forbidden in (
         "self.reward.",
-        "self.ball.",
         "action_response_fn_hz =",
         "action_response_zeta =",
         "action_response_delay_s =",
@@ -96,7 +101,7 @@ def test_v7_has_dedicated_train_eval_agent_registry_and_watchdog_namespaces():
     assert "A1TableTennisBackhandV7EnvCfg()" in REGISTRY_SOURCE
     assert "A1TableTennisBackhandV7EvalEnvCfg()" in REGISTRY_SOURCE
     assert 'experiment_name: str = "a1_tt_backhand_real_v7_r108_readypose"' in CONFIG_SOURCE
-    assert "max_iterations = backhand_v6.MAX_ITERATIONS" in CONFIG_SOURCE
+    assert "max_iterations = backhand_v7.MAX_ITERATIONS" in CONFIG_SOURCE
 
     assert "TASK=a1_tt_backhand_v7" in WATCHDOG_SOURCE
     assert "EXP=logs/a1_tt_backhand_real_v7_r108_readypose" in WATCHDOG_SOURCE
