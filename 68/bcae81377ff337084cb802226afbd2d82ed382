@@ -1,0 +1,52 @@
+legged_lab/envs/a1_tt/a1_tt_config.py
+  s_bd3f1e0bb06892::t_4e4f15bfb81ac2 1955-1957,1962-1977
+  s_bd3f1e0bb06892::t_125f6396baf3dd 20,1929-1954,1958-1961,1978-2000,2295-2300
+  s_bd3f1e0bb06892::t_5b1682cd8b3f97 2301-2302
+watchdog_a1_tt_backhand_v9.sh
+  s_bd3f1e0bb06892::t_125f6396baf3dd 1-122
+legged_lab/envs/__init__.py
+  s_bd3f1e0bb06892::t_125f6396baf3dd 86-88,208-219
+docs/a1_backhand_v9_r4_holdout_mit8_20260811.md
+  s_bd3f1e0bb06892::t_4e4f15bfb81ac2 16-17,31-32,43
+  s_bd3f1e0bb06892::t_125f6396baf3dd 1-15,18-28,30,33-42,44-45
+  s_bd3f1e0bb06892::t_57246996e8b8f3 29
+legged_lab/physics/test_a1_backhand_v9_r4_contract.py
+  s_bd3f1e0bb06892::t_57246996e8b8f3 49-67
+  s_bd3f1e0bb06892::t_80431cfae8a595 13,96-98
+  s_bd3f1e0bb06892::t_91685b96b9edaa 95
+  s_bd3f1e0bb06892::t_4e4f15bfb81ac2 38-42,84-85
+  s_bd3f1e0bb06892::t_125f6396baf3dd 1-12,14-37,43-48,68-83,86-94,99-120
+legged_lab/envs/base/tt_env.py
+  s_bd3f1e0bb06892::t_91685b96b9edaa 1907-1908
+  s_bd3f1e0bb06892::t_80431cfae8a595 970-979,1567-1572,1574-1576,1785-1787,1881-1898
+  s_bd3f1e0bb06892::t_4e4f15bfb81ac2 1559-1566,1573,1577-1583,1585-1589,1622-1652,1782-1784,1847-1880,1899
+  s_bd3f1e0bb06892::t_96423ac8c477c8 1900
+legged_lab/physics/a1_backhand_v9_contract.py
+  s_bd3f1e0bb06892::t_125f6396baf3dd 1-5,10-28,31-32,40,42-63
+  s_bd3f1e0bb06892::t_4e4f15bfb81ac2 6-9,29-30,33-39,41
+  s_bd3f1e0bb06892::t_57246996e8b8f3 64-86
+legged_lab/scripts/replay_a1_forced_motor_target.py
+  s_bd3f1e0bb06892::t_22d6906956a42d 250-252,282-284,286-287,289-291,293-294
+  s_bd3f1e0bb06892::t_4e4f15bfb81ac2 256-273
+  s_bd3f1e0bb06892::t_5bdd722325aa04 33-37,169-170
+  s_bd3f1e0bb06892::t_6bada7c915b24b 26-27,31,42,66-72,77,81-84,90-94,104,110-111,174-187,197,212-214,217,236-241,244-245,274-281,285,288,292
+  s_bd3f1e0bb06892::t_9d6d0d4862d0b9 1,3-8,32,39-41,97-103,105,112,116,156-168,191-196,198,216,219-221,246,255
+legged_lab/envs/base/tt_config.py
+  s_bd3f1e0bb06892::t_4e4f15bfb81ac2 124-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "68bcae81377ff337084cb802226afbd2d82ed382",
+  "prompts": {},
+  "sessions": {
+    "s_bd3f1e0bb06892": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fbb68-281a-7dc1-ab81-9f831deef9b3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "T1Amoo <menxlee@gmail.com>"
+    }
+  }
+}
