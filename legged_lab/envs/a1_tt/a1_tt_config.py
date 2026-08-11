@@ -1928,7 +1928,7 @@ class A1TableTennisBackhandV8EvalEnvCfg(A1TableTennisBackhandV8EnvCfg):
 
 @configclass
 class A1TableTennisBackhandV9EnvCfg(A1TableTennisBackhandV8EnvCfg):
-    """Backhand v9: held-out R4 response plus a physical 8 Nm boundary."""
+    """Backhand v9: held-out R4 response plus an MIT-observer 8 Nm boundary."""
 
     def __post_init__(self):
         super().__post_init__()
@@ -1979,7 +1979,7 @@ class A1TableTennisBackhandV9EnvCfg(A1TableTennisBackhandV8EnvCfg):
 
 @configclass
 class A1TableTennisBackhandV9EvalEnvCfg(A1TableTennisBackhandV9EnvCfg):
-    """Backhand-v9 final-range eval with the same R4 response/effort bound."""
+    """Backhand-v9 final-range eval with the same R4 response/torque projection."""
 
     def __post_init__(self):
         super().__post_init__()

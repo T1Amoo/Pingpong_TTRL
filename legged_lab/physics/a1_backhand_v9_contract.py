@@ -1,4 +1,4 @@
-"""A1 backhand-v9 R4 response and physical effort-limit contract.
+"""A1 backhand-v9 R4 response and MIT torque-projection contract.
 
 V9 inherits v8 geometry, serve/camera/contact physics, reward timing and the
 195-D actor interface unchanged.  It promotes only the independently held-out
@@ -63,7 +63,9 @@ def replace_r4(values: Sequence[_T], value: _T) -> tuple[_T, ...]:
     return result[:R4_INDEX] + (value,) + result[R4_INDEX + 1 :]
 
 
-def project_r4_command(command: float, position: float, velocity: float) -> tuple[float, float, float]:
+def project_r4_command(
+    command: float, position: float, velocity: float
+) -> tuple[float, float, float]:
     """Project one R4 command to the fitted MIT 8 Nm observer boundary.
 
     Returns ``(projected_command, raw_torque, projected_torque)``.  Runtime

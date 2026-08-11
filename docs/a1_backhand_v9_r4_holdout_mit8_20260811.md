@@ -1,4 +1,4 @@
-# A1 反手 v9：R4 独立留出响应与 8 Nm 物理边界
+# A1 反手 v9：R4 独立留出响应与 8 Nm MIT 命令边界
 
 日期：2026-08-11
 
@@ -6,7 +6,7 @@
 
 实验目录：`a1_tt_backhand_real_v9_r4fit_mit8`
 
-状态：**本地候选，尚未替换或停止云端 v8**
+状态：**代码与云端最小烟测通过，尚未替换或停止云端 v8**
 
 ## 1. 单变量边界
 
@@ -39,7 +39,22 @@ v9 完整继承 v8 的 V2/108 cm 资产、ready pose、击球平面、发球课�
 云端 v8 继续运行。v9 只有在以下本地检查通过后才具备候选资格；即使通过，停止 v8、启动 v9 仍需用户单独明确授权：
 
 1. 配置隔离测试确认 v8 对象未被修改、v9 只有 R4 链路变化。
-2. 冻结低负载和已有自然挥拍轨迹回放确认 R4 低负载误差没有因 effort cap 显著退化。
+2. 冻结低负载和已有自然挥拍轨迹回放确认 R4 低负载误差没有因 torque projection 显著退化。
 3. 高需求回放必须看到 observer 投影后的需求不超过 8 Nm，并统计触边比例/持续时间；implicit tracker 的 `computed/applied_torque` 不是 SDK MIT 力矩，不能拿来判真机饱和。
 4. 本地 Isaac 2 env、24 steps、1 iteration PPO/predictor smoke 通过，actor 仍为 195 维。
 5. 启训后仍需按 eval、play、MuJoCo 和真机交叉判断，不能只看训练 reward。
+
+## 4. 已完成验证
+
+1. 直接把 high-bandwidth implicit tracker 的 R4 effort 改成 8 Nm 已否决。低负载 probe 中它有 `47.88%` 的 physics target 行落在 8 Nm，computed demand 峰值约 `330 Nm`，而真机同一留出峰值只有 `1.81 Nm`。这是 tracker 为追随“已经包含电机动态的响应目标”产生的假饱和，不是 SDK MIT 力矩。
+2. 最终 torque-projection 链在原始 robot-clock 100 Hz 独立留出上，去掉前 0.5 s 初始化后 R4 q RMSE=`0.000818 rad`，与离线冻结模型的 `0.000827 rad` 一致；observer 峰值=`1.861 Nm`、projection 触发 `0` 次。
+3. 在旧 v7 真机高需求 12 s 冻结窗口上，raw observer demand P95/peak=`11.71/22.27 Nm`；projection 输出峰值严格为 `8.0 Nm`，输出行触发率=`6.83%`，连续触发 P50/P95/max=`10/137/150 ms`。该窗口 R4 sim-real q RMSE=`0.0752 rad`，没有劣于此前同类新位姿 nominal 动态段约 `0.0793 rad` 的量级。
+4. 关闭 projection 的同窗 A/B 在高需求段发生 PhysX CUDA launch failure，没有生成有效结果；该失败只作为“不允许无边界高需求外推”的诊断，不作为定量改善证据，并导致本机 CUDA context 需重启后恢复。
+5. 云端 L20 以 `2 env x 24 steps x 1 iteration` 完成 PPO/predictor smoke，退出码 `0`；Actor 明确为 `in_features=195`，Critic 为 `320`，`Metrics/r4_torque_clip_frac` 和 `Metrics/r4_torque_peak_nm` 已进入训练日志。静态/契约测试 `9 passed`。
+
+回放产物：
+
+- `../系统辨识/joint4/20260811/r4_newpose_mit8_fit_v2_robot_clock_holdout/v9_isaac_response_torque_projection_holdout.csv`
+- `../系统辨识/joint4/20260811/r4_newpose_mit8_fit_v2_robot_clock_holdout/v9_isaac_response_torque_projection_v7_highdemand.csv`
+
+代码提交：`68bcae81377ff337084cb802226afbd2d82ed382`（后续文档修订提交见 Git 历史）。
