@@ -967,6 +967,16 @@ class TTEnv(VecEnv):
 
         reward_extras = self.reward_manager.reset(env_ids)
         self.extras["log"].update(reward_extras)
+        if getattr(self, "_action_response_torque_projection_enable", False):
+            samples = torch.clamp(
+                self.action_response_torque_sample_count[env_ids], min=1.0
+            )
+            self.extras["log"]["Metrics/r4_torque_clip_frac"] = torch.mean(
+                self.action_response_torque_clip_count[env_ids] / samples
+            )
+            self.extras["log"]["Metrics/r4_torque_peak_nm"] = torch.mean(
+                self.action_response_torque_peak_nm[env_ids]
+            )
         self.extras["time_outs"] = self.time_out_buf
 
         self.command_generator.reset(env_ids)
@@ -1546,7 +1556,37 @@ class TTEnv(VecEnv):
             getattr(self.cfg.robot, "action_response_model_enable", False)
         )
         self.action_response_targets = self._last_processed_actions.clone()
+        self.action_response_torque_demand = torch.zeros_like(
+            self._last_processed_actions
+        )
+        self.action_response_torque_projected = torch.zeros_like(
+            self._last_processed_actions
+        )
+        self.action_response_torque_clipped = torch.zeros_like(
+            self._last_processed_actions, dtype=torch.bool
+        )
+        self.action_response_torque_clip_count = torch.zeros(
+            self.num_envs, device=self.device
+        )
+        self.action_response_torque_sample_count = torch.zeros(
+            self.num_envs, device=self.device
+        )
+        self.action_response_torque_peak_nm = torch.zeros(
+            self.num_envs, device=self.device
+        )
+        self._action_response_torque_projection_enable = bool(
+            getattr(
+                self.cfg.robot,
+                "action_response_torque_projection_enable",
+                False,
+            )
+        )
         if not self._action_response_model_enable:
+            if self._action_response_torque_projection_enable:
+                raise ValueError(
+                    "robot.action_response_torque_projection_enable requires "
+                    "robot.action_response_model_enable"
+                )
             self._action_response_delay_buffer = None
             return
 
@@ -1578,6 +1618,37 @@ class TTEnv(VecEnv):
         self._action_response_bias = self._action_response_bias_base.expand(
             self.num_envs, -1
         ).clone()
+
+        if self._action_response_torque_projection_enable:
+            self._action_response_torque_kp = _param_tensor(
+                "action_response_torque_kp"
+            )
+            self._action_response_torque_kd = _param_tensor(
+                "action_response_torque_kd"
+            )
+            self._action_response_torque_scale = _param_tensor(
+                "action_response_torque_scale"
+            )
+            self._action_response_torque_offset = _param_tensor(
+                "action_response_torque_offset_nm"
+            )
+            self._action_response_torque_limit = _param_tensor(
+                "action_response_torque_limit_nm"
+            )
+            if torch.any(self._action_response_torque_kp < 0.0):
+                raise ValueError("robot.action_response_torque_kp must be non-negative")
+            if torch.any(self._action_response_torque_kd < 0.0):
+                raise ValueError("robot.action_response_torque_kd must be non-negative")
+            if torch.any(self._action_response_torque_scale <= 0.0):
+                raise ValueError("robot.action_response_torque_scale must be positive")
+            if torch.any(self._action_response_torque_limit <= 0.0):
+                raise ValueError("robot.action_response_torque_limit_nm must be positive")
+        else:
+            self._action_response_torque_kp = None
+            self._action_response_torque_kd = None
+            self._action_response_torque_scale = None
+            self._action_response_torque_offset = None
+            self._action_response_torque_limit = None
 
         def _scale_ranges(name: str) -> tuple[torch.Tensor, bool]:
             raw = tuple(getattr(self.cfg.robot, name, (1.0, 1.0)))
@@ -1708,6 +1779,12 @@ class TTEnv(VecEnv):
         self._action_response_v_rel[env_ids] = 0.0
         self._action_response_delay_buffer[:, env_ids, :] = steady_raw_command[env_ids].unsqueeze(0)
         self.action_response_targets[env_ids] = current_joint_pos[env_ids]
+        self.action_response_torque_demand[env_ids] = 0.0
+        self.action_response_torque_projected[env_ids] = 0.0
+        self.action_response_torque_clipped[env_ids] = False
+        self.action_response_torque_clip_count[env_ids] = 0.0
+        self.action_response_torque_sample_count[env_ids] = 0.0
+        self.action_response_torque_peak_nm[env_ids] = 0.0
 
     def _randomize_action_response_model(self, env_ids: torch.Tensor) -> None:
         count = len(env_ids)
@@ -1767,12 +1844,68 @@ class TTEnv(VecEnv):
         self._action_response_delay_index = (write_idx + 1) % self._action_response_delay_buffer_len
         return delayed
 
+    def _project_action_response_torque(
+        self, delayed_command: torch.Tensor
+    ) -> torch.Tensor:
+        if not self._action_response_torque_projection_enable:
+            self.action_response_torque_demand.zero_()
+            self.action_response_torque_projected.zero_()
+            self.action_response_torque_clipped.zero_()
+            return delayed_command
+
+        joint_pos = self.robot.data.joint_pos[:, self.action_joint_ids]
+        joint_vel = self.robot.data.joint_vel[:, self.action_joint_ids]
+        raw_torque = self._action_response_torque_scale * (
+            self._action_response_torque_kp * (delayed_command - joint_pos)
+            - self._action_response_torque_kd * joint_vel
+        ) + self._action_response_torque_offset
+        projected_torque = torch.clamp(
+            raw_torque,
+            -self._action_response_torque_limit,
+            self._action_response_torque_limit,
+        )
+        active = torch.isfinite(self._action_response_torque_limit) & (
+            self._action_response_torque_kp > 0.0
+        )
+        clipped = active & (torch.abs(raw_torque - projected_torque) > 1.0e-6)
+
+        safe_kp = torch.clamp(self._action_response_torque_kp, min=1.0e-6)
+        projected_command = joint_pos + (
+            (projected_torque - self._action_response_torque_offset)
+            / self._action_response_torque_scale
+            + self._action_response_torque_kd * joint_vel
+        ) / safe_kp
+        self.action_response_torque_demand.copy_(raw_torque)
+        self.action_response_torque_projected.copy_(projected_torque)
+        self.action_response_torque_clipped.copy_(clipped)
+        active_expanded = active.expand_as(raw_torque)
+        self.action_response_torque_clip_count.add_(
+            torch.sum(clipped.float(), dim=1)
+        )
+        self.action_response_torque_sample_count.add_(
+            torch.sum(active_expanded.float(), dim=1)
+        )
+        active_abs_demand = torch.where(
+            active_expanded,
+            torch.abs(raw_torque),
+            torch.zeros_like(raw_torque),
+        )
+        self.action_response_torque_peak_nm.copy_(
+            torch.maximum(
+                self.action_response_torque_peak_nm,
+                torch.max(active_abs_demand, dim=1).values,
+            )
+        )
+        return torch.where(clipped, projected_command, delayed_command)
+
     def _apply_action_response_model(self, raw_command: torch.Tensor, dt: float) -> torch.Tensor:
         if not getattr(self, "_action_response_model_enable", False):
             self.action_response_targets = raw_command
             return raw_command
 
         delayed_command = self._delayed_action_response_command(raw_command)
+        if self._action_response_torque_projection_enable:
+            delayed_command = self._project_action_response_torque(delayed_command)
         u_rel = delayed_command - self._action_response_u_mean
         accel = (
             torch.square(self._action_response_omega) * (u_rel - self._action_response_x_rel)

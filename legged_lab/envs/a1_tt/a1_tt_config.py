@@ -17,6 +17,7 @@ from legged_lab.physics import a1_backhand_v5_contract as backhand_v5
 from legged_lab.physics import a1_backhand_v6_contract as backhand_v6
 from legged_lab.physics import a1_backhand_v7_contract as backhand_v7
 from legged_lab.physics import a1_backhand_v8_contract as backhand_v8
+from legged_lab.physics import a1_backhand_v9_contract as backhand_v9
 from legged_lab.assets.a1.a1 import (
     A1_RIGHT_ARM_JOINTS,
     A1_INIT_Z,
@@ -1926,6 +1927,78 @@ class A1TableTennisBackhandV8EvalEnvCfg(A1TableTennisBackhandV8EnvCfg):
 
 
 @configclass
+class A1TableTennisBackhandV9EnvCfg(A1TableTennisBackhandV8EnvCfg):
+    """Backhand v9: held-out R4 response plus a physical 8 Nm boundary."""
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # Promote only the robot-clock-held-out R4 low-load response.  The
+        # remaining six joints and all inherited DR ranges stay exactly v8.
+        self.robot.action_response_fn_hz = backhand_v9.replace_r4(
+            self.robot.action_response_fn_hz, backhand_v9.R4_RESPONSE_FN_HZ
+        )
+        self.robot.action_response_zeta = backhand_v9.replace_r4(
+            self.robot.action_response_zeta, backhand_v9.R4_RESPONSE_ZETA
+        )
+        self.robot.action_response_delay_s = backhand_v9.replace_r4(
+            self.robot.action_response_delay_s, backhand_v9.R4_RESPONSE_DELAY_S
+        )
+        self.robot.action_response_gain = backhand_v9.replace_r4(
+            self.robot.action_response_gain, backhand_v9.R4_RESPONSE_GAIN
+        )
+        self.robot.action_response_bias_rad = backhand_v9.replace_r4(
+            self.robot.action_response_bias_rad, backhand_v9.R4_RESPONSE_BIAS_RAD
+        )
+
+        # V8's 90 rad/s^2 R4 response-state clamp was an approximate torque
+        # proxy.  Replace it, rather than stack it, with the independently
+        # validated MIT torque-observer projection.  Low-load commands pass
+        # unchanged; only a delayed command demanding >8 Nm is projected.
+        self.robot.action_response_accel_limit_rad_s2 = backhand_v9.replace_r4(
+            self.robot.action_response_accel_limit_rad_s2,
+            backhand_v9.R4_RESPONSE_ACCEL_LIMIT_RAD_S2,
+        )
+        self.robot.action_response_torque_projection_enable = True
+        self.robot.action_response_torque_kp = backhand_v9.replace_r4(
+            (0.0,) * 7, backhand_v9.R4_TORQUE_KP
+        )
+        self.robot.action_response_torque_kd = backhand_v9.replace_r4(
+            (0.0,) * 7, backhand_v9.R4_TORQUE_KD
+        )
+        self.robot.action_response_torque_scale = backhand_v9.replace_r4(
+            (1.0,) * 7, backhand_v9.R4_TORQUE_SCALE
+        )
+        self.robot.action_response_torque_offset_nm = backhand_v9.replace_r4(
+            (0.0,) * 7, backhand_v9.R4_TORQUE_OFFSET_NM
+        )
+        self.robot.action_response_torque_limit_nm = backhand_v9.replace_r4(
+            (float("inf"),) * 7, backhand_v9.R4_EFFORT_LIMIT_NM
+        )
+
+
+@configclass
+class A1TableTennisBackhandV9EvalEnvCfg(A1TableTennisBackhandV9EnvCfg):
+    """Backhand-v9 final-range eval with the same R4 response/effort bound."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.max_episode_length_s = 99999999999
+        self.ball.serve_bounce_x_range = self.ball.serve_bounce_x_range_hard
+        self.ball.serve_bounce_vz_range = self.ball.serve_bounce_vz_range_hard
+        self.ball.serve_y_center = self.ball.serve_y_center_hard
+        self.ball.serve_y_start = self.ball.serve_y_wide
+        self.ball.serve_tail_candidate_weight = self.ball.serve_tail_candidate_weight_hard
+        self.ball.serve_tail_bounce_x_range = self.ball.serve_tail_bounce_x_range_hard
+        self.ball.serve_tail_bounce_vz_range = self.ball.serve_tail_bounce_vz_range_hard
+        self.ball.post_bounce_topspin_easy_range_rad_s = (
+            self.ball.post_bounce_topspin_hard_range_rad_s
+        )
+        self.ball.serve_curriculum_steps = 0
+        self.ball.serve_curriculum_phase_start = 0
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -2217,6 +2290,14 @@ class A1TableTennisBackhandV8AgentCfg(A1TableTennisBackhandV7AgentCfg):
     run_name = "scratch_r108_reward_timing_wristquiet_5k10k5k"
     resume = False
     max_iterations = backhand_v8.MAX_ITERATIONS
+
+
+@configclass
+class A1TableTennisBackhandV9AgentCfg(A1TableTennisBackhandV8AgentCfg):
+    experiment_name: str = "a1_tt_backhand_real_v9_r4fit_mit8"
+    run_name = "scratch_r108_v8reward_r4holdout_mit8_5k10k5k"
+    resume = False
+    max_iterations = backhand_v9.MAX_ITERATIONS
 
 
 @configclass

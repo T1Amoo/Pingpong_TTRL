@@ -1,8 +1,11 @@
-"""Replay an A1 right-arm motor target sequence through IsaacLab only.
+"""Replay an A1 right-arm target sequence through IsaacLab only.
 
-This bypasses the policy and TTEnv action-response model.  Each 50 Hz row from
-``--target-csv`` is written directly as the joint position target for every
-physics substep, so the output isolates the implicit actuator tracking layer.
+By default this bypasses the policy and TTEnv action-response model: each 50 Hz
+row from ``--target-csv`` is written directly as the joint position target for
+every physics substep.  ``--through-action-response`` instead treats each row
+as the post-command-filter input to TTEnv's identified response model before
+the target reaches the actuator.  This mode is used to validate a complete
+response-plus-effort-bound training chain without running a policy.
 """
 
 from __future__ import annotations
@@ -20,10 +23,23 @@ parser.add_argument("--task", type=str, default="a1_tt_real")
 parser.add_argument("--target-csv", type=Path, required=True)
 parser.add_argument("--out", type=Path, required=True)
 parser.add_argument("--steps", type=int, default=None)
+parser.add_argument("--start-row", type=int, default=0)
+parser.add_argument("--substeps-per-row", type=int, default=None)
 parser.add_argument("--initial-state-csv", type=Path, default=None)
 parser.add_argument("--initial-state-time-s", type=float, default=None)
 parser.add_argument("--target-prefix", type=str, default="motor_q_des_")
+parser.add_argument("--target-index-base", type=int, choices=(0, 1), default=1)
+parser.add_argument("--through-action-response", action="store_true")
+parser.add_argument(
+    "--disable-torque-projection",
+    action="store_true",
+    help="Diagnostic A/B: keep the task response but bypass its torque projection.",
+)
 parser.add_argument("--no-noise", action="store_true")
+parser.add_argument("--initial-time-column", type=str, default="time_s")
+parser.add_argument("--initial-q-prefix", type=str, default="q")
+parser.add_argument("--initial-dq-prefix", type=str, default="dq")
+parser.add_argument("--initial-index-base", type=int, choices=(0, 1), default=1)
 AppLauncher.add_app_launcher_args(parser)
 args, _ = parser.parse_known_args()
 args.headless = True
@@ -47,36 +63,57 @@ def _cpu_np(x) -> np.ndarray:
     return np.asarray(x)
 
 
-def _read_target_rows(path: Path, prefix: str, steps: int | None) -> list[dict[str, str]]:
+def _read_target_rows(
+    path: Path,
+    prefix: str,
+    index_base: int,
+    start_row: int,
+    steps: int | None,
+) -> list[dict[str, str]]:
     with Path(path).open(newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     if not rows:
         raise ValueError(f"{path} is empty")
-    required = [f"{prefix}{i}" for i in range(1, 8)]
+    required = [f"{prefix}{index_base + i}" for i in range(7)]
     missing = [c for c in required if c not in rows[0]]
     if missing:
         raise ValueError(f"{path} missing target columns: {missing}")
+    start_row = int(start_row)
+    if start_row < 0 or start_row >= len(rows):
+        raise ValueError(f"start_row={start_row} outside [0,{len(rows)})")
+    rows = rows[start_row:]
     if steps is not None:
         rows = rows[: int(steps)]
     return rows
 
 
-def _target_from_row(row: dict[str, str], prefix: str) -> np.ndarray:
-    return np.asarray([float(row[f"{prefix}{i}"]) for i in range(1, 8)], dtype=np.float64)
+def _target_from_row(row: dict[str, str], prefix: str, index_base: int) -> np.ndarray:
+    return np.asarray(
+        [float(row[f"{prefix}{index_base + i}"]) for i in range(7)],
+        dtype=np.float64,
+    )
 
 
-def _load_initial_joint_state(path: Path, time_s: float | None) -> tuple[np.ndarray, np.ndarray, float]:
+def _load_initial_joint_state(
+    path: Path,
+    time_s: float | None,
+    *,
+    time_column: str,
+    q_prefix: str,
+    dq_prefix: str,
+    index_base: int,
+) -> tuple[np.ndarray, np.ndarray, float]:
     with Path(path).open(newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     if not rows:
         raise ValueError(f"{path} is empty")
-    q_cols = [f"q{i}" for i in range(1, 8)]
-    dq_cols = [f"dq{i}" for i in range(1, 8)]
-    required = {"time_s", *q_cols}
+    q_cols = [f"{q_prefix}{index_base + i}" for i in range(7)]
+    dq_cols = [f"{dq_prefix}{index_base + i}" for i in range(7)]
+    required = {time_column, *q_cols}
     missing = required - set(rows[0])
     if missing:
         raise ValueError(f"{path} missing columns: {sorted(missing)}")
-    times = np.asarray([float(row["time_s"]) for row in rows], dtype=np.float64)
+    times = np.asarray([float(row[time_column]) for row in rows], dtype=np.float64)
     q_values = np.asarray([[float(row[col]) for col in q_cols] for row in rows], dtype=np.float64)
     if all(col in rows[0] for col in dq_cols):
         dq_values = np.asarray([[float(row[col]) for col in dq_cols] for row in rows], dtype=np.float64)
@@ -116,14 +153,49 @@ def main() -> None:
     env_cfg.domain_rand.events.push_robot = None
     env_cfg.domain_rand.action_delay.enable = False
     env_cfg.domain_rand.perception_delay.enable = False
+    if args.through_action_response:
+        if not env_cfg.robot.action_response_model_enable:
+            raise ValueError(
+                f"task {args.task!r} does not enable TTEnv's action-response model"
+            )
+        # Frozen replay: remove per-environment response DR while retaining the
+        # task's nominal response and physical actuator limits.
+        env_cfg.robot.action_response_fn_scale_range = (1.0, 1.0)
+        env_cfg.robot.action_response_zeta_scale_range = (1.0, 1.0)
+        env_cfg.robot.action_response_gain_scale_range = (1.0, 1.0)
+        env_cfg.robot.action_response_delay_jitter_s = (0.0,) * 7
+        env_cfg.robot.action_response_bias_jitter_rad = (0.0,) * 7
+        env_cfg.robot.action_response_accel_limit_scale_range = (1.0, 1.0)
+        if args.disable_torque_projection:
+            env_cfg.robot.action_response_torque_projection_enable = False
 
     env = task_registry.get_task_class(args.task)(env_cfg, headless=True)
     action_ids = list(env.action_joint_ids)
-    rows_in = _read_target_rows(args.target_csv, args.target_prefix, args.steps)
+    rows_in = _read_target_rows(
+        args.target_csv,
+        args.target_prefix,
+        args.target_index_base,
+        args.start_row,
+        args.steps,
+    )
+    substeps_per_row = (
+        env.cfg.sim.decimation
+        if args.substeps_per_row is None
+        else int(args.substeps_per_row)
+    )
+    if substeps_per_row <= 0:
+        raise ValueError("substeps_per_row must be positive")
 
     initial_meta: dict[str, float | str] = {}
     if args.initial_state_csv is not None:
-        q0, dq0, t0 = _load_initial_joint_state(args.initial_state_csv, args.initial_state_time_s)
+        q0, dq0, t0 = _load_initial_joint_state(
+            args.initial_state_csv,
+            args.initial_state_time_s,
+            time_column=args.initial_time_column,
+            q_prefix=args.initial_q_prefix,
+            dq_prefix=args.initial_dq_prefix,
+            index_base=args.initial_index_base,
+        )
         _set_robot_initial_state(env, q0, dq0)
         initial_meta.update(
             {
@@ -137,11 +209,16 @@ def main() -> None:
     out_rows: list[dict[str, float | str]] = []
     with torch.inference_mode():
         for local_step, src_row in enumerate(rows_in):
-            target = _target_from_row(src_row, args.target_prefix)
+            target = _target_from_row(
+                src_row, args.target_prefix, args.target_index_base
+            )
             target_t = torch.as_tensor(target, device=env.device, dtype=env.robot.data.joint_pos.dtype).reshape(1, 7)
-            for _ in range(env.cfg.sim.decimation):
+            motor_target_t = target_t
+            for _ in range(substeps_per_row):
                 env.sim_step_counter += 1
-                env.robot.set_joint_position_target(target_t, action_ids)
+                if args.through_action_response:
+                    motor_target_t = env._apply_action_response_model(target_t, env.physics_dt)
+                env.robot.set_joint_position_target(motor_target_t, action_ids)
                 env.scene.write_data_to_sim()
                 env.sim.step(render=False)
                 env.scene.update(dt=env.physics_dt)
@@ -156,14 +233,65 @@ def main() -> None:
             row: dict[str, float | str] = {
                 "step": float(src_row.get("step", local_step + 1)),
                 "source": "isaac_forced_motor_target",
-                "sim_time_s": float(src_row.get("sim_time_s", (local_step + 1) * env.step_dt)),
+                "sim_time_s": float(
+                    src_row.get(
+                        "sim_time_s",
+                        (local_step + 1) * substeps_per_row * env.physics_dt,
+                    )
+                ),
                 "target_file": str(args.target_csv),
                 "target_prefix": args.target_prefix,
+                "target_index_base": args.target_index_base,
+                "substeps_per_row": substeps_per_row,
+                "through_action_response": int(args.through_action_response),
             }
             if "trajectory_phase_s" in src_row:
                 row["trajectory_phase_s"] = float(src_row["trajectory_phase_s"])
+            for source_key in ("t", "stamp", "phase", "freq_hz", "sample_index"):
+                if source_key in src_row:
+                    row[f"source_{source_key}"] = src_row[source_key]
             row.update(initial_meta)
             row.update(_row("target_motor_q_des_", target))
+            row.update(_row("response_target_", _cpu_np(motor_target_t[0])))
+            row.update(
+                _row(
+                    "response_torque_demand_",
+                    _cpu_np(env.action_response_torque_demand[0]),
+                )
+            )
+            row.update(
+                _row(
+                    "response_torque_projected_",
+                    _cpu_np(env.action_response_torque_projected[0]),
+                )
+            )
+            row.update(
+                _row(
+                    "response_torque_clipped_",
+                    _cpu_np(env.action_response_torque_clipped[0]).astype(np.int64),
+                )
+            )
+            q_source_cols = [
+                f"{args.initial_q_prefix}{args.initial_index_base + i}"
+                for i in range(7)
+            ]
+            tau_source_cols = [
+                f"actual_tau_{args.initial_index_base + i}" for i in range(7)
+            ]
+            if all(col in src_row for col in q_source_cols):
+                row.update(
+                    _row(
+                        "source_actual_q_",
+                        [float(src_row[col]) for col in q_source_cols],
+                    )
+                )
+            if all(col in src_row for col in tau_source_cols):
+                row.update(
+                    _row(
+                        "source_actual_tau_",
+                        [float(src_row[col]) for col in tau_source_cols],
+                    )
+                )
             row.update(_row("q_", _cpu_np(q)))
             row.update(_row("dq_", _cpu_np(dq)))
             row.update(_row("applied_tau_", _cpu_np(applied_tau)))

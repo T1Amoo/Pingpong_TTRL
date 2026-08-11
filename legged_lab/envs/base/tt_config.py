@@ -121,6 +121,18 @@ class RobotCfg:
     action_response_bias_jitter_rad: tuple = ()
     action_response_accel_limit_rad_s2: tuple = ()
     action_response_accel_limit_scale_range: tuple = (1.0, 1.0)
+    # Optional torque-observer projection for a black-box closed-loop response.
+    # It projects only infeasible delayed q_des commands back to the configured
+    # MIT effort boundary before the response state is advanced.  This avoids
+    # stacking a second low-bandwidth actuator on top of an identified q_des->q
+    # response while still preventing the policy from requesting impossible
+    # motor torque.  Disabled by default, so historical tasks are unchanged.
+    action_response_torque_projection_enable: bool = False
+    action_response_torque_kp: tuple = ()
+    action_response_torque_kd: tuple = ()
+    action_response_torque_scale: tuple = ()
+    action_response_torque_offset_nm: tuple = ()
+    action_response_torque_limit_nm: tuple = ()
     # --- Table-tennis paddle / hitting geometry (defaults match Booster T1) ---
     paddle_body_name: str = "right_hand_link"   # body the paddle is rigidly attached to
     paddle_offset: tuple = (0.0, -0.345, 0.0)   # paddle face center offset in that body's local frame
