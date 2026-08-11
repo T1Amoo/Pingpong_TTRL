@@ -14,10 +14,21 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TypeVar
 
-from legged_lab.physics import a1_backhand_v8_contract as v8
+from legged_lab.physics import a1_backhand_v7_contract as v7
 
 
-MAX_ITERATIONS = v8.MAX_ITERATIONS
+# Keep v8's 5k easy + 10k linear expansion, then spend a longer 15k window
+# consolidating on the full-range distribution.  This is a training-duration
+# change only; the inherited serve distribution and curriculum interpolation
+# remain byte-for-byte v8/v7.
+CURRICULUM_EASY_ITERS = v7.CURRICULUM_EASY_ITERS
+CURRICULUM_RAMP_ITERS = v7.CURRICULUM_RAMP_ITERS
+CURRICULUM_HOLD_ITERS = 15_000
+MAX_ITERATIONS = (
+    CURRICULUM_EASY_ITERS
+    + CURRICULUM_RAMP_ITERS
+    + CURRICULUM_HOLD_ITERS
+)
 
 R4_INDEX = 3
 R4_RESPONSE_FN_HZ = 4.6540465907137785

@@ -33,7 +33,8 @@ else
 fi
 
 EXP=logs/a1_tt_backhand_real_v9_r4fit_mit8
-TARGET=${A1_TT_TARGET:-19999}
+# 30,000 iterations with zero-based checkpoint numbering -> model_29999.pt.
+TARGET=${A1_TT_TARGET:-29999}
 TASK=a1_tt_backhand_v9
 TRAIN_LOG=${A1_TT_TRAIN_LOG:-train_a1_tt_backhand_real_v9_r4fit_mit8.log}
 WATCHDOG_LOG=${A1_TT_WATCHDOG_LOG:-train_a1_tt_backhand_real_v9_r4fit_mit8_watchdog.log}

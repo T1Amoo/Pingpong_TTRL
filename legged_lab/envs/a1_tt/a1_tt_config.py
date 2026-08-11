@@ -2295,7 +2295,7 @@ class A1TableTennisBackhandV8AgentCfg(A1TableTennisBackhandV7AgentCfg):
 @configclass
 class A1TableTennisBackhandV9AgentCfg(A1TableTennisBackhandV8AgentCfg):
     experiment_name: str = "a1_tt_backhand_real_v9_r4fit_mit8"
-    run_name = "scratch_r108_v8reward_r4holdout_mit8_5k10k5k"
+    run_name = "scratch_r108_v8reward_r4holdout_mit8_5k10k15k"
     resume = False
     max_iterations = backhand_v9.MAX_ITERATIONS
 

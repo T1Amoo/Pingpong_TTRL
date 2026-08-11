@@ -29,6 +29,10 @@ def test_replace_r4_is_strictly_single_joint():
 
 
 def test_v9_frozen_r4_evidence_and_limits():
+    assert v9.CURRICULUM_EASY_ITERS == 5_000
+    assert v9.CURRICULUM_RAMP_ITERS == 10_000
+    assert v9.CURRICULUM_HOLD_ITERS == 15_000
+    assert v9.MAX_ITERATIONS == 30_000
     assert v9.R4_RESPONSE_FN_HZ == pytest.approx(4.6540465907137785)
     assert v9.R4_RESPONSE_ZETA == pytest.approx(0.1218426552876445)
     assert v9.R4_RESPONSE_DELAY_S == pytest.approx(0.02893988654476473)
@@ -111,10 +115,10 @@ def test_v9_has_isolated_scratch_registry_and_safe_watchdog():
     assert REGISTRY_SOURCE.count('"a1_tt_backhand_v9",') == 1
     assert REGISTRY_SOURCE.count('"a1_tt_backhand_v9_eval",') == 1
     assert 'experiment_name: str = "a1_tt_backhand_real_v9_r4fit_mit8"' in CONFIG_SOURCE
-    assert 'run_name = "scratch_r108_v8reward_r4holdout_mit8_5k10k5k"' in CONFIG_SOURCE
+    assert 'run_name = "scratch_r108_v8reward_r4holdout_mit8_5k10k15k"' in CONFIG_SOURCE
     assert "TASK=a1_tt_backhand_v9" in WATCHDOG_SOURCE
     assert "EXP=logs/a1_tt_backhand_real_v9_r4fit_mit8" in WATCHDOG_SOURCE
-    assert "TARGET=${A1_TT_TARGET:-19999}" in WATCHDOG_SOURCE
+    assert "TARGET=${A1_TT_TARGET:-29999}" in WATCHDOG_SOURCE
     assert "--num_envs 4096 --headless --predictor" in WATCHDOG_SOURCE
     assert "pkill" not in WATCHDOG_SOURCE
     assert "rm -" not in WATCHDOG_SOURCE
