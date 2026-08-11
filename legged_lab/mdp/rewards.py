@@ -201,6 +201,38 @@ def action_rate_l2_weighted(env: BaseEnv, weights) -> torch.Tensor:
     return torch.sum(w * torch.square(d), dim=1)
 
 
+def action_rate_l2_weighted_t_hit(
+    env: TTEnv,
+    weights,
+    release_s: float = 0.60,
+    ramp_s: float = 0.10,
+    swing_floor: float = 0.25,
+) -> torch.Tensor:
+    """Per-joint action-rate cost with stronger regularization before swing.
+
+    The late-phase floor avoids making rapid wrist target flips free, while
+    keeping most of the regularization outside the executable swing window so
+    legitimate contact orientation/speed is not suppressed. ``t_hit`` remains
+    reward-only; this function does not change the actor observation contract.
+    """
+
+    w = torch.as_tensor(weights, device=env.device, dtype=torch.float)
+    d = (
+        env.action_buffer._circular_buffer.buffer[:, -1, :]
+        - env.action_buffer._circular_buffer.buffer[:, -2, :]
+    )
+    base = torch.sum(w * torch.square(d), dim=1)
+    early = early_hold_gate(
+        env.ball_future_t.squeeze(-1),
+        release_s=release_s,
+        ramp_s=ramp_s,
+    )
+    floor = min(max(float(swing_floor), 0.0), 1.0)
+    phase_weight = floor + (1.0 - floor) * early
+    penalty = base * phase_weight
+    return torch.where(env.mask_invalid, torch.zeros_like(penalty), penalty)
+
+
 def action_target_slew_limit_l2(env: BaseEnv) -> torch.Tensor:
     if not hasattr(env, "action_target_slew_excess_l2"):
         return torch.zeros(env.num_envs, device=env.device)

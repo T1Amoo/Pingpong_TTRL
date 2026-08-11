@@ -254,6 +254,13 @@ class BallCfg:
     # may defer that reset for one-shot contact/outcome events so a boundary
     # tick cannot erase sparse rewards before consumption.
     defer_ball_reset_for_reward_events_enable: bool = False
+    # Optional pre-contact swing-path tracker.  A positive window starts the
+    # maximum-drawdown statistic only once the remaining time-to-hit enters
+    # that window; zero preserves the historical whole-ball arming behavior.
+    precontact_drawdown_tracking_enable: bool = False
+    precontact_drawdown_arm_retraction_m: float = 0.08
+    precontact_drawdown_arm_min_vx_mps: float = -0.02
+    precontact_drawdown_window_s: float = 0.0
     # Landing-projection drag coefficient k [1/m]. Preserve the historical
     # 2.7 g/Cd=.47 value for every existing TT task; a new task must opt in to
     # the actual AeroForceField/rigid-ball value explicitly (A1-v4 does).

@@ -14,6 +14,7 @@ from legged_lab.physics.swing_timing import (
     phase_open_gate,
     staged_intercept_reward,
     update_precontact_max_drawdown,
+    update_windowed_precontact_max_drawdown,
     weighted_yz_distance,
     x_position_progress,
     x_tracking_gain,
@@ -123,6 +124,70 @@ def test_precontact_drawdown_ignores_unarmed_recovery_and_keeps_worst_excursion(
     torch.testing.assert_close(frozen_peak, peak)
     torch.testing.assert_close(frozen_drawdown, max_drawdown)
     torch.testing.assert_close(frozen_armed, armed)
+
+
+def test_windowed_drawdown_ignores_preparation_and_seeds_at_swing_open():
+    peak = torch.zeros(1)
+    max_drawdown = torch.zeros(1)
+    started = torch.zeros(1, dtype=torch.bool)
+
+    # Long-ETA preparation may move in either direction, but none of it is
+    # charged before the reward-side swing window opens.
+    for position in (-1.42, -1.50, -1.36):
+        peak, max_drawdown, started = update_windowed_precontact_max_drawdown(
+            torch.tensor([position]),
+            peak,
+            max_drawdown,
+            started,
+            torch.ones(1, dtype=torch.bool),
+            torch.zeros(1, dtype=torch.bool),
+        )
+    assert not started.item()
+    torch.testing.assert_close(max_drawdown, torch.zeros(1))
+
+    # Opening seeds the current position, rather than a stale pre-window peak.
+    peak, max_drawdown, started = update_windowed_precontact_max_drawdown(
+        torch.tensor([-1.34]),
+        peak,
+        max_drawdown,
+        started,
+        torch.ones(1, dtype=torch.bool),
+        torch.ones(1, dtype=torch.bool),
+    )
+    assert started.item()
+    torch.testing.assert_close(peak, torch.tensor([-1.34]))
+    torch.testing.assert_close(max_drawdown, torch.zeros(1))
+
+    # Once open, the same tracker keeps the worst retreat from a forward peak.
+    for position in (-1.25, -1.31, -1.23):
+        peak, max_drawdown, started = update_windowed_precontact_max_drawdown(
+            torch.tensor([position]),
+            peak,
+            max_drawdown,
+            started,
+            torch.ones(1, dtype=torch.bool),
+            torch.ones(1, dtype=torch.bool),
+        )
+    torch.testing.assert_close(peak, torch.tensor([-1.23]))
+    torch.testing.assert_close(
+        max_drawdown,
+        torch.tensor([0.06]),
+        atol=1.0e-6,
+        rtol=0.0,
+    )
+
+    # Contact/invalid state freezes the latched pre-contact statistic.
+    frozen = update_windowed_precontact_max_drawdown(
+        torch.tensor([-1.50]),
+        peak,
+        max_drawdown,
+        started,
+        torch.zeros(1, dtype=torch.bool),
+        torch.ones(1, dtype=torch.bool),
+    )
+    torch.testing.assert_close(frozen[0], peak)
+    torch.testing.assert_close(frozen[1], max_drawdown)
+    torch.testing.assert_close(frozen[2], started)
 
 
 def test_weighted_yz_distance_is_independent_of_x():

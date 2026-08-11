@@ -39,6 +39,7 @@ from legged_lab.physics.serve_flight import probe_serve_flight
 from legged_lab.physics.swing_timing import (
     latch_precontact_max_drawdown,
     update_precontact_max_drawdown,
+    update_windowed_precontact_max_drawdown,
 )
 from legged_lab.utils.env_utils.scene import SceneCfg
 
@@ -451,8 +452,13 @@ class TTEnv(VecEnv):
         self._precontact_drawdown_arm_min_vx_mps = float(
             getattr(self.cfg.ball, "precontact_drawdown_arm_min_vx_mps", -0.02)
         )
+        self._precontact_drawdown_window_s = float(
+            getattr(self.cfg.ball, "precontact_drawdown_window_s", 0.0)
+        )
         if self._precontact_drawdown_arm_retraction_m < 0.0:
             raise ValueError("precontact_drawdown_arm_retraction_m must be non-negative")
+        if self._precontact_drawdown_window_s < 0.0:
+            raise ValueError("precontact_drawdown_window_s must be non-negative")
         self.paddle_precontact_drawdown_armed = torch.zeros(
             self.num_envs, device=self.device, dtype=torch.bool
         )
@@ -2294,6 +2300,28 @@ class TTEnv(VecEnv):
         if not self._precontact_drawdown_tracking_enable:
             return
         paddle_x_local = self.paddle_touch_point[:, 0] - self.scene.env_origins[:, 0]
+        if self._precontact_drawdown_window_s > 0.0:
+            # V8 contract: ball_future_t is privileged reward state, not an
+            # actor observation.  Start from the current position when the
+            # smooth reward phase reaches its explicit open boundary; do not
+            # charge preparation/recovery motion from the long-ETA phase.
+            tracking = (~self.has_touch_paddle) & (~self.mask_invalid)
+            window_open = (
+                self.ball_future_t.squeeze(-1)
+                <= self._precontact_drawdown_window_s
+            )
+            peak, max_drawdown, armed = update_windowed_precontact_max_drawdown(
+                paddle_x_local,
+                self.paddle_precontact_peak_x,
+                self.paddle_precontact_max_drawdown,
+                self.paddle_precontact_drawdown_armed,
+                tracking,
+                window_open,
+            )
+            self.paddle_precontact_peak_x.copy_(peak)
+            self.paddle_precontact_max_drawdown.copy_(max_drawdown)
+            self.paddle_precontact_drawdown_armed.copy_(armed)
+            return
         peak, max_drawdown, armed = update_precontact_max_drawdown(
             paddle_x_local,
             self.paddle_precontact_peak_x,

@@ -206,6 +206,48 @@ def update_precontact_max_drawdown(
     return next_peak, next_max_drawdown, next_armed
 
 
+def update_windowed_precontact_max_drawdown(
+    current_x_m: torch.Tensor,
+    peak_x_m: torch.Tensor,
+    max_drawdown_m: torch.Tensor,
+    window_started: torch.Tensor,
+    tracking_mask: torch.Tensor,
+    window_open_mask: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Track drawdown only after the causal swing window first opens.
+
+    Motion before the window is deliberately excluded.  On the first open
+    tick the current paddle position becomes the zero-drawdown baseline; from
+    then until contact, the state keeps the worst retreat from any achieved
+    forward peak.  ``tracking_mask`` may temporarily go false (for example on
+    an invalid camera track) without erasing the already-started state.
+    """
+
+    tracking = tracking_mask.bool()
+    started = window_started.bool()
+    newly_started = tracking & window_open_mask.bool() & (~started)
+    next_started = started | newly_started
+    seeded_peak = torch.where(newly_started, current_x_m, peak_x_m)
+    seeded_drawdown = torch.where(
+        newly_started,
+        torch.zeros_like(max_drawdown_m),
+        max_drawdown_m,
+    )
+    active = tracking & next_started
+    next_peak = torch.where(
+        active,
+        torch.maximum(seeded_peak, current_x_m),
+        seeded_peak,
+    )
+    current_drawdown = torch.clamp(next_peak - current_x_m, min=0.0)
+    next_max_drawdown = torch.where(
+        active,
+        torch.maximum(seeded_drawdown, current_drawdown),
+        seeded_drawdown,
+    )
+    return next_peak, next_max_drawdown, next_started
+
+
 def x_position_progress(
     x_error_m: torch.Tensor,
     *,

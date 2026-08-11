@@ -16,6 +16,7 @@ from legged_lab.physics import a1_backhand_v4_contract as backhand_v4
 from legged_lab.physics import a1_backhand_v5_contract as backhand_v5
 from legged_lab.physics import a1_backhand_v6_contract as backhand_v6
 from legged_lab.physics import a1_backhand_v7_contract as backhand_v7
+from legged_lab.physics import a1_backhand_v8_contract as backhand_v8
 from legged_lab.assets.a1.a1 import (
     A1_RIGHT_ARM_JOINTS,
     A1_INIT_Z,
@@ -556,6 +557,22 @@ class A1TableTennisBackhandV7RewardCfg(A1TableTennisBackhandV6RewardCfg):
             "full_penalty_clearance_m": (
                 backhand_v7.PADDLE_BODY_FULL_PENALTY_CLEARANCE_M
             ),
+        },
+    )
+
+
+@configclass
+class A1TableTennisBackhandV8RewardCfg(A1TableTennisBackhandV7RewardCfg):
+    """V8 adds reward-only timing and phase-aware r5/r7 action smoothing."""
+
+    penalty_phase_wrist_action_rate = RewTerm(
+        func=mdp.action_rate_l2_weighted_t_hit,
+        weight=0.0,
+        params={
+            "weights": backhand_v8.WRIST_ACTION_RATE_JOINT_WEIGHTS,
+            "release_s": backhand_v8.SWING_WINDOW_S,
+            "ramp_s": backhand_v8.SWING_TRANSITION_S,
+            "swing_floor": backhand_v8.WRIST_ACTION_RATE_SWING_FLOOR,
         },
     )
 
@@ -1855,6 +1872,60 @@ class A1TableTennisBackhandV7EvalEnvCfg(A1TableTennisBackhandV7EnvCfg):
 
 
 @configclass
+class A1TableTennisBackhandV8EnvCfg(A1TableTennisBackhandV7EnvCfg):
+    """Backhand v8: reward-side t_hit timing with unchanged 195-D actor."""
+
+    reward = A1TableTennisBackhandV8RewardCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # Start max-drawdown at the executable swing boundary instead of at
+        # ball reset.  The current paddle x is seeded as the zero-drawdown
+        # baseline on the first in-window physics tick.
+        self.ball.precontact_drawdown_window_s = backhand_v8.SWING_WINDOW_S
+
+        # Pair the windowed drawdown with a light long-ETA hold.  It fades to
+        # zero by the boundary, so urgent balls retain the full v7 action set.
+        self.reward.penalty_early_paddle_forward.func = (
+            mdp.penalty_early_paddle_forward
+        )
+        self.reward.penalty_early_paddle_forward.params = {
+            "release_s": backhand_v8.SWING_WINDOW_S,
+            "ramp_s": backhand_v8.SWING_TRANSITION_S,
+            "min_retraction_m": backhand_v8.EARLY_MIN_RETRACTION_M,
+            "max_excess_m": backhand_v8.EARLY_MAX_EXCESS_M,
+        }
+        self.reward.penalty_early_paddle_forward.weight = (
+            backhand_v8.EARLY_FORWARD_PENALTY_WEIGHT
+        )
+        self.reward.penalty_phase_wrist_action_rate.weight = (
+            backhand_v8.WRIST_ACTION_RATE_PENALTY_WEIGHT
+        )
+
+
+@configclass
+class A1TableTennisBackhandV8EvalEnvCfg(A1TableTennisBackhandV8EnvCfg):
+    """Backhand-v8 final-range eval with the same timing/safety contract."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.max_episode_length_s = 99999999999
+        self.ball.serve_bounce_x_range = self.ball.serve_bounce_x_range_hard
+        self.ball.serve_bounce_vz_range = self.ball.serve_bounce_vz_range_hard
+        self.ball.serve_y_center = self.ball.serve_y_center_hard
+        self.ball.serve_y_start = self.ball.serve_y_wide
+        self.ball.serve_tail_candidate_weight = self.ball.serve_tail_candidate_weight_hard
+        self.ball.serve_tail_bounce_x_range = self.ball.serve_tail_bounce_x_range_hard
+        self.ball.serve_tail_bounce_vz_range = self.ball.serve_tail_bounce_vz_range_hard
+        self.ball.post_bounce_topspin_easy_range_rad_s = (
+            self.ball.post_bounce_topspin_hard_range_rad_s
+        )
+        self.ball.serve_curriculum_steps = 0
+        self.ball.serve_curriculum_phase_start = 0
+
+
+@configclass
 class A1TableTennisOpenArmEnvCfg(A1TableTennisEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -2138,6 +2209,14 @@ class A1TableTennisBackhandV7AgentCfg(A1TableTennisBackhandV6AgentCfg):
     run_name = "scratch_r108_selfcollision_bodyclear65mm_saferetract_5k10k5k"
     resume = False
     max_iterations = backhand_v7.MAX_ITERATIONS
+
+
+@configclass
+class A1TableTennisBackhandV8AgentCfg(A1TableTennisBackhandV7AgentCfg):
+    experiment_name: str = "a1_tt_backhand_real_v8_timing_wristquiet"
+    run_name = "scratch_r108_reward_timing_wristquiet_5k10k5k"
+    resume = False
+    max_iterations = backhand_v8.MAX_ITERATIONS
 
 
 @configclass
