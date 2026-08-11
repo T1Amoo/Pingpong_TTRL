@@ -6,7 +6,7 @@
 
 实验目录：`a1_tt_backhand_real_v9_r4fit_mit8`
 
-状态：**代码与云端最小烟测通过；正式训练课程已按用户指令改为 30k**
+状态：**正式 4096-env 云端训练运行中；课程已按用户指令改为 30k**
 
 训练课程：`5000 easy + 10000 linear ramp + 15000 full-range hold`，总计
 `30000` iterations，最终目标 checkpoint 为零基编号的 `model_29999.pt`。
@@ -66,3 +66,18 @@ v9 完整继承 v8 的 V2/108 cm 资产、ready pose、击球平面、发球分�
 - `../系统辨识/joint4/20260811/r4_newpose_mit8_fit_v2_robot_clock_holdout/v9_isaac_response_torque_projection_v7_highdemand.csv`
 
 代码提交：`68bcae81377ff337084cb802226afbd2d82ed382`（后续文档修订提交见 Git 历史）。
+
+## 5. 正式训练与 30k 切换
+
+2026-08-11 用户明确授权停止 v8 并启动 v9。v8 最终稳定 checkpoint
+`model_3100.pt` 及原 run/log 全部保留。v9 先在 commit `a5ba171` 从零运行到
+canonical run
+`2026-08-11_08-48-00_scratch_r108_v8reward_r4holdout_mit8_5k10k5k/model_100.pt`；
+随后按用户指令以 commit `73f3f9d` 将课程扩为 30k，并完整加载该 checkpoint
+中的 PPO/predictor 权重、optimizer 与 observation normalization 状态。
+
+30k 续训 run 为
+`2026-08-11_08-59-29_scratch_r108_v8reward_r4holdout_mit8_5k10k15k`。
+watchdog 启动记录为 `model_100.pt remaining=29900 curriculum_raw_step=24240`，
+trainer 日志确认 `Learning iteration 100/30000`。最终目标为 `model_29999.pt`；
+两个 v9 run 均属于同一训练链且全部保留。
